@@ -13,7 +13,12 @@
 // Admin PIN (for host approval): twirlpower2025
 // Change before production use.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = 'https://fascxnrrnsknjnojfxvv.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhc2N4bnJybnNrbmpub2pmeHZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNjI3MjAsImV4cCI6MjA5MTkzODcyMH0.PeBZxHI8FwISfS0tMwXTcpHBnUFyoLCdtQNm59HrmQU';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const ORGS = {
  USTA: {
@@ -586,7 +591,7 @@ function orgColor(orgId) { return orgId === "USTA" ? "#2563eb" : orgId === "NBTA
 
 const US_STATES = ["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"];
 
-const css = `@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--navy:#0f172a;--navy2:#1e293b;--navy3:#334155;--slate:#64748b;--muted:#94a3b8;--border:#e2e8f0;--bg:#f8fafc;--card:#ffffff;--blue:#3b82f6;--blue2:#2563eb;--purple:#8b5cf6;--green:#22c55e;--amber:#f59e0b;--red:#ef4444;--brand:#0d9488;--brand2:#0f766e;--brand-light:#f0fdfa;--pink:#e11d6a;--pink2:#be1259;--pink-light:#fce7f0;--gold:#f59e0b;--gold-light:#fef3c7;--radius:12px;--radius-sm:8px}body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--navy)}.serif{font-family:'DM Serif Display',serif}.app{display:flex;min-height:100vh}.sidebar{width:240px;min-width:240px;background:var(--navy);display:flex;flex-direction:column;padding:0;position:sticky;top:0;height:100vh;overflow-y:auto}.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.08)}.sidebar-logo h1{font-family:'DM Serif Display',serif;color:white;font-size:22px;line-height:1.1}.sidebar-logo h1 span{color:var(--brand)}.sidebar-logo p{color:var(--muted);font-size:10px;margin-top:5px;letter-spacing:1px;text-transform:uppercase}.sidebar-section{padding:12px 0}.sidebar-label{padding:6px 20px;font-size:10px;font-weight:600;letter-spacing:1.2px;color:var(--slate);text-transform:uppercase}.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;color:var(--muted);font-size:14px;font-weight:400;transition:all 0.15s;border-left:3px solid transparent}.nav-item:hover{color:white;background:rgba(255,255,255,0.05)}.nav-item.active{color:white;background:rgba(13,148,136,0.15);border-left-color:var(--brand)}.nav-icon{width:18px;height:18px;flex-shrink:0}.sidebar-twirler{padding:12px 16px;margin:8px;background:rgba(255,255,255,0.06);border-radius:var(--radius-sm);cursor:pointer}.sidebar-twirler:hover{background:rgba(255,255,255,0.1)}.sidebar-twirler.active{background:rgba(13,148,136,0.2);border:1px solid rgba(13,148,136,0.4)}.sidebar-twirler .name{color:white;font-size:13px;font-weight:500}.sidebar-twirler .sub{color:var(--muted);font-size:11px;margin-top:2px}.main{flex:1;overflow-y:auto;padding:32px;max-width:1000px}.page-header{margin-bottom:28px}.page-title{font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy)}.page-sub{color:var(--slate);font-size:14px;margin-top:4px}.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px}.card-sm{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px}.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.grid-auto{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px}.stat-label{font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:var(--slate);margin-bottom:6px}.stat-value{font-size:26px;font-weight:600;color:var(--navy);line-height:1}.stat-sub{font-size:12px;color:var(--slate);margin-top:4px}.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:0.3px}.badge-blue{background:#dbeafe;color:#1d4ed8}.badge-purple{background:#ede9fe;color:#6d28d9}.badge-green{background:#dcfce7;color:#15803d}.badge-amber{background:#fef3c7;color:#b45309}.badge-red{background:#fee2e2;color:#b91c1c}.badge-gray{background:#f1f5f9;color:#475569}.badge-warn{background:#fff7ed;color:#c2410c;border:1px solid #fed7aa}.progress-bar{height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden}.progress-fill{height:100%;border-radius:999px;transition:width 0.3s}.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:var(--radius-sm);font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all 0.15s;font-family:inherit}.btn-primary{background:var(--brand);color:white}.btn-primary:hover{background:var(--brand2)}.btn-secondary{background:var(--bg);color:var(--navy);border:1px solid var(--border)}.btn-secondary:hover{background:var(--border)}.btn-danger{background:#fee2e2;color:var(--red)}.btn-danger:hover{background:#fecaca}.btn-sm{padding:6px 12px;font-size:12px}.btn-ghost{background:transparent;color:var(--slate);border:1px solid var(--border)}.btn-ghost:hover{background:var(--bg)}.input,.select,.textarea{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit;color:var(--navy);background:white;outline:none;transition:border 0.15s}.input:focus,.select:focus,.textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(13,148,136,0.12)}.label{font-size:12px;font-weight:600;color:var(--slate);margin-bottom:5px;display:block;letter-spacing:0.3px}.form-group{margin-bottom:14px}.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.table{width:100%;border-collapse:collapse;font-size:14px}.table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:var(--slate);border-bottom:1px solid var(--border)}.table td{padding:12px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}.table tr:last-child td{border-bottom:none}.table tr:hover td{background:#f8fafc}.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}.modal{background:white;border-radius:var(--radius);width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2)}.modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}.modal-title{font-family:'DM Serif Display',serif;font-size:20px}.modal-body{padding:20px 24px}.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end}.alert{padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:12px;display:flex;gap:10px;align-items:flex-start}.alert-warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}.alert-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}.alert-success{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}.avatar-lg{width:52px;height:52px;font-size:18px}.chip-group{display:flex;gap:6px;flex-wrap:wrap}.chip{display:inline-flex;align-items:center;padding:4px 10px;border:1px solid var(--border);border-radius:20px;font-size:12px;font-weight:500;color:var(--slate);cursor:pointer;transition:all 0.15s}.chip.selected{background:var(--navy);color:white;border-color:var(--navy)}.chip:hover{border-color:var(--slate)}.divider{height:1px;background:var(--border);margin:16px 0}.text-muted{color:var(--slate)}.text-xs{font-size:12px}.text-sm{font-size:13px}.flex{display:flex}.flex-col{display:flex;flex-direction:column}.items-center{align-items:center}.items-start{align-items:flex-start}.justify-between{justify-content:space-between}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.mb-1{margin-bottom:4px}.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}.mb-6{margin-bottom:24px}.mt-auto{margin-top:auto}.w-full{width:100%}.overflow-hidden{overflow:hidden}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.warn-flag{color:var(--amber);font-size:14px;cursor:help}.empty-state{text-align:center;padding:48px 24px;color:var(--slate)}.empty-state h3{font-size:16px;font-weight:500;color:var(--navy3);margin-bottom:6px}.empty-state p{font-size:14px}.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}.section-title{font-size:15px;font-weight:600;color:var(--navy)}.toggle{display:flex;align-items:center;gap:8px;cursor:pointer}.toggle-track{width:36px;height:20px;background:var(--border);border-radius:999px;position:relative;transition:background 0.2s}.toggle-track.on{background:var(--blue)}.toggle-thumb{width:16px;height:16px;background:white;border-radius:50%;position:absolute;top:2px;left:2px;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)}.toggle-track.on .toggle-thumb{left:18px}.level-timeline{display:flex;flex-direction:column;gap:0}.level-step{display:flex;gap:12px;padding-bottom:16px;position:relative}.level-step:not(:last-child)::before{content:'';position:absolute;left:11px;top:24px;width:2px;bottom:0;background:var(--border)}.level-dot{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid}.level-dot.done{background:var(--green);border-color:var(--green);color:white}.level-dot.current{background:var(--blue);border-color:var(--blue);color:white}.level-dot.future{background:white;border-color:var(--border);color:var(--muted)}.filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}.filter-bar .select{width:auto;min-width:140px}.mobile-topbar{display:none}.sidebar-overlay{display:none}@media (max-width:768px){.sidebar{position:fixed;top:0;left:0;height:100vh;z-index:300;transform:translateX(-100%);transition:transform 0.25s ease;width:260px}.sidebar.open{transform:translateX(0)}.sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:299}.mobile-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--navy);position:sticky;top:0;z-index:200;border-bottom:2px solid var(--brand)}.mobile-topbar-title{font-family:'DM Serif Display',serif;color:white;font-size:18px}.mobile-menu-btn{background:transparent;border:none;cursor:pointer;padding:4px;color:white;display:flex;align-items:center}.main{padding:16px}.grid-2,.grid-3{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}`;
+const css = `@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--navy:#0f172a;--navy2:#1e293b;--navy3:#334155;--slate:#64748b;--muted:#94a3b8;--border:#e2e8f0;--bg:#f8fafc;--card:#ffffff;--blue:#3b82f6;--blue2:#2563eb;--purple:#8b5cf6;--green:#22c55e;--amber:#f59e0b;--red:#ef4444;--brand:#0d9488;--brand2:#0f766e;--brand-light:#f0fdfa;--pink:#e11d6a;--pink2:#be1259;--pink-light:#fce7f0;--gold:#f59e0b;--gold-light:#fef3c7;--radius:12px;--radius-sm:8px}body.dark{--bg:#0f172a;--card:#1e293b;--border:#334155;--slate:#94a3b8;--muted:#64748b;--navy:#f1f5f9;--navy2:#e2e8f0;--navy3:#cbd5e1}body.dark .input,body.dark .select,body.dark .textarea{background:#0f172a;color:#f1f5f9}body.dark .table tr:hover td{background:#334155}body.dark .badge-gray{background:#334155;color:#cbd5e1}body.dark .modal{background:#1e293b}body.dark .modal-header,body.dark .modal-footer{border-color:#334155}body.dark .card-sm{background:#0f172a}body.dark .alert-info{background:#0c2340;border-color:#1e40af;color:#93c5fd}body.dark .alert-warn{background:#2d1a00;border-color:#92400e;color:#fcd34d}body.dark .alert-success{background:#052e16;border-color:#166534;color:#86efac}body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--navy)}.serif{font-family:'DM Serif Display',serif}.app{display:flex;min-height:100vh}.sidebar{width:240px;min-width:240px;background:var(--navy);display:flex;flex-direction:column;padding:0;position:sticky;top:0;height:100vh;overflow-y:auto}.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.08)}.sidebar-logo h1{font-family:'DM Serif Display',serif;color:white;font-size:22px;line-height:1.1}.sidebar-logo h1 span{color:var(--brand)}.sidebar-logo p{color:var(--muted);font-size:10px;margin-top:5px;letter-spacing:1px;text-transform:uppercase}.sidebar-section{padding:12px 0}.sidebar-label{padding:6px 20px;font-size:10px;font-weight:600;letter-spacing:1.2px;color:var(--slate);text-transform:uppercase}.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;color:var(--muted);font-size:14px;font-weight:400;transition:all 0.15s;border-left:3px solid transparent}.nav-item:hover{color:white;background:rgba(255,255,255,0.05)}.nav-item.active{color:white;background:rgba(13,148,136,0.15);border-left-color:var(--brand)}.nav-icon{width:18px;height:18px;flex-shrink:0}.sidebar-twirler{padding:12px 16px;margin:8px;background:rgba(255,255,255,0.06);border-radius:var(--radius-sm);cursor:pointer}.sidebar-twirler:hover{background:rgba(255,255,255,0.1)}.sidebar-twirler.active{background:rgba(13,148,136,0.2);border:1px solid rgba(13,148,136,0.4)}.sidebar-twirler .name{color:white;font-size:13px;font-weight:500}.sidebar-twirler .sub{color:var(--muted);font-size:11px;margin-top:2px}.main{flex:1;overflow-y:auto;padding:32px;max-width:1000px}.page-header{margin-bottom:28px}.page-title{font-family:'DM Serif Display',serif;font-size:28px;color:var(--navy)}.page-sub{color:var(--slate);font-size:14px;margin-top:4px}.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px}.card-sm{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px}.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.grid-auto{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px}.stat-label{font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:var(--slate);margin-bottom:6px}.stat-value{font-size:26px;font-weight:600;color:var(--navy);line-height:1}.stat-sub{font-size:12px;color:var(--slate);margin-top:4px}.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:0.3px}.badge-blue{background:#dbeafe;color:#1d4ed8}.badge-purple{background:#ede9fe;color:#6d28d9}.badge-green{background:#dcfce7;color:#15803d}.badge-amber{background:#fef3c7;color:#b45309}.badge-red{background:#fee2e2;color:#b91c1c}.badge-gray{background:#f1f5f9;color:#475569}.badge-warn{background:#fff7ed;color:#c2410c;border:1px solid #fed7aa}.progress-bar{height:6px;background:#e2e8f0;border-radius:999px;overflow:hidden}.progress-fill{height:100%;border-radius:999px;transition:width 0.3s}.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:var(--radius-sm);font-size:14px;font-weight:500;cursor:pointer;border:none;transition:all 0.15s;font-family:inherit}.btn-primary{background:var(--brand);color:white}.btn-primary:hover{background:var(--brand2)}.btn-secondary{background:var(--bg);color:var(--navy);border:1px solid var(--border)}.btn-secondary:hover{background:var(--border)}.btn-danger{background:#fee2e2;color:var(--red)}.btn-danger:hover{background:#fecaca}.btn-sm{padding:6px 12px;font-size:12px}.btn-ghost{background:transparent;color:var(--slate);border:1px solid var(--border)}.btn-ghost:hover{background:var(--bg)}.input,.select,.textarea{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;font-family:inherit;color:var(--navy);background:white;outline:none;transition:border 0.15s}.input:focus,.select:focus,.textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(13,148,136,0.12)}.label{font-size:12px;font-weight:600;color:var(--slate);margin-bottom:5px;display:block;letter-spacing:0.3px}.form-group{margin-bottom:14px}.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.table{width:100%;border-collapse:collapse;font-size:14px}.table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:var(--slate);border-bottom:1px solid var(--border)}.table td{padding:12px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}.table tr:last-child td{border-bottom:none}.table tr:hover td{background:#f8fafc}.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}.modal{background:white;border-radius:var(--radius);width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.2)}.modal-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}.modal-title{font-family:'DM Serif Display',serif;font-size:20px}.modal-body{padding:20px 24px}.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end}.alert{padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:12px;display:flex;gap:10px;align-items:flex-start}.alert-warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}.alert-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}.alert-success{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0}.avatar-lg{width:52px;height:52px;font-size:18px}.chip-group{display:flex;gap:6px;flex-wrap:wrap}.chip{display:inline-flex;align-items:center;padding:4px 10px;border:1px solid var(--border);border-radius:20px;font-size:12px;font-weight:500;color:var(--slate);cursor:pointer;transition:all 0.15s}.chip.selected{background:var(--navy);color:white;border-color:var(--navy)}.chip:hover{border-color:var(--slate)}.divider{height:1px;background:var(--border);margin:16px 0}.text-muted{color:var(--slate)}.text-xs{font-size:12px}.text-sm{font-size:13px}.flex{display:flex}.flex-col{display:flex;flex-direction:column}.items-center{align-items:center}.items-start{align-items:flex-start}.justify-between{justify-content:space-between}.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.mb-1{margin-bottom:4px}.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}.mb-6{margin-bottom:24px}.mt-auto{margin-top:auto}.w-full{width:100%}.overflow-hidden{overflow:hidden}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.warn-flag{color:var(--amber);font-size:14px;cursor:help}.empty-state{text-align:center;padding:48px 24px;color:var(--slate)}.empty-state h3{font-size:16px;font-weight:500;color:var(--navy3);margin-bottom:6px}.empty-state p{font-size:14px}.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}.section-title{font-size:15px;font-weight:600;color:var(--navy)}.toggle{display:flex;align-items:center;gap:8px;cursor:pointer}.toggle-track{width:36px;height:20px;background:var(--border);border-radius:999px;position:relative;transition:background 0.2s}.toggle-track.on{background:var(--blue)}.toggle-thumb{width:16px;height:16px;background:white;border-radius:50%;position:absolute;top:2px;left:2px;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)}.toggle-track.on .toggle-thumb{left:18px}.level-timeline{display:flex;flex-direction:column;gap:0}.level-step{display:flex;gap:12px;padding-bottom:16px;position:relative}.level-step:not(:last-child)::before{content:'';position:absolute;left:11px;top:24px;width:2px;bottom:0;background:var(--border)}.level-dot{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid}.level-dot.done{background:var(--green);border-color:var(--green);color:white}.level-dot.current{background:var(--blue);border-color:var(--blue);color:white}.level-dot.future{background:white;border-color:var(--border);color:var(--muted)}.filter-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}.filter-bar .select{width:auto;min-width:140px}.mobile-topbar{display:none}.sidebar-overlay{display:none}@media (max-width:768px){.sidebar{position:fixed;top:0;left:0;height:100vh;z-index:300;transform:translateX(-100%);transition:transform 0.25s ease;width:260px}.sidebar.open{transform:translateX(0)}.sidebar-overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:299}.mobile-topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--navy);position:sticky;top:0;z-index:200;border-bottom:2px solid var(--brand)}.mobile-topbar-title{font-family:'DM Serif Display',serif;color:white;font-size:18px}.mobile-menu-btn{background:transparent;border:none;cursor:pointer;padding:4px;color:white;display:flex;align-items:center}.main{padding:16px}.grid-2,.grid-3{grid-template-columns:1fr}.form-row{grid-template-columns:1fr}}`;
 // ─── ICONS ─────────────────────────────────────────────────────────────────
 
 const Icon = ({ name, size = 18, color = "currentColor" }) => {
@@ -726,6 +731,24 @@ function ProgressRing({ pct, color = "#3b82f6", size = 56 }) {
 // ─── MAIN APP ───────────────────────────────────────────────────────────────
 
 export default function App() {
+  // ── Supabase auth state ──
+  const [authUser, setAuthUser] = useState(null);       // Supabase auth user
+  const [authLoading, setAuthLoading] = useState(true); // checking session on load
+  const [authError, setAuthError] = useState(null);
+
+  useEffect(() => {
+    // Check for existing session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   const [familyAccount, setFamilyAccount] = useLocalStorage("tp_family", null);
   const [twirlers, setTwirlers] = useLocalStorage("tp_twirlers", []);
   const [competitions, setCompetitions] = useLocalStorage("tp_competitions", []);
@@ -741,6 +764,11 @@ export default function App() {
   const [page, setPage] = useState("home");
   const [modals, setModals] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [darkMode, setDarkMode] = useLocalStorage('tp_dark_mode', false);
+
+  useEffect(() => {
+    document.body.classList.toggle('dark', darkMode);
+  }, [darkMode]);
 
   // Always ensure a valid selection — if stored id is stale or null, pick first twirler
   const resolvedActiveTwirlerId = twirlers.find(t => t.id === activeTwirlerId)
@@ -758,13 +786,14 @@ export default function App() {
 
   const [hostMode, setHostMode] = useState(null); // null | host object — set when logging in as host
 
-  function signOut() {
+  async function signOut() {
+    await supabase.auth.signOut();
     setFamilyAccount(null);
     setActiveTwirlerId(null);
     setHostMode(null);
     setPage("home");
     setSidebarOpen(false);
-    // Clear persisted selection so next login picks fresh first twirler
+    setAuthUser(null);
     try { localStorage.removeItem("tp_active_twirler"); } catch(e) {}
   }
 
@@ -988,13 +1017,42 @@ export default function App() {
     }
   }
 
+  // ── Auth loading spinner ──
+  if (authLoading) {
+    return (
+      <>
+        <style>{css}</style>
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+          background: "linear-gradient(135deg, #0f172a 0%, #1a0a10 60%, #2d0a1a 100%)" }}>
+          <div style={{ textAlign: "center" }}>
+            <BatonIcon size={48} />
+            <div style={{ color: "var(--muted)", fontSize: 14, marginTop: 16 }}>Loading...</div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ── Not authenticated → show Auth screen ──
+  if (!authUser) {
+    return (
+      <AuthScreen
+        onAuth={user => setAuthUser(user)}
+        authError={authError}
+        setAuthError={setAuthError}
+      />
+    );
+  }
+
+  // ── Authenticated but no family profile yet → show SetupScreen ──
   if (!familyAccount) {
     return (
       <SetupScreen
-        onComplete={data => { setFamilyAccount(data); setPage("home"); }}
+        onComplete={data => { setFamilyAccount({ ...data, userId: authUser.id }); setPage("home"); }}
         onHostPath={host => setHostMode(host)}
         competitionHosts={competitionHosts}
         registerHost={registerHost}
+        authUser={authUser}
       />
     );
   }
@@ -1060,13 +1118,13 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, addAttendee, removeAttendee, setFamilyAccount };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, addAttendee, removeAttendee, setFamilyAccount };
 
   return (
     <>
       <style>{css}</style>
       <div className="app">
-        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} />
+        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="mobile-topbar">
@@ -1082,10 +1140,11 @@ export default function App() {
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
           {page === "history" && <HistoryPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
-          {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} />}
+          {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} />}
           {page === "coaches" && <CoachesPage {...pageProps} />}
           {page === "openqs" && <OpenQuestionsPage />}
           {page === "orgs" && <OrganizationsPage />}
+          {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
           {page === "upcoming" && <UpcomingCompetitionsPage {...pageProps} />}
           {page === "hostdash" && <HostDashboardPage {...pageProps} />}
         </div>
@@ -1103,9 +1162,191 @@ export default function App() {
 
 // ─── SETUP SCREEN ───────────────────────────────────────────────────────────
 
-function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost }) {
+// ─── AUTH SCREEN ─────────────────────────────────────────────────────────────
+
+function AuthScreen({ onAuth, authError, setAuthError }) {
+  const [mode, setMode] = useState("login"); // "login" | "signup" | "reset"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  async function handleLogin(e) {
+    e?.preventDefault();
+    if (!email || !password) return;
+    setLoading(true);
+    setAuthError(null);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      onAuth(data.user);
+    }
+  }
+
+  async function handleSignup(e) {
+    e?.preventDefault();
+    if (!email || !password) return;
+    if (password !== confirmPassword) { setAuthError("Passwords do not match."); return; }
+    if (password.length < 8) { setAuthError("Password must be at least 8 characters."); return; }
+    setLoading(true);
+    setAuthError(null);
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    setLoading(false);
+    if (error) {
+      setAuthError(error.message);
+    } else if (data.user && !data.session) {
+      setMessage("Check your email for a confirmation link, then come back to sign in.");
+      setMode("login");
+    } else if (data.user) {
+      onAuth(data.user);
+    }
+  }
+
+  async function handleReset(e) {
+    e?.preventDefault();
+    if (!email) return;
+    setLoading(true);
+    setAuthError(null);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    setLoading(false);
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setMessage("Password reset email sent. Check your inbox.");
+      setMode("login");
+    }
+  }
+
+  const Logo = () => (
+    <div style={{ textAlign: "center", marginBottom: 28 }}>
+      <div style={{ marginBottom: 14, display: "flex", justifyContent: "center" }}>
+        <div style={{ width: 72, height: 72, background: "var(--navy)", borderRadius: 20,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 8px 32px rgba(13,148,136,0.25)" }}>
+          <BatonIcon size={48} />
+        </div>
+      </div>
+      <h1 className="serif" style={{ fontSize: 32, marginBottom: 6, color: "var(--navy)" }}>
+        Twirl<span style={{ color: "#e11d6a" }}>Power</span>
+      </h1>
+      <p style={{ color: "var(--slate)", fontSize: 14, letterSpacing: "0.3px" }}>Track · Compete · Advance</p>
+    </div>
+  );
+
+  return (
+    <>
+      <style>{css}</style>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+        background: "linear-gradient(135deg, #0f172a 0%, #1a0a10 60%, #2d0a1a 100%)", padding: "20px" }}>
+        <div className="card" style={{ maxWidth: 420, width: "100%", padding: "40px 36px" }}>
+          <Logo />
+
+          {message && (
+            <div className="alert alert-success mb-4">
+              <Icon name="check" size={15} color="var(--green)" />
+              <span>{message}</span>
+            </div>
+          )}
+          {authError && (
+            <div className="alert alert-warn mb-4">
+              <Icon name="alert" size={15} color="var(--amber)" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          {mode === "login" && (
+            <>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 20 }}>Sign in to your account</div>
+              <div className="form-group">
+                <label className="label">Email</label>
+                <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com" autoFocus
+                  onKeyDown={e => e.key === "Enter" && handleLogin()} />
+              </div>
+              <div className="form-group">
+                <label className="label">Password</label>
+                <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  onKeyDown={e => e.key === "Enter" && handleLogin()} />
+              </div>
+              <button className="btn btn-primary w-full" disabled={loading || !email || !password} onClick={handleLogin}>
+                {loading ? "Signing in..." : "Sign In"}
+              </button>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setMode("signup"); setAuthError(null); setMessage(null); }}>
+                  Create account
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setMode("reset"); setAuthError(null); setMessage(null); }}>
+                  Forgot password?
+                </button>
+              </div>
+            </>
+          )}
+
+          {mode === "signup" && (
+            <>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 20 }}>Create your account</div>
+              <div className="form-group">
+                <label className="label">Email</label>
+                <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com" autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="label">Password</label>
+                <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="At least 8 characters" />
+              </div>
+              <div className="form-group">
+                <label className="label">Confirm password</label>
+                <input className="input" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  onKeyDown={e => e.key === "Enter" && handleSignup()} />
+              </div>
+              <div className="alert alert-info mb-4">
+                <Icon name="info" size={14} color="var(--brand)" />
+                <span style={{ fontSize: 12 }}>You'll receive a confirmation email. Click the link to verify your account.</span>
+              </div>
+              <button className="btn btn-primary w-full" disabled={loading || !email || !password || !confirmPassword} onClick={handleSignup}>
+                {loading ? "Creating account..." : "Create Account"}
+              </button>
+              <button className="btn btn-ghost w-full" style={{ marginTop: 8 }} onClick={() => { setMode("login"); setAuthError(null); }}>
+                ← Back to sign in
+              </button>
+            </>
+          )}
+
+          {mode === "reset" && (
+            <>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 8 }}>Reset your password</div>
+              <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20 }}>Enter your email and we'll send you a reset link.</p>
+              <div className="form-group">
+                <label className="label">Email</label>
+                <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com" autoFocus
+                  onKeyDown={e => e.key === "Enter" && handleReset()} />
+              </div>
+              <button className="btn btn-primary w-full" disabled={loading || !email} onClick={handleReset}>
+                {loading ? "Sending..." : "Send Reset Link"}
+              </button>
+              <button className="btn btn-ghost w-full" style={{ marginTop: 8 }} onClick={() => { setMode("login"); setAuthError(null); }}>
+                ← Back to sign in
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, authUser }) {
   const [accountType, setAccountType] = useState(null); // null | "family" | "host"
-  const [form, setForm] = useState({ parentName: "", email: "", phone: "", state: "" });
+  const [form, setForm] = useState({ parentName: "", email: authUser?.email || "", phone: "", state: "" });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   // Host login — check if already registered
@@ -1183,8 +1424,18 @@ function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost })
               <input className="input" value={form.parentName} onChange={e => f("parentName", e.target.value)} placeholder="Your full name" autoFocus />
             </div>
             <div className="form-group">
-              <label className="label">Email address <span style={{ color: "var(--muted)", fontWeight: 400 }}>(optional for prototype)</span></label>
-              <input className="input" type="email" value={form.email} onChange={e => f("email", e.target.value)} placeholder="you@example.com" />
+              <label className="label">Email address</label>
+              <input className="input" type="email" value={form.email}
+                readOnly={!!authUser?.email}
+                onChange={e => !authUser?.email && f("email", e.target.value)}
+                style={{ background: authUser?.email ? "var(--bg)" : "white",
+                  color: authUser?.email ? "var(--slate)" : "var(--navy)",
+                  cursor: authUser?.email ? "default" : "text" }} />
+              {authUser?.email && (
+                <div style={{ fontSize: 11, color: "var(--green)", marginTop: 4 }}>
+                  ✓ Verified — from your account
+                </div>
+              )}
             </div>
             <div className="form-group">
               <label className="label">Phone number <span style={{ color: "var(--muted)", fontWeight: 400 }}>(optional)</span></label>
@@ -1388,12 +1639,13 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut }) {
+function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode }) {
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "history", label: "Competition History", icon: "history" },
     { id: "progress", label: "Progress Tracker", icon: "progress" },
     { id: "upcoming", label: "Upcoming Competitions", icon: "trophy" },
+    { id: "timeline", label: "Classification Timeline", icon: "history" },
     { id: "orgs", label: "Organizations", icon: "star" },
   ];
   const accountItems = [
@@ -1463,6 +1715,15 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
       <div style={{ marginTop: "auto", padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
         <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 2 }}>{familyAccount?.parentName}</div>
         <div style={{ fontSize: 11, color: "var(--navy3)", marginBottom: 10 }}>Family Account</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <span style={{ fontSize: 12, color: "var(--slate)" }}>{darkMode ? "Dark mode" : "Light mode"}</span>
+          <button onClick={() => setDarkMode(!darkMode)}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 20, color: "var(--muted)", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+            {darkMode ? "☀️ Light" : "🌙 Dark"}
+          </button>
+        </div>
         <button onClick={onSignOut}
           style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
             background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
@@ -1834,9 +2095,10 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
   const [filterOrg, setFilterOrg] = useState("");
   const [filterEvent, setFilterEvent] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
+  const [searchText, setSearchText] = useState("");
   const [expandedComp, setExpandedComp] = useState(null);
-  const [editingComp, setEditingComp] = useState(null);   // competition id being edited
-  const [editingResult, setEditingResult] = useState(null); // result id being edited
+  const [editingComp, setEditingComp] = useState(null);
+  const [editingResult, setEditingResult] = useState(null);
   const [editCompForm, setEditCompForm] = useState({});
   const [editResultForm, setEditResultForm] = useState({});
 
@@ -1857,6 +2119,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
   const filtered = twirlerComps
     .filter(c => !filterOrg || c.orgId === filterOrg)
     .filter(c => !filterSeason || getSeason(c.date) === filterSeason)
+    .filter(c => !searchText || c.name?.toLowerCase().includes(searchText.toLowerCase()) || c.location?.toLowerCase().includes(searchText.toLowerCase()))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   function startEditComp(comp) {
@@ -1918,6 +2181,19 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
           <option value="">All Events</option>
           {allEvents.map(e => <option key={e}>{e}</option>)}
         </select>
+        <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
+          <input className="input" value={searchText} onChange={e => setSearchText(e.target.value)}
+            placeholder="Search competitions..." style={{ paddingLeft: 32 }} />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+          {searchText && (
+            <button onClick={() => setSearchText("")} style={{ position: "absolute", right: 8, top: "50%",
+              transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer",
+              color: "var(--muted)", fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+          )}
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -2126,6 +2402,50 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
   );
 }
 
+function exportAccountBackup(familyAccount, twirlers, competitions, results, coaches) {
+  const data = {
+    exportedAt: new Date().toISOString(),
+    version: "1.0",
+    familyAccount,
+    twirlers,
+    competitions,
+    results,
+    coaches,
+  };
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `TwirlPower_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importAccountBackup(file, setFamilyAccount, setTwirlers, setCompetitions, setResults, setCoaches, onDone) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.version || !data.familyAccount) {
+        alert("Invalid backup file. Please select a TwirlPower backup (.json) file.");
+        return;
+      }
+      if (window.confirm("This will replace all current data with the backup. Continue?")) {
+        if (data.familyAccount) setFamilyAccount(data.familyAccount);
+        if (data.twirlers) setTwirlers(data.twirlers);
+        if (data.competitions) setCompetitions(data.competitions);
+        if (data.results) setResults(data.results);
+        if (data.coaches) setCoaches(data.coaches);
+        onDone();
+      }
+    } catch(err) {
+      alert("Could not read backup file. Make sure it is a valid TwirlPower backup.");
+    }
+  };
+  reader.readAsText(file);
+}
+
 function exportCSV(twirler, comps, results) {
   const rows = [["Competition", "Date", "Location", "Org", "Event", "Level", "Placement", "Contested", "Protection Rule"]];
   for (const comp of comps) {
@@ -2309,7 +2629,7 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
 
 // ─── PROFILE PAGE ────────────────────────────────────────────────────────────
 
-function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, openModal, competitionHosts, approveHost }) {
+function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, openModal, competitionHosts, approveHost, competitions, results, setTwirlers, setCompetitions, setResults, setCoaches }) {
   const [editFamily, setEditFamily] = useState(false);
   const [editTwirler, setEditTwirler] = useState(false);
   const [fForm, setFF] = useState(familyAccount);
@@ -2579,8 +2899,240 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
         message={`Are you sure you want to delete ${activeTwirler?.firstName}'s profile? All competition history and progress data will be permanently removed. This cannot be undone.`}
         confirmLabel="Delete Profile" danger />
 
+      {/* ── BACKUP & RESTORE ── */}
+      <BackupSection familyAccount={familyAccount} twirlers={twirlers} competitions={competitions} results={results} coaches={coaches} setFamilyAccount={setFamilyAccount} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} />
+
       {/* ── ADMIN SECTION ── */}
       <AdminSection competitionHosts={competitionHosts} approveHost={approveHost} familyAccount={familyAccount} />
+    </div>
+  );
+}
+
+// ─── BACKUP SECTION ──────────────────────────────────────────────────────────
+
+function BackupSection({ familyAccount, twirlers, competitions, results, coaches, setFamilyAccount, setTwirlers, setCompetitions, setResults, setCoaches }) {
+  const [importing, setImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState(false);
+  const fileRef = useRef();
+
+  function handleImport(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    importAccountBackup(file, setFamilyAccount, setTwirlers, setCompetitions, setResults, setCoaches, () => {
+      setImportSuccess(true);
+      setTimeout(() => setImportSuccess(false), 3000);
+    });
+    e.target.value = "";
+  }
+
+  const totalItems = twirlers.length + competitions.length + results.length;
+
+  return (
+    <div className="card mt-4">
+      <div className="section-header">
+        <span className="section-title">Backup & Restore</span>
+      </div>
+      <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16, lineHeight: 1.6 }}>
+        Export all your data as a JSON file you can keep as a backup or restore on another device. Includes all twirlers, competition history, results, and coaches.
+      </p>
+      <div style={{ background: "var(--bg)", borderRadius: 8, padding: "12px 14px", marginBottom: 16, fontSize: 13, color: "var(--slate)" }}>
+        📦 {twirlers.length} twirler{twirlers.length !== 1 ? "s" : ""} · {competitions.length} competition{competitions.length !== 1 ? "s" : ""} · {results.length} result{results.length !== 1 ? "s" : ""} · {coaches.length} coach{coaches.length !== 1 ? "es" : ""}
+      </div>
+      <div className="flex gap-2">
+        <button className="btn btn-primary btn-sm"
+          onClick={() => exportAccountBackup(familyAccount, twirlers, competitions, results, coaches)}>
+          <Icon name="export" size={14} /> Export Backup
+        </button>
+        <button className="btn btn-secondary btn-sm" onClick={() => fileRef.current?.click()}>
+          📂 Restore from Backup
+        </button>
+        <input ref={fileRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
+      </div>
+      {importSuccess && (
+        <div className="alert alert-success" style={{ marginTop: 12 }}>
+          <Icon name="check" size={14} color="var(--green)" />
+          <span>Backup restored successfully.</span>
+        </div>
+      )}
+      <div className="alert alert-warn" style={{ marginTop: 12 }}>
+        <Icon name="alert" size={14} color="var(--amber)" />
+        <span style={{ fontSize: 12 }}>Restoring a backup replaces all current data. Export a fresh backup first if you want to keep your current data.</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── CLASSIFICATION TIMELINE PAGE ─────────────────────────────────────────────
+
+function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results, competitions }) {
+  const [selectedTwirler, setSelectedTwirler] = useState(activeTwirler?.id);
+
+  const twirler = twirlers.find(t => t.id === selectedTwirler) || activeTwirler;
+  if (!twirler) return <div className="empty-state"><h3>No twirler selected</h3></div>;
+
+  // Build a unified chronological timeline from classificationHistory
+  const history = (twirler.classificationHistory || [])
+    .map(h => ({ ...h, type: "advancement" }))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Also pull first-place wins for context
+  const wins = results
+    .filter(r => r.twirlerId === twirler.id && r.placement === 1)
+    .map(r => {
+      const comp = competitions.find(c => c.id === r.competitionId);
+      return { ...r, compName: comp?.name, compDate: comp?.date, type: "win" };
+    })
+    .sort((a, b) => new Date(b.compDate) - new Date(a.compDate));
+
+  // Current classifications snapshot
+  const orgs = twirler.organizations || [];
+
+  return (
+    <div>
+      <div className="page-header flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Classification Timeline</h1>
+          <p className="page-sub">Complete history of level advancements across all organizations</p>
+        </div>
+        {twirlers.length > 1 && (
+          <div className="flex gap-2">
+            {twirlers.map(t => (
+              <button key={t.id}
+                className={`btn btn-sm ${selectedTwirler === t.id ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setSelectedTwirler(t.id)}>
+                {t.firstName}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Current classification snapshot */}
+      <div className="card mb-4">
+        <div className="section-header">
+          <span className="section-title">Current Classifications — {twirler.firstName}</span>
+        </div>
+        {orgs.length === 0 ? (
+          <p style={{ fontSize: 13, color: "var(--muted)" }}>No organizations on profile yet.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {orgs.map(orgId => (
+              <div key={orgId}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: orgColor(orgId), textTransform: "uppercase",
+                  letterSpacing: "0.5px", marginBottom: 6 }}>{orgId} — {ORGS[orgId]?.name}</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {(ORGS[orgId]?.leveledEvents || []).map(event => {
+                    const prog = progress?.[orgId]?.[event];
+                    if (!prog) return null;
+                    return (
+                      <div key={event} style={{ padding: "6px 12px", borderRadius: 8,
+                        background: prog.shouldAdvance ? "#dcfce7" : "var(--bg)",
+                        border: `1px solid ${prog.shouldAdvance ? "#86efac" : "var(--border)"}` }}>
+                        <div style={{ fontSize: 12, color: "var(--slate)" }}>{event}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: prog.shouldAdvance ? "var(--green)" : "var(--navy)" }}>
+                          {prog.currentLevel}
+                          {prog.shouldAdvance && <span style={{ fontSize: 11, marginLeft: 4 }}>→ {prog.nextLevel}</span>}
+                        </div>
+                        {prog.nextLevel && (
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                            {prog.winsCount}/{prog.winsNeeded} wins
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Timeline */}
+      <div className="card mb-4">
+        <div className="section-header">
+          <span className="section-title">Advancement History</span>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>{history.length} level change{history.length !== 1 ? "s" : ""}</span>
+        </div>
+        {history.length === 0 ? (
+          <div className="empty-state" style={{ padding: "24px 0" }}>
+            <h3>No advancements recorded yet</h3>
+            <p>Level changes will appear here as wins are tracked and classifications are updated.</p>
+          </div>
+        ) : (
+          <div className="level-timeline">
+            {history.map((h, i) => (
+              <div key={i} className="level-step">
+                <div style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                  background: orgColor(h.orgId), display: "flex", alignItems: "center",
+                  justifyContent: "center", border: `2px solid ${orgColor(h.orgId)}` }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <div style={{ flex: 1, paddingTop: 2 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 2 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>
+                      {h.event} — {h.orgId}
+                    </span>
+                    <span className="badge badge-gray" style={{ fontSize: 10 }}>{h.from}</span>
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>→</span>
+                    <span className="badge" style={{ fontSize: 10, background: orgColor(h.orgId) + "15", color: orgColor(h.orgId) }}>{h.to}</span>
+                    {h.method === "manual" && (
+                      <span className="badge badge-warn" style={{ fontSize: 10 }}>manual override</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                    {fmtDate(h.date)}
+                    {h.reason && <span style={{ marginLeft: 8, fontStyle: "italic" }}>{h.reason}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Recent wins */}
+      <div className="card">
+        <div className="section-header">
+          <span className="section-title">Recent First-Place Wins</span>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>{wins.length} total</span>
+        </div>
+        {wins.length === 0 ? (
+          <div className="empty-state" style={{ padding: "24px 0" }}>
+            <h3>No wins recorded yet</h3>
+            <p>First-place results will appear here as you enter competition results.</p>
+          </div>
+        ) : (
+          <div>
+            {wins.slice(0, 20).map((w, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0",
+                borderBottom: i < Math.min(wins.length, 20) - 1 ? "1px solid var(--border)" : "none" }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#fef9c3",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
+                  🥇
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--navy)" }}>
+                    {w.event}
+                    <span className="badge badge-gray" style={{ marginLeft: 8, fontSize: 10 }}>{w.classificationLevelEntered}</span>
+                    <span className="badge" style={{ marginLeft: 4, fontSize: 10, background: orgColor(w.orgId || "") + "15", color: orgColor(w.orgId || "") }}>{w.orgId}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                    {w.compName} · {fmtDate(w.compDate)}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {wins.length > 20 && (
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8, textAlign: "center" }}>
+                Showing 20 of {wins.length} wins — use Competition History for full view
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
