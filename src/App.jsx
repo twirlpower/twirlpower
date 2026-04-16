@@ -777,16 +777,21 @@ export default function App() {
   const [attendees, setAttendees] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
 
-  // ── Load all user data from Supabase when auth user changes ──
+  // ── Load all user data from Supabase when auth user ID changes ──
+  const loadedForUserRef = useRef(null);
+
   useEffect(() => {
     if (!authUser) {
-      // Clear all data on sign out
+      loadedForUserRef.current = null;
       setFamilyAccount(null); setTwirlers([]); setCompetitions([]);
       setResults([]); setCoaches([]); setCoachCompetitions([]);
       setInvites([]); setCompetitionHosts([]); setPublicCompetitions([]);
       setAttendees([]);
       return;
     }
+    // Only reload if this is a different user than what's already loaded
+    if (loadedForUserRef.current === authUser.id) return;
+    loadedForUserRef.current = authUser.id;
     loadAllData(authUser.id);
   }, [authUser]);
 
