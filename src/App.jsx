@@ -761,16 +761,120 @@ export default function App() {
     setIsAdmin(!!data);
   }
 
-  const [familyAccount, setFamilyAccount] = useLocalStorage("tp_family", null);
-  const [twirlers, setTwirlers] = useLocalStorage("tp_twirlers", []);
-  const [competitions, setCompetitions] = useLocalStorage("tp_competitions", []);
-  const [results, setResults] = useLocalStorage("tp_results", []);
-  const [coaches, setCoaches] = useLocalStorage("tp_coaches", []);
-  const [coachCompetitions, setCoachCompetitions] = useLocalStorage("tp_coach_comps", []);
-  const [invites, setInvites] = useLocalStorage("tp_invites", []);
-  const [competitionHosts, setCompetitionHosts] = useLocalStorage("tp_hosts", []);
-  const [publicCompetitions, setPublicCompetitions] = useLocalStorage("tp_public_comps", []);
-  const [attendees, setAttendees] = useLocalStorage("tp_attendees", []);
+  const [familyAccount, setFamilyAccount] = useState(null);
+  const [twirlers, setTwirlers] = useState([]);
+  const [competitions, setCompetitions] = useState([]);
+  const [results, setResults] = useState([]);
+  const [coaches, setCoaches] = useState([]);
+  const [coachCompetitions, setCoachCompetitions] = useState([]);
+  const [invites, setInvites] = useState([]);
+  const [competitionHosts, setCompetitionHosts] = useState([]);
+  const [publicCompetitions, setPublicCompetitions] = useState([]);
+  const [attendees, setAttendees] = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  // ── Load all user data from Supabase when auth user changes ──
+  useEffect(() => {
+    if (!authUser) {
+      // Clear all data on sign out
+      setFamilyAccount(null); setTwirlers([]); setCompetitions([]);
+      setResults([]); setCoaches([]); setCoachCompetitions([]);
+      setInvites([]); setCompetitionHosts([]); setPublicCompetitions([]);
+      setAttendees([]);
+      return;
+    }
+    loadAllData(authUser.id);
+  }, [authUser]);
+
+  async function loadAllData(userId) {
+    setDataLoading(true);
+    try {
+      // Load family account
+      const { data: fa } = await supabase
+        .from('family_accounts').select('*').eq('user_id', userId).single();
+      if (fa) {
+        setFamilyAccount({ ...fa, parentName: fa.parent_name, additionalGuardians: fa.additional_guardians || [] });
+
+        // Load twirlers
+        const { data: tw } = await supabase
+          .from('twirlers').select('*').eq('family_id', fa.id);
+        const mappedTwirlers = (tw || []).map(t => ({
+          ...t, firstName: t.first_name,
+          classificationState: t.classification_state || {},
+          classificationHistory: t.classification_history || [],
+          regularEvents: t.regular_events || [],
+          organizations: t.organizations || [],
+        }));
+        setTwirlers(mappedTwirlers);
+
+        if (mappedTwirlers.length > 0) {
+          const twirlerIds = mappedTwirlers.map(t => t.id);
+
+          // Load competitions
+          const { data: comps } = await supabase
+            .from('competitions').select('*').in('twirler_id', twirlerIds).order('date', { ascending: false });
+          setCompetitions((comps || []).map(c => ({
+            ...c, orgId: c.org_id, fromPublic: c.from_public
+          })));
+
+          // Load results
+          const { data: res } = await supabase
+            .from('results').select('*').in('twirler_id', twirlerIds);
+          setResults((res || []).map(r => ({
+            ...r, orgId: r.org_id, twirlerId: r.twirler_id,
+            competitionId: r.competition_id,
+            classificationLevelEntered: r.classification_level_entered,
+            protectionRule: r.protection_rule,
+            isFinalRound: r.is_final_round,
+            isPageant: r.is_pageant,
+            isTwirlOff: r.is_twirl_off,
+          })));
+
+          // Load coaches
+          const { data: coa } = await supabase
+            .from('coaches').select('*').eq('family_id', fa.id);
+          setCoaches((coa || []).map(c => ({
+            ...c, linkedTwirlers: c.linked_twirlers || [], organizations: c.organizations || []
+          })));
+
+          // Load invites
+          const { data: inv } = await supabase
+            .from('invites').select('*').in('twirler_id', twirlerIds);
+          setInvites((inv || []).map(i => ({
+            ...i, twirlerId: i.twirler_id, coachId: i.coach_id,
+            competitionId: i.competition_id, respondedAt: i.responded_at,
+            createdAt: i.created_at,
+          })));
+        }
+
+        // Load attendees for this family's twirlers
+        const { data: att } = await supabase
+          .from('attendees').select('*').eq('twirler_id', mappedTwirlers[0]?.id || '');
+        setAttendees((att || []).map(a => ({
+          ...a, twirlerId: a.twirler_id, competitionId: a.competition_id,
+          addedAt: a.added_at,
+        })));
+      }
+
+      // Load public competitions (visible to all)
+      const { data: pubComps } = await supabase
+        .from('public_competitions').select('*').eq('approved', true).order('date', { ascending: true });
+      setPublicCompetitions((pubComps || []).map(c => ({
+        ...c, orgId: c.org_id, hostId: c.host_id,
+      })));
+
+      // Load competition hosts
+      const { data: hosts } = await supabase
+        .from('competition_hosts').select('*').eq('user_id', userId);
+      setCompetitionHosts((hosts || []).map(h => ({
+        ...h, createdAt: h.created_at,
+      })));
+
+    } catch (err) {
+      console.error('Error loading data:', err);
+    }
+    setDataLoading(false);
+  }
 
   const [activeTwirlerId, setActiveTwirlerId] = useLocalStorage("tp_active_twirler", null);
   const [page, setPage] = useState("home");
@@ -841,158 +945,261 @@ export default function App() {
     }
   }, [results, activeTwirler]);
 
-  function addTwirler(data) {
-    const t = { id: uid(), ...data, classificationState: {}, classificationHistory: [] };
+  // ── TWIRLER MUTATIONS ──
+  async function addTwirler(data) {
+    const fa = familyAccount;
+    if (!fa) return;
+    const { data: inserted, error } = await supabase.from('twirlers').insert({
+      family_id: fa.id,
+      first_name: data.firstName,
+      dob: data.dob || null,
+      studio: data.studio || null,
+      organizations: data.organizations || [],
+      regular_events: data.regularEvents || [],
+      classification_state: {},
+      classification_history: [],
+    }).select().single();
+    if (error) { console.error('addTwirler:', error); return; }
+    const t = { ...inserted, firstName: inserted.first_name, classificationState: {}, classificationHistory: [], regularEvents: inserted.regular_events || [], organizations: inserted.organizations || [] };
     setTwirlers(prev => [...prev, t]);
     setActiveTwirlerId(t.id);
     return t;
   }
 
-  function updateTwirler(id, data) {
-    setTwirlers(prev => prev.map(t => t.id === id ? { ...t, ...data } : t));
+  async function updateTwirler(id, data) {
+    const dbData = {};
+    if (data.firstName !== undefined) dbData.first_name = data.firstName;
+    if (data.dob !== undefined) dbData.dob = data.dob;
+    if (data.studio !== undefined) dbData.studio = data.studio;
+    if (data.organizations !== undefined) dbData.organizations = data.organizations;
+    if (data.regularEvents !== undefined) dbData.regular_events = data.regularEvents;
+    if (data.classificationState !== undefined) dbData.classification_state = data.classificationState;
+    if (data.classificationHistory !== undefined) dbData.classification_history = data.classificationHistory;
+    setTwirlers(prev => prev.map(t => t.id === id ? { ...t, ...data } : t)); // optimistic
+    await supabase.from('twirlers').update(dbData).eq('id', id);
   }
 
-  function deleteTwirler(id) {
+  async function deleteTwirler(id) {
     setTwirlers(prev => prev.filter(t => t.id !== id));
     setResults(prev => prev.filter(r => r.twirlerId !== id));
     if (resolvedActiveTwirlerId === id) setActiveTwirlerId(twirlers.find(t => t.id !== id)?.id || null);
+    await supabase.from('twirlers').delete().eq('id', id);
   }
 
-  function overrideClassification(twirlerId, orgId, event, newLevel, reason) {
-    setTwirlers(prev => prev.map(t => {
-      if (t.id !== twirlerId) return t;
-      const classKey = `${orgId}__${event}`;
-      const history = [...(t.classificationHistory || []), {
-        date: new Date().toISOString().slice(0, 10),
-        orgId, event,
-        from: t.classificationState?.[classKey]?.level || ORGS[orgId].levels[0],
-        to: newLevel,
-        method: "manual",
-        reason
-      }];
-      return {
-        ...t,
-        classificationHistory: history,
-        classificationState: {
-          ...t.classificationState,
-          [classKey]: { level: newLevel, manualOverride: true }
-        }
-      };
-    }));
+  async function overrideClassification(twirlerId, orgId, event, newLevel, reason) {
+    const twirler = twirlers.find(t => t.id === twirlerId);
+    if (!twirler) return;
+    const classKey = `${orgId}__${event}`;
+    const history = [...(twirler.classificationHistory || []), {
+      date: new Date().toISOString().slice(0, 10), orgId, event,
+      from: twirler.classificationState?.[classKey]?.level || ORGS[orgId].levels[0],
+      to: newLevel, method: "manual", reason
+    }];
+    const newState = { ...twirler.classificationState, [classKey]: { level: newLevel, manualOverride: true } };
+    await updateTwirler(twirlerId, { classificationState: newState, classificationHistory: history });
   }
 
-  // Apply historical classification data at onboarding or from profile settings.
-  // historyEntries: [{ orgId, event, level, priorWins }]
-  function applyHistoricalData(twirlerId, historyEntries) {
-    setTwirlers(prev => prev.map(t => {
-      if (t.id !== twirlerId) return t;
-      const newState = { ...(t.classificationState || {}) };
-      const newHistory = [...(t.classificationHistory || [])];
-      const today = new Date().toISOString().slice(0, 10);
-      for (const entry of historyEntries) {
-        const classKey = `${entry.orgId}__${entry.event}`;
-        const prevLevel = newState[classKey]?.level || ORGS[entry.orgId]?.levels[0];
-        newState[classKey] = {
-          level: entry.level,
-          priorWins: entry.priorWins || 0,
-          manualOverride: false,
-          historicalEntry: true,
-        };
-        if (entry.level !== prevLevel) {
-          newHistory.push({
-            date: today, orgId: entry.orgId, event: entry.event,
-            from: prevLevel, to: entry.level,
-            method: "historical", reason: `Starting classification set at onboarding (${entry.priorWins || 0} prior wins recorded)`
-          });
-        }
+  async function applyHistoricalData(twirlerId, historyEntries) {
+    const twirler = twirlers.find(t => t.id === twirlerId);
+    if (!twirler) return;
+    const newState = { ...(twirler.classificationState || {}) };
+    const newHistory = [...(twirler.classificationHistory || [])];
+    const today = new Date().toISOString().slice(0, 10);
+    for (const entry of historyEntries) {
+      const classKey = `${entry.orgId}__${entry.event}`;
+      const prevLevel = newState[classKey]?.level || ORGS[entry.orgId]?.levels[0];
+      newState[classKey] = { level: entry.level, priorWins: entry.priorWins || 0, manualOverride: false, historicalEntry: true };
+      if (entry.level !== prevLevel) {
+        newHistory.push({ date: today, orgId: entry.orgId, event: entry.event, from: prevLevel, to: entry.level, method: "historical", reason: `Starting classification set at onboarding (${entry.priorWins || 0} prior wins recorded)` });
       }
-      return { ...t, classificationState: newState, classificationHistory: newHistory };
-    }));
+    }
+    await updateTwirler(twirlerId, { classificationState: newState, classificationHistory: newHistory });
   }
 
-  function addCompetition(data) {
-    const c = { id: uid(), ...data };
+  // ── COMPETITION MUTATIONS ──
+  async function addCompetition(data) {
+    const twirler = twirlers.find(t => t.id === resolvedActiveTwirlerId);
+    if (!twirler || !familyAccount) return;
+    const { data: inserted, error } = await supabase.from('competitions').insert({
+      family_id: familyAccount.id,
+      twirler_id: twirler.id,
+      name: data.name,
+      date: data.date || null,
+      location: data.location || null,
+      org_id: data.orgId || null,
+      sanctioned: data.sanctioned !== false,
+      notes: data.notes || null,
+    }).select().single();
+    if (error) { console.error('addCompetition:', error); return; }
+    const c = { ...inserted, orgId: inserted.org_id };
     setCompetitions(prev => [...prev, c]);
     return c.id;
   }
 
-  function addResults(compId, newResults) {
-    const mapped = newResults.map(r => ({ id: uid(), competitionId: compId, twirlerId: activeTwirlerId, ...r }));
+  async function addResults(compId, newResults) {
+    if (!newResults.length) return;
+    const rows = newResults.map(r => ({
+      competition_id: compId,
+      twirler_id: resolvedActiveTwirlerId,
+      event: r.event,
+      classification_level_entered: r.classificationLevelEntered,
+      placement: parseInt(r.placement),
+      contested: r.contested !== false,
+      protection_rule: !!r.protectionRule,
+      is_final_round: r.isFinalRound ?? null,
+      is_pageant: !!r.isPageant,
+      is_twirl_off: !!r.isTwirlOff,
+      org_id: r.orgId || null,
+      notes: r.notes || null,
+    }));
+    const { data: inserted, error } = await supabase.from('results').insert(rows).select();
+    if (error) { console.error('addResults:', error); return; }
+    const mapped = (inserted || []).map(r => ({
+      ...r, orgId: r.org_id, twirlerId: r.twirler_id, competitionId: r.competition_id,
+      classificationLevelEntered: r.classification_level_entered,
+      protectionRule: r.protection_rule, isFinalRound: r.is_final_round,
+      isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off,
+    }));
     setResults(prev => [...prev, ...mapped]);
   }
 
-  function deleteResult(id) {
+  async function addResultsToComp(compId, newResults) {
+    await addResults(compId, newResults);
+  }
+
+  async function deleteResult(id) {
     setResults(prev => prev.filter(r => r.id !== id));
+    await supabase.from('results').delete().eq('id', id);
   }
 
-  function updateResult(id, updates) {
+  async function updateResult(id, updates) {
     setResults(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+    const dbUpdates = {};
+    if (updates.placement !== undefined) dbUpdates.placement = updates.placement;
+    if (updates.classificationLevelEntered !== undefined) dbUpdates.classification_level_entered = updates.classificationLevelEntered;
+    if (updates.contested !== undefined) dbUpdates.contested = updates.contested;
+    if (updates.protectionRule !== undefined) dbUpdates.protection_rule = updates.protectionRule;
+    if (updates.isFinalRound !== undefined) dbUpdates.is_final_round = updates.isFinalRound;
+    if (updates.isPageant !== undefined) dbUpdates.is_pageant = updates.isPageant;
+    if (updates.isTwirlOff !== undefined) dbUpdates.is_twirl_off = updates.isTwirlOff;
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+    await supabase.from('results').update(dbUpdates).eq('id', id);
   }
 
-  function updateCompetition(id, updates) {
+  async function updateCompetition(id, updates) {
     setCompetitions(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    const dbUpdates = {};
+    if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.date !== undefined) dbUpdates.date = updates.date;
+    if (updates.location !== undefined) dbUpdates.location = updates.location;
+    if (updates.orgId !== undefined) dbUpdates.org_id = updates.orgId;
+    if (updates.sanctioned !== undefined) dbUpdates.sanctioned = updates.sanctioned;
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+    await supabase.from('competitions').update(dbUpdates).eq('id', id);
   }
 
-  function addResultsToComp(compId, newResults) {
-    const mapped = newResults.map(r => ({ id: uid(), competitionId: compId, twirlerId: activeTwirlerId, ...r }));
-    setResults(prev => [...prev, ...mapped]);
+  // ── COACH MUTATIONS ──
+  async function addCoach(data) {
+    if (!familyAccount) return;
+    const { data: inserted, error } = await supabase.from('coaches').insert({
+      family_id: familyAccount.id,
+      name: data.name,
+      email: data.email || null,
+      phone: data.phone || null,
+      specialization: data.specialization || null,
+      organizations: data.organizations || [],
+      linked_twirlers: [],
+    }).select().single();
+    if (error) { console.error('addCoach:', error); return; }
+    setCoaches(prev => [...prev, { ...inserted, linkedTwirlers: [], organizations: inserted.organizations || [] }]);
   }
 
-  function addCoach(data) {
-    setCoaches(prev => [...prev, { id: uid(), ...data, linkedTwirlers: [] }]);
+  async function linkCoach(coachId, twirlerId) {
+    const coach = coaches.find(c => c.id === coachId);
+    if (!coach) return;
+    const updated = [...new Set([...(coach.linkedTwirlers || []), twirlerId])];
+    setCoaches(prev => prev.map(c => c.id === coachId ? { ...c, linkedTwirlers: updated } : c));
+    await supabase.from('coaches').update({ linked_twirlers: updated }).eq('id', coachId);
   }
 
-  function linkCoach(coachId, twirlerId) {
-    setCoaches(prev => prev.map(c => c.id === coachId
-      ? { ...c, linkedTwirlers: [...new Set([...c.linkedTwirlers, twirlerId])] }
-      : c));
+  async function unlinkCoach(coachId, twirlerId) {
+    const coach = coaches.find(c => c.id === coachId);
+    if (!coach) return;
+    const updated = (coach.linkedTwirlers || []).filter(id => id !== twirlerId);
+    setCoaches(prev => prev.map(c => c.id === coachId ? { ...c, linkedTwirlers: updated } : c));
+    await supabase.from('coaches').update({ linked_twirlers: updated }).eq('id', coachId);
   }
 
-  function unlinkCoach(coachId, twirlerId) {
-    setCoaches(prev => prev.map(c => c.id === coachId
-      ? { ...c, linkedTwirlers: c.linkedTwirlers.filter(id => id !== twirlerId) }
-      : c));
-  }
-
-  // ── COMPETITION HOST FUNCTIONS ──
-  function registerHost(data) {
-    const h = { id: uid(), ...data, approved: false, createdAt: new Date().toISOString().slice(0,10) };
+  // ── HOST MUTATIONS ──
+  async function registerHost(data) {
+    const { data: inserted, error } = await supabase.from('competition_hosts').insert({
+      user_id: authUser?.id,
+      name: data.name,
+      email: data.email || null,
+      phone: data.phone || null,
+      organization: data.organization || null,
+      state: data.state || null,
+      notes: data.notes || null,
+      approved: false,
+    }).select().single();
+    if (error) { console.error('registerHost:', error); return; }
+    const h = { ...inserted, createdAt: inserted.created_at };
     setCompetitionHosts(prev => [...prev, h]);
     return h;
   }
 
-  function approveHost(hostId) {
+  async function approveHost(hostId) {
     setCompetitionHosts(prev => prev.map(h => h.id === hostId ? { ...h, approved: true } : h));
+    await supabase.from('competition_hosts').update({ approved: true }).eq('id', hostId);
   }
 
-  function createPublicCompetition(hostId, data) {
-    const c = { id: uid(), hostId, ...data, createdAt: new Date().toISOString().slice(0,10) };
+  async function createPublicCompetition(hostId, data) {
+    const { data: inserted, error } = await supabase.from('public_competitions').insert({
+      host_id: hostId,
+      name: data.name,
+      date: data.date || null,
+      org_id: data.orgId || null,
+      state: data.state || null,
+      address: data.address || null,
+      info: data.info || null,
+      sanctioned: data.sanctioned !== false,
+      approved: true,
+    }).select().single();
+    if (error) { console.error('createPublicCompetition:', error); return; }
+    const c = { ...inserted, orgId: inserted.org_id, hostId: inserted.host_id };
     setPublicCompetitions(prev => [...prev, c]);
     return c;
   }
 
-  function deletePublicCompetition(compId) {
+  async function deletePublicCompetition(compId) {
     setPublicCompetitions(prev => prev.filter(c => c.id !== compId));
     setAttendees(prev => prev.filter(a => a.competitionId !== compId));
+    await supabase.from('public_competitions').delete().eq('id', compId);
   }
 
-  function addAttendee(competitionId, twirlerId) {
+  async function addAttendee(competitionId, twirlerId) {
     if (attendees.find(a => a.competitionId === competitionId && a.twirlerId === twirlerId)) return;
-    setAttendees(prev => [...prev, { id: uid(), competitionId, twirlerId, addedAt: new Date().toISOString().slice(0,10) }]);
+    const newAttendee = { id: uid(), competitionId, twirlerId, addedAt: new Date().toISOString().slice(0,10) };
+    setAttendees(prev => [...prev, newAttendee]);
     // Also add to twirler's competition history
-    setCompetitions(prev => {
-      const pub = publicCompetitions.find(c => c.id === competitionId);
-      if (!pub || prev.find(c => c.id === competitionId)) return prev;
-      return [...prev, { ...pub, fromPublic: true }];
+    const pub = publicCompetitions.find(c => c.id === competitionId);
+    if (pub && !competitions.find(c => c.id === competitionId)) {
+      const compToAdd = { ...pub, fromPublic: true };
+      setCompetitions(prev => [...prev, compToAdd]);
+    }
+    await supabase.from('attendees').insert({
+      competition_id: competitionId,
+      twirler_id: twirlerId,
     });
   }
 
-  function removeAttendee(competitionId, twirlerId) {
+  async function removeAttendee(competitionId, twirlerId) {
     setAttendees(prev => prev.filter(a => !(a.competitionId === competitionId && a.twirlerId === twirlerId)));
+    await supabase.from('attendees').delete()
+      .eq('competition_id', competitionId).eq('twirler_id', twirlerId);
   }
 
-  // ── COACH CREATES COMPETITION INVITE ──
-  // Coach creates a competition and invites twirlers
+  // ── COACH COMPETITION INVITES (still local for now) ──
   function coachCreateCompetition(coachId, compData, invitedTwirlerIds) {
     const compId = uid();
     const newComp = { id: compId, ...compData, createdByCoach: coachId };
@@ -1029,6 +1236,23 @@ export default function App() {
     }
   }
 
+  // ── Data loading overlay ──
+  if (dataLoading) {
+    return (
+      <>
+        <style>{css}</style>
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ width: 56, height: 56, background: "var(--navy)", borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+              <BatonIcon size={36} />
+            </div>
+            <div style={{ color: "var(--slate)", fontSize: 14 }}>Loading your data...</div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   // ── Auth loading spinner ──
   if (authLoading) {
     return (
@@ -1060,7 +1284,21 @@ export default function App() {
   if (!familyAccount) {
     return (
       <SetupScreen
-        onComplete={data => { setFamilyAccount({ ...data, userId: authUser.id }); setPage("home"); }}
+        onComplete={async data => {
+          // Save family account to Supabase
+          const { data: inserted, error } = await supabase.from('family_accounts').insert({
+            user_id: authUser.id,
+            parent_name: data.parentName,
+            email: data.email || authUser.email,
+            phone: data.phone || null,
+            state: data.state || null,
+            relationship: data.relationship || 'Parent',
+            additional_guardians: [],
+          }).select().single();
+          if (error) { console.error('setup:', error); return; }
+          setFamilyAccount({ ...inserted, parentName: inserted.parent_name, additionalGuardians: [] });
+          setPage("home");
+        }}
         onHostPath={host => setHostMode(host)}
         competitionHosts={competitionHosts}
         registerHost={registerHost}
@@ -2808,7 +3046,17 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
           {!editFamily
             ? <button className="btn btn-ghost btn-sm" onClick={() => setEditFamily(true)}><Icon name="edit" size={13} /> Edit</button>
             : <div className="flex gap-2">
-                <button className="btn btn-primary btn-sm" onClick={() => { setFamilyAccount(fForm); setEditFamily(false); }}>Save</button>
+                <button className="btn btn-primary btn-sm" onClick={async () => {
+                  setFamilyAccount(fForm); // optimistic
+                  setEditFamily(false);
+                  await supabase.from('family_accounts').update({
+                    parent_name: fForm.parentName,
+                    email: fForm.email,
+                    phone: fForm.phone || null,
+                    state: fForm.state || null,
+                    relationship: fForm.relationship || 'Parent',
+                  }).eq('id', fForm.id);
+                }}>Save</button>
                 <button className="btn btn-secondary btn-sm" onClick={() => { setFF(familyAccount); setEditFamily(false); }}>Cancel</button>
               </div>
           }
