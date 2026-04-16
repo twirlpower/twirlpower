@@ -1404,7 +1404,7 @@ export default function App() {
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
           {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} />}
           {page === "coaches" && <CoachesPage {...pageProps} />}
-          {page === "openqs" && <OpenQuestionsPage />}
+          {page === "openqs" && isAdmin && <OpenQuestionsPage />}
           {page === "orgs" && <OrganizationsPage />}
           {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
           {page === "upcoming" && <UpcomingCompetitionsPage {...pageProps} />}
@@ -1913,7 +1913,6 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
   const accountItems = [
     { id: "profile", label: "Family Profile", icon: "user" },
     { id: "coaches", label: "Coaches", icon: "users" },
-    { id: "openqs", label: "Open Questions", icon: "question" },
   ];
 
   const anyAdvanceable = Object.values(progress).some(org => Object.values(org).some(e => e.shouldAdvance));
@@ -3205,7 +3204,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
       <BackupSection familyAccount={familyAccount} twirlers={twirlers} competitions={competitions} results={results} coaches={coaches} setFamilyAccount={setFamilyAccount} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} />
 
       {/* ── ADMIN SECTION ── */}
-      {isAdmin && <AdminSection competitionHosts={competitionHosts} approveHost={approveHost} familyAccount={familyAccount} isAdmin={isAdmin} />}
+      {isAdmin && <AdminSection competitionHosts={competitionHosts} approveHost={approveHost} familyAccount={familyAccount} isAdmin={isAdmin} setPage={setPage} />}
     </div>
   );
 }
@@ -3443,7 +3442,7 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
 
 const ADMIN_PIN = "twirlpower2025"; // kept for reference only — no longer used
 
-function AdminSection({ competitionHosts, approveHost, isAdmin }) {
+function AdminSection({ competitionHosts, approveHost, isAdmin, setPage }) {
   const pendingHosts = competitionHosts.filter(h => !h.approved);
   const approvedHosts = competitionHosts.filter(h => h.approved);
 
@@ -3452,6 +3451,9 @@ function AdminSection({ competitionHosts, approveHost, isAdmin }) {
       <div className="section-header">
         <span className="section-title">TwirlPower Admin</span>
         <span className="badge badge-green" style={{ fontSize: 10 }}>Admin access</span>
+        <button className="btn btn-ghost btn-sm" onClick={() => setPage("openqs")} style={{ fontSize: 12 }}>
+          Open Questions
+        </button>
       </div>
       <div className="alert alert-info mb-4">
         <Icon name="info" size={14} color="var(--brand)" />
