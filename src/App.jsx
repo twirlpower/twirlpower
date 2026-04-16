@@ -744,10 +744,14 @@ export default function App() {
       setAuthLoading(false);
       if (session?.user) checkAdmin(session.user.id);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthUser(session?.user ?? null);
-      if (session?.user) checkAdmin(session.user.id);
-      else setIsAdmin(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // Only update on meaningful auth events, not TOKEN_REFRESHED or focus events
+      // This prevents modal data loss when switching browser tabs
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+        setAuthUser(session?.user ?? null);
+        if (session?.user) checkAdmin(session.user.id);
+        else setIsAdmin(false);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -915,7 +919,10 @@ export default function App() {
 
   const activeTwirler = twirlers.find(t => t.id === resolvedActiveTwirlerId);
   const twirlerResults = results.filter(r => r.twirlerId === resolvedActiveTwirlerId);
+  // Include ALL competitions for this twirler — with OR without results
   const twirlerComps = competitions.filter(c =>
+    c.twirler_id === resolvedActiveTwirlerId ||
+    c.twirlerId === resolvedActiveTwirlerId ||
     twirlerResults.some(r => r.competitionId === c.id) ||
     invites.some(i => i.twirlerId === resolvedActiveTwirlerId && i.competitionId === c.id && i.status === "accepted")
   );
@@ -2362,15 +2369,209 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
     return m >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const allEvents = [...new Set(twirlerResults.map(r => r.event))];
   const allSeasons = [...new Set(twirlerComps.map(c => getSeason(c.date)))].sort().reverse();
   const allOrgs = [...new Set(twirlerComps.map(c => c.orgId))];
 
-  const filtered = twirlerComps
+  const applyFilters = (list) => list
     .filter(c => !filterOrg || c.orgId === filterOrg)
     .filter(c => !filterSeason || getSeason(c.date) === filterSeason)
-    .filter(c => !searchText || c.name?.toLowerCase().includes(searchText.toLowerCase()) || c.location?.toLowerCase().includes(searchText.toLowerCase()))
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+    .filter(c => !searchText || c.name?.toLowerCase().includes(searchText.toLowerCase()) || c.location?.toLowerCase().includes(searchText.toLowerCase()));
+
+  const upcomingComps = applyFilters(
+    twirlerComps.filter(c => c.date >= today)
+  ).sort((a, b) => new Date(a.date) - new Date(b.date)); // soonest first
+
+  const pastComps = applyFilters(
+    twirlerComps.filter(c => !c.date || c.date < today)
+  ).sort((a, b) => new Date(b.date) - new Date(a.date)); // most recent first
+
+  const filtered = [...upcomingComps, ...pastComps]; // for empty state check
+
+  function renderCompCard(comp, compResults, expanded, wins, isEditingThisComp) {
+    return (
+      <div key={comp.id} className="card" style={{ padding: 0, overflow: "hidden",
+        borderLeft: comp.date >= today && !compResults.length ? "3px solid var(--brand)" : undefined }}>
+
+        {/* ── Competition header / edit ── */}
+        {isEditingThisComp ? (
+          <div style={{ padding: "16px 20px", background: "#f8fafc", borderBottom: "1px solid var(--border)" }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Edit Competition</div>
+            <div className="form-row" style={{ marginBottom: 8 }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">Name</label>
+                <input className="input" value={editCompForm.name} onChange={e => setEditCompForm(p => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">Date</label>
+                <input className="input" type="date" value={editCompForm.date} onChange={e => setEditCompForm(p => ({ ...p, date: e.target.value }))} />
+              </div>
+            </div>
+            <div className="form-row" style={{ marginBottom: 8 }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">Location</label>
+                <input className="input" value={editCompForm.location} onChange={e => setEditCompForm(p => ({ ...p, location: e.target.value }))} placeholder="City, State" />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">Organization</label>
+                <select className="select" value={editCompForm.orgId} onChange={e => setEditCompForm(p => ({ ...p, orgId: e.target.value }))}>
+                  {Object.values(ORGS).map(o => <option key={o.id} value={o.id}>{o.id} — {o.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-row" style={{ marginBottom: 8 }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="label">Notes</label>
+                <input className="input" value={editCompForm.notes} onChange={e => setEditCompForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes..." />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0, display: "flex", alignItems: "flex-end", gap: 8 }}>
+                <label className="toggle" style={{ paddingBottom: 6 }}>
+                  <Toggle on={editCompForm.sanctioned} onChange={v => setEditCompForm(p => ({ ...p, sanctioned: v }))} />
+                  <span style={{ fontSize: 13 }}>Sanctioned</span>
+                </label>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button className="btn btn-primary btn-sm" onClick={saveEditComp}>Save</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditingComp(null)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between" style={{ padding: "16px 20px", cursor: "pointer" }} onClick={() => setExpandedComp(expanded ? null : comp.id)}>
+            <div className="flex items-center gap-3">
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{comp.name}</div>
+                <div style={{ color: "var(--slate)", fontSize: 13 }}>
+                  {fmtDate(comp.date)}{comp.location ? ` · ${comp.location}` : ""}
+                  {comp.notes && <span style={{ color: "var(--muted)", marginLeft: 8 }}>📝 {comp.notes}</span>}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="badge" style={{ background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>
+              {comp.sanctioned === false
+                ? <span className="badge badge-warn" title="Wins may not count toward advancement">Unsanctioned ⚠</span>
+                : <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
+              {wins > 0 && <span className="badge badge-amber">{wins} win{wins !== 1 ? "s" : ""}</span>}
+              <span className="badge badge-gray">{compResults.length} event{compResults.length !== 1 ? "s" : ""}</span>
+              <button className="btn btn-ghost btn-sm" title="Edit competition"
+                onClick={e => { e.stopPropagation(); startEditComp(comp); setExpandedComp(comp.id); }}>
+                <Icon name="edit" size={13} color="var(--slate)" />
+              </button>
+              <Icon name={expanded ? "chevron_down" : "chevron_right"} size={16} color="var(--muted)" />
+            </div>
+          </div>
+        )}
+
+        {/* ── Results ── */}
+        {expanded && !isEditingThisComp && (
+          <div style={{ borderTop: "1px solid var(--border)" }}>
+            {compResults.length === 0 ? (
+              <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ color: "var(--muted)", fontSize: 14 }}>No results recorded yet.</span>
+                <button className="btn btn-primary btn-sm" onClick={() => openModal("addResults", { competition: comp })}>
+                  <Icon name="plus" size={13} /> Add Results
+                </button>
+              </div>
+            ) : (
+              <>
+                <table className="table">
+                  <thead><tr><th>Event</th><th>Level</th><th>Place</th><th>Contested</th><th>Flags</th><th>Notes</th><th></th></tr></thead>
+                  <tbody>
+                    {compResults.map(r => {
+                      const isEditingThisResult = editingResult === r.id;
+                      const org = ORGS[comp.orgId];
+                      const orgLevels = org?.levels || ["Novice","Beginner","Intermediate","Advanced"];
+                      const flags = [];
+                      if (!r.contested) flags.push({ label: "Uncontested", color: "warn" });
+                      if (r.protectionRule) flags.push({ label: "Protection rule", color: "warn" });
+                      if (r.isFinalRound === false) flags.push({ label: "Prelim round", color: "gray" });
+                      if (r.isPageant) flags.push({ label: "Pageant", color: "gray" });
+                      if (r.isTwirlOff) flags.push({ label: "Twirl-off", color: "gray" });
+                      if (isEditingThisResult) {
+                        return (
+                          <tr key={r.id} style={{ background: "#f8fafc" }}>
+                            <td colSpan={7} style={{ padding: "12px 16px" }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Editing: {r.event}</div>
+                              <div className="form-row" style={{ marginBottom: 8 }}>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                  <label className="label">Level entered</label>
+                                  <select className="select" value={editResultForm.classificationLevelEntered}
+                                    onChange={e => setEditResultForm(p => ({ ...p, classificationLevelEntered: e.target.value }))}>
+                                    {orgLevels.map(l => <option key={l}>{l}</option>)}
+                                  </select>
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                  <label className="label">Placement</label>
+                                  <input className="input" type="number" min="1" max="99"
+                                    value={editResultForm.placement}
+                                    onChange={e => setEditResultForm(p => ({ ...p, placement: e.target.value }))} />
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
+                                <label className="toggle"><Toggle on={editResultForm.contested} onChange={v => setEditResultForm(p => ({ ...p, contested: v }))} /><span style={{ fontSize: 12 }}>Contested</span></label>
+                                {org?.rules?.protectionRule && <label className="toggle"><Toggle on={editResultForm.protectionRule} onChange={v => setEditResultForm(p => ({ ...p, protectionRule: v }))} /><span style={{ fontSize: 12 }}>Protection rule</span></label>}
+                                {org?.rules?.finalRoundOnly && <label className="toggle"><Toggle on={editResultForm.isFinalRound !== false} onChange={v => setEditResultForm(p => ({ ...p, isFinalRound: v ? true : false }))} /><span style={{ fontSize: 12 }}>Final round</span></label>}
+                                {comp.orgId === "TU" && <label className="toggle"><Toggle on={!!editResultForm.isPageant} onChange={v => setEditResultForm(p => ({ ...p, isPageant: v }))} /><span style={{ fontSize: 12 }}>Pageant</span></label>}
+                                {comp.orgId === "TU" && <label className="toggle"><Toggle on={!!editResultForm.isTwirlOff} onChange={v => setEditResultForm(p => ({ ...p, isTwirlOff: v }))} /><span style={{ fontSize: 12 }}>Twirl-off</span></label>}
+                              </div>
+                              <div className="form-group" style={{ marginBottom: 10 }}>
+                                <label className="label">Notes</label>
+                                <input className="input" value={editResultForm.notes}
+                                  onChange={e => setEditResultForm(p => ({ ...p, notes: e.target.value }))}
+                                  placeholder="Optional notes about this result..." />
+                              </div>
+                              <div className="flex gap-2">
+                                <button className="btn btn-primary btn-sm" onClick={saveEditResult}>Save</button>
+                                <button className="btn btn-secondary btn-sm" onClick={() => setEditingResult(null)}>Cancel</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return (
+                        <tr key={r.id}>
+                          <td style={{ fontSize: 13 }}>{r.event}</td>
+                          <td><span className="badge badge-gray">{r.classificationLevelEntered}</span></td>
+                          <td>
+                            <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)" }}>
+                              {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: 13 }}>{r.contested ? "Yes" : "No"}</td>
+                          <td>{flags.map((f, i) => <span key={i} className={`badge badge-${f.color === "warn" ? "warn" : "gray"}`} style={{ marginRight: 4, fontSize: 10 }}>{f.label}</span>)}</td>
+                          <td style={{ fontSize: 12, color: "var(--muted)", maxWidth: 160 }}>
+                            {r.notes ? <span title={r.notes}>📝 {r.notes.length > 30 ? r.notes.slice(0, 30) + "…" : r.notes}</span> : null}
+                          </td>
+                          <td>
+                            <div className="flex gap-1">
+                              <button className="btn btn-ghost btn-sm" onClick={() => startEditResult(r)} title="Edit result">
+                                <Icon name="edit" size={13} color="var(--slate)" />
+                              </button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => deleteResult(r.id)} title="Remove result">
+                                <Icon name="trash" size={13} color="var(--red)" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div style={{ padding: "10px 14px", borderTop: "1px solid #f1f5f9" }}>
+                  <button className="btn btn-ghost btn-sm" onClick={() => openModal("addResults", { competition: comp })}>
+                    <Icon name="plus" size={13} /> Add more results to this competition
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   function startEditComp(comp) {
     setEditingComp(comp.id);
@@ -2456,197 +2657,32 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
         </div>
       ) : (
         <div className="flex-col gap-3">
-          {filtered.map(comp => {
-            const compResults = twirlerResults
-              .filter(r => r.competitionId === comp.id)
-              .filter(r => !filterEvent || r.event === filterEvent);
+          {/* ── Upcoming competitions ── */}
+          {upcomingComps.length > 0 && (
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 4, marginTop: 4 }}>
+              🗓 Upcoming ({upcomingComps.length})
+            </div>
+          )}
+          {upcomingComps.map(comp => {
+            const compResults = twirlerResults.filter(r => r.competitionId === comp.id).filter(r => !filterEvent || r.event === filterEvent);
             const expanded = expandedComp === comp.id;
             const wins = compResults.filter(r => r.placement === 1).length;
             const isEditingThisComp = editingComp === comp.id;
-
-            return (
-              <div key={comp.id} className="card" style={{ padding: 0, overflow: "hidden" }}>
-
-                {/* ── Competition header / edit ── */}
-                {isEditingThisComp ? (
-                  <div style={{ padding: "16px 20px", background: "#f8fafc", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Edit Competition</div>
-                    <div className="form-row" style={{ marginBottom: 8 }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="label">Name</label>
-                        <input className="input" value={editCompForm.name} onChange={e => setEditCompForm(p => ({ ...p, name: e.target.value }))} />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="label">Date</label>
-                        <input className="input" type="date" value={editCompForm.date} onChange={e => setEditCompForm(p => ({ ...p, date: e.target.value }))} />
-                      </div>
-                    </div>
-                    <div className="form-row" style={{ marginBottom: 8 }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="label">Location</label>
-                        <input className="input" value={editCompForm.location} onChange={e => setEditCompForm(p => ({ ...p, location: e.target.value }))} placeholder="City, State" />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="label">Organization</label>
-                        <select className="select" value={editCompForm.orgId} onChange={e => setEditCompForm(p => ({ ...p, orgId: e.target.value }))}>
-                          {Object.values(ORGS).map(o => <option key={o.id} value={o.id}>{o.id} — {o.name}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="form-row" style={{ marginBottom: 8 }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="label">Notes</label>
-                        <input className="input" value={editCompForm.notes} onChange={e => setEditCompForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes..." />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0, display: "flex", alignItems: "flex-end", gap: 8 }}>
-                        <label className="toggle" style={{ paddingBottom: 6 }}>
-                          <Toggle on={editCompForm.sanctioned} onChange={v => setEditCompForm(p => ({ ...p, sanctioned: v }))} />
-                          <span style={{ fontSize: 13 }}>Sanctioned</span>
-                        </label>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button className="btn btn-primary btn-sm" onClick={saveEditComp}>Save</button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => setEditingComp(null)}>Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between" style={{ padding: "16px 20px", cursor: "pointer" }} onClick={() => setExpandedComp(expanded ? null : comp.id)}>
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 15 }}>{comp.name}</div>
-                        <div style={{ color: "var(--slate)", fontSize: 13 }}>
-                          {fmtDate(comp.date)}{comp.location ? ` · ${comp.location}` : ""}
-                          {comp.notes && <span style={{ color: "var(--muted)", marginLeft: 8 }}>📝 {comp.notes}</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="badge" style={{ background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>
-                      {comp.sanctioned === false
-                        ? <span className="badge badge-warn" title="Wins may not count toward advancement">Unsanctioned ⚠</span>
-                        : <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
-                      {wins > 0 && <span className="badge badge-amber">{wins} win{wins !== 1 ? "s" : ""}</span>}
-                      <span className="badge badge-gray">{compResults.length} event{compResults.length !== 1 ? "s" : ""}</span>
-                      <button className="btn btn-ghost btn-sm" title="Edit competition"
-                        onClick={e => { e.stopPropagation(); startEditComp(comp); setExpandedComp(comp.id); }}>
-                        <Icon name="edit" size={13} color="var(--slate)" />
-                      </button>
-                      <Icon name={expanded ? "chevron_down" : "chevron_right"} size={16} color="var(--muted)" />
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Results ── */}
-                {expanded && !isEditingThisComp && (
-                  <div style={{ borderTop: "1px solid var(--border)" }}>
-                    {compResults.length === 0 ? (
-                      <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
-                        <span style={{ color: "var(--muted)", fontSize: 14 }}>No results recorded yet.</span>
-                        <button className="btn btn-primary btn-sm" onClick={() => openModal("addResults", { competition: comp })}>
-                          <Icon name="plus" size={13} /> Add Results
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <table className="table">
-                          <thead><tr><th>Event</th><th>Level</th><th>Place</th><th>Contested</th><th>Flags</th><th>Notes</th><th></th></tr></thead>
-                          <tbody>
-                            {compResults.map(r => {
-                              const isEditingThisResult = editingResult === r.id;
-                              const org = ORGS[comp.orgId];
-                              const orgLevels = org?.levels || ["Novice","Beginner","Intermediate","Advanced"];
-                              const flags = [];
-                              if (!r.contested) flags.push({ label: "Uncontested", color: "warn" });
-                              if (r.protectionRule) flags.push({ label: "Protection rule", color: "warn" });
-                              if (r.isFinalRound === false) flags.push({ label: "Prelim round", color: "gray" });
-                              if (r.isPageant) flags.push({ label: "Pageant", color: "gray" });
-                              if (r.isTwirlOff) flags.push({ label: "Twirl-off", color: "gray" });
-
-                              if (isEditingThisResult) {
-                                return (
-                                  <tr key={r.id} style={{ background: "#f8fafc" }}>
-                                    <td colSpan={7} style={{ padding: "12px 16px" }}>
-                                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Editing: {r.event}</div>
-                                      <div className="form-row" style={{ marginBottom: 8 }}>
-                                        <div className="form-group" style={{ marginBottom: 0 }}>
-                                          <label className="label">Level entered</label>
-                                          <select className="select" value={editResultForm.classificationLevelEntered}
-                                            onChange={e => setEditResultForm(p => ({ ...p, classificationLevelEntered: e.target.value }))}>
-                                            {orgLevels.map(l => <option key={l}>{l}</option>)}
-                                          </select>
-                                        </div>
-                                        <div className="form-group" style={{ marginBottom: 0 }}>
-                                          <label className="label">Placement</label>
-                                          <input className="input" type="number" min="1" max="99"
-                                            value={editResultForm.placement}
-                                            onChange={e => setEditResultForm(p => ({ ...p, placement: e.target.value }))} />
-                                        </div>
-                                      </div>
-                                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
-                                        <label className="toggle"><Toggle on={editResultForm.contested} onChange={v => setEditResultForm(p => ({ ...p, contested: v }))} /><span style={{ fontSize: 12 }}>Contested</span></label>
-                                        {org?.rules?.protectionRule && <label className="toggle"><Toggle on={editResultForm.protectionRule} onChange={v => setEditResultForm(p => ({ ...p, protectionRule: v }))} /><span style={{ fontSize: 12 }}>Protection rule</span></label>}
-                                        {org?.rules?.finalRoundOnly && <label className="toggle"><Toggle on={editResultForm.isFinalRound !== false} onChange={v => setEditResultForm(p => ({ ...p, isFinalRound: v ? true : false }))} /><span style={{ fontSize: 12 }}>Final round</span></label>}
-                                        {comp.orgId === "TU" && <label className="toggle"><Toggle on={!!editResultForm.isPageant} onChange={v => setEditResultForm(p => ({ ...p, isPageant: v }))} /><span style={{ fontSize: 12 }}>Pageant</span></label>}
-                                        {comp.orgId === "TU" && <label className="toggle"><Toggle on={!!editResultForm.isTwirlOff} onChange={v => setEditResultForm(p => ({ ...p, isTwirlOff: v }))} /><span style={{ fontSize: 12 }}>Twirl-off</span></label>}
-                                      </div>
-                                      <div className="form-group" style={{ marginBottom: 10 }}>
-                                        <label className="label">Notes</label>
-                                        <input className="input" value={editResultForm.notes}
-                                          onChange={e => setEditResultForm(p => ({ ...p, notes: e.target.value }))}
-                                          placeholder="Optional notes about this result..." />
-                                      </div>
-                                      <div className="flex gap-2">
-                                        <button className="btn btn-primary btn-sm" onClick={saveEditResult}>Save</button>
-                                        <button className="btn btn-secondary btn-sm" onClick={() => setEditingResult(null)}>Cancel</button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              }
-
-                              return (
-                                <tr key={r.id}>
-                                  <td style={{ fontSize: 13 }}>{r.event}</td>
-                                  <td><span className="badge badge-gray">{r.classificationLevelEntered}</span></td>
-                                  <td>
-                                    <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)" }}>
-                                      {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
-                                    </span>
-                                  </td>
-                                  <td style={{ fontSize: 13 }}>{r.contested ? "Yes" : "No"}</td>
-                                  <td>{flags.map((f, i) => <span key={i} className={`badge badge-${f.color === "warn" ? "warn" : "gray"}`} style={{ marginRight: 4, fontSize: 10 }}>{f.label}</span>)}</td>
-                                  <td style={{ fontSize: 12, color: "var(--muted)", maxWidth: 160 }}>
-                                    {r.notes ? <span title={r.notes}>📝 {r.notes.length > 30 ? r.notes.slice(0, 30) + "…" : r.notes}</span> : null}
-                                  </td>
-                                  <td>
-                                    <div className="flex gap-1">
-                                      <button className="btn btn-ghost btn-sm" onClick={() => startEditResult(r)} title="Edit result">
-                                        <Icon name="edit" size={13} color="var(--slate)" />
-                                      </button>
-                                      <button className="btn btn-ghost btn-sm" onClick={() => deleteResult(r.id)} title="Remove result">
-                                        <Icon name="trash" size={13} color="var(--red)" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                        <div style={{ padding: "10px 14px", borderTop: "1px solid #f1f5f9" }}>
-                          <button className="btn btn-ghost btn-sm" onClick={() => openModal("addResults", { competition: comp })}>
-                            <Icon name="plus" size={13} /> Add more results to this competition
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
+            return renderCompCard(comp, compResults, expanded, wins, isEditingThisComp);
           })}
-        </div>
+          {/* ── Past competitions ── */}
+          {pastComps.length > 0 && upcomingComps.length > 0 && (
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.8px", marginTop: 8, marginBottom: 4 }}>
+              Past competitions ({pastComps.length})
+            </div>
+          )}
+          {pastComps.map(comp => {
+            const compResults = twirlerResults.filter(r => r.competitionId === comp.id).filter(r => !filterEvent || r.event === filterEvent);
+            const expanded = expandedComp === comp.id;
+            const wins = compResults.filter(r => r.placement === 1).length;
+            const isEditingThisComp = editingComp === comp.id;
+            return renderCompCard(comp, compResults, expanded, wins, isEditingThisComp);
+          })}
       )}
     </div>
   );
