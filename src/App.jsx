@@ -2683,6 +2683,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
             const isEditingThisComp = editingComp === comp.id;
             return renderCompCard(comp, compResults, expanded, wins, isEditingThisComp);
           })}
+        </div>
       )}
     </div>
   );
