@@ -573,7 +573,7 @@ function printClassificationRecord(twirler, progress, results, competitions) {
   </tr>`;
  }
 
- const html = `<!DOCTYPE html><html><head><title>Classification Record — ${twirler.firstName}</title><style>body{font-family:Georgia,serif;color:#0f172a;max-width:900px;margin:0 auto;padding:32px}h1{font-size:24px;margin-bottom:4px}.sub{color:#64748b;font-size:13px;margin-bottom:24px}.section{margin-bottom:24px}h2{font-size:13px;font-weight:700;text-transform:uppercase;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px;margin-bottom:8px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#f1f5f9;text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;color:#64748b}td{padding:6px 8px;border-bottom:1px solid #f1f5f9}tr:last-child td{border-bottom:none}.footer{margin-top:28px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}</style></head><body><h1>Classification Record — ${twirler.firstName}</h1><div class="sub">Generated ${today} · TwirlPower${twirler.dob ? ` · Age ${age}` : ""}${twirler.studio ? ` · ${twirler.studio}` : ""}</div><div class="section"><h2>Current Classification Levels</h2><table><thead><tr><th>Org</th><th>Event</th><th>Level</th><th>Age Division</th><th>Wins</th><th>Next Level</th></tr></thead><tbody>${rows || "<tr><td colspan=6>No data</td></tr>"}</tbody></table></div>${winRows ? `<div class="section"><h2>Recent First-Place Wins</h2><table><thead><tr><th>Date</th><th>Competition</th><th>Org</th><th>Event</th><th>Level</th><th>Sanctioned</th></tr></thead><tbody>${winRows}</tbody></table></div>` : ""}<div class="footer">Self-reported record maintained by the family using TwirlPower. Governed by each org's official rulebook. Print date: ${today}.</div></body></html>`;
+ const html = `<!DOCTYPE html><html><head><title>Classification Record — ${twirler.firstName}</title><style>body{font-family:Georgia,serif;color:#0f172a;max-width:900px;margin:0 auto;padding:32px}h1{font-size:24px;margin-bottom:4px}.sub{color:#64748b;font-size:13px;margin-bottom:24px}.section{margin-bottom:24px}h2{font-size:13px;font-weight:700;text-transform:uppercase;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px;margin-bottom:8px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#f1f5f9;text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;color:#64748b}td{padding:6px 8px;border-bottom:1px solid #f1f5f9}tr:last-child td{border-bottom:none}.footer{margin-top:28px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}</style></head><body><h1>Classification Record — ${twirler.firstName}</h1><div class="sub">Generated ${today} · TwirlPower${twirler.dob ? ` · Age ${age}` : ""}${twirler.club ? ` · ${twirler.club}` : ""}</div><div class="section"><h2>Current Classification Levels</h2><table><thead><tr><th>Org</th><th>Event</th><th>Level</th><th>Age Division</th><th>Wins</th><th>Next Level</th></tr></thead><tbody>${rows || "<tr><td colspan=6>No data</td></tr>"}</tbody></table></div>${winRows ? `<div class="section"><h2>Recent First-Place Wins</h2><table><thead><tr><th>Date</th><th>Competition</th><th>Org</th><th>Event</th><th>Level</th><th>Sanctioned</th></tr></thead><tbody>${winRows}</tbody></table></div>` : ""}<div class="footer">Self-reported record maintained by the family using TwirlPower. Governed by each org's official rulebook. Print date: ${today}.</div></body></html>`;
 
  const win = window.open("", "_blank");
  if (win) {
@@ -771,6 +771,8 @@ export default function App() {
   const [results, setResults] = useState([]);
   const [coaches, setCoaches] = useState([]);
   const [coachCompetitions, setCoachCompetitions] = useState([]);
+  const [coachClubs, setCoachClubs] = useState([]);
+  const [coachClubClaims, setCoachClubClaims] = useState([]);
   const [invites, setInvites] = useState([]);
   const [coachLinks, setCoachLinks] = useState([]);
   const [competitionHosts, setCompetitionHosts] = useState([]);
@@ -887,7 +889,7 @@ export default function App() {
           // Load coach twirler link requests
           const { data: coachLinks } = await supabase
             .from('coach_athlete_links')
-            .select('*, coach_accounts(name, email, studio, organizations)')
+            .select('*, coach_accounts(name, email, club, organizations)')
             .in('twirler_id', twirlerIds);
           setCoachLinks((coachLinks || []).map(l => ({
             ...l,
@@ -896,7 +898,7 @@ export default function App() {
             familyId: l.family_id,
             coachName: l.coach_accounts?.name,
             coachEmail: l.coach_accounts?.email,
-            coachStudio: l.coach_accounts?.studio,
+            coachClub: l.coach_accounts?.club,
             coachOrgs: l.coach_accounts?.organizations || [],
             createdAt: l.created_at,
             type: 'coach_link',
@@ -1010,6 +1012,26 @@ export default function App() {
       familyEmail: l.family_accounts?.email,
       type: 'athlete_link',
     })));
+
+    // Load clubs this coach belongs to
+    const { data: clubMemberships } = await supabase
+      .from('club_coaches')
+      .select('*, clubs(id, name, city, state, website, phone, description, status, owner_coach_id)')
+      .eq('coach_id', coachId)
+      .eq('status', 'active');
+    setCoachClubs((clubMemberships || []).map(m => ({
+      ...m.clubs,
+      coachRole: m.role,
+      membershipId: m.id,
+    })));
+
+    // Load pending club claim requests for this coach
+    const { data: claimReqs } = await supabase
+      .from('club_claim_requests')
+      .select('*, clubs(name)')
+      .eq('coach_id', coachId)
+      .eq('status', 'pending');
+    setCoachClubClaims(claimReqs || []);
   }
 
   async function signOut() {
@@ -1104,7 +1126,7 @@ export default function App() {
       family_id: fa.id,
       first_name: data.firstName,
       dob: data.dob || null,
-      studio: data.studio || null,
+      club: data.club || null,
       organizations: data.organizations || [],
       regular_events: data.regularEvents || [],
       classification_state: {},
@@ -1121,7 +1143,7 @@ export default function App() {
     const dbData = {};
     if (data.firstName !== undefined) dbData.first_name = data.firstName;
     if (data.dob !== undefined) dbData.dob = data.dob;
-    if (data.studio !== undefined) dbData.studio = data.studio;
+    if (data.club !== undefined) dbData.club = data.club;
     if (data.organizations !== undefined) dbData.organizations = data.organizations;
     if (data.regularEvents !== undefined) dbData.regular_events = data.regularEvents;
     if (data.classificationState !== undefined) dbData.classification_state = data.classificationState;
@@ -1521,7 +1543,7 @@ export default function App() {
               name: data.name,
               email: authUser.email,
               phone: data.phone || null,
-              studio: data.studio || null,
+              club: data.club || null,
               specialization: data.specialization || null,
               organizations: data.organizations || [],
               bio: data.bio || null,
@@ -1540,6 +1562,10 @@ export default function App() {
         twirlers={twirlers}
         setTwirlers={setTwirlers}
         coachCompetitions={coachCompetitions}
+        coachClubs={coachClubs}
+        setCoachClubs={setCoachClubs}
+        coachClubClaims={coachClubClaims}
+        setCoachClubClaims={setCoachClubClaims}
         invites={invites}
         progress={progress}
         darkMode={darkMode}
@@ -1971,7 +1997,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
 
 function CoachSetupScreen({ authUser, onComplete }) {
   const [form, setForm] = useState({
-    name: "", phone: "", studio: "", specialization: "", organizations: [], bio: ""
+    name: "", phone: "", club: "", specialization: "", organizations: [], bio: ""
   });
   const [loading, setLoading] = useState(false);
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -2012,9 +2038,9 @@ function CoachSetupScreen({ authUser, onComplete }) {
             </div>
           </div>
           <div className="form-group">
-            <label className="label">Studio / club</label>
-            <input className="input" value={form.studio} onChange={e => f("studio", e.target.value)}
-              placeholder="Studio or club name" />
+            <label className="label">Club</label>
+            <input className="input" value={form.club} onChange={e => f("club", e.target.value)}
+              placeholder="Club name" />
           </div>
           <div className="form-group">
             <label className="label">Specialization</label>
@@ -2055,6 +2081,7 @@ function CoachSetupScreen({ authUser, onComplete }) {
 // ─── COACH APP ────────────────────────────────────────────────────────────────
 
 function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirlers, coachCompetitions,
+  coachClubs, setCoachClubs, coachClubClaims, setCoachClubClaims,
   invites, progress, darkMode, setDarkMode, isAdmin, onSignOut, supabase, loadCoachData,
   page, setPage, openModal, closeModal, modals, coachCreateCompetition }) {
 
@@ -2080,8 +2107,8 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
-    { id: "roster", label: "Studio Roster", icon: "users" },
-    { id: "studio", label: "My Studio", icon: "star" },
+    { id: "roster", label: "Club Roster", icon: "users" },
+    { id: "club", label: `My Clubs${coachClubs.length > 0 ? ` (${coachClubs.length})` : ""}`, icon: "star" },
     { id: "history", label: "Competition History", icon: "history" },
     { id: "progress", label: "Progress Tracker", icon: "progress" },
     { id: "upcoming", label: "Upcoming Competitions", icon: "trophy" },
@@ -2112,7 +2139,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
               onClick={() => { setActiveTwirlerId(t.id); setSidebarOpen(false); }}>
               <div className="name">{t.firstName}</div>
               <div className="sub">
-                {t.studio || t.familyName || ""}
+                {t.club || t.familyName || ""}
                 {t.organizations?.length > 0 && <span style={{ marginLeft: 4 }}>{t.organizations.join(", ")}</span>}
               </div>
             </div>
@@ -2207,12 +2234,15 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 
           {/* Pages */}
           {page === "home" && <CoachHomePage coachAccount={coachAccount} twirlers={twirlers} coachCompetitions={coachCompetitions} progress={allProgress} activeTwirler={activeTwirler} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
-          {page === "roster" && <StudioRosterPage twirlers={twirlers} progress={allProgress} coachAccount={coachAccount} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
-          {page === "studio" && <StudioPage coachAccount={coachAccount} supabase={supabase} setPage={setPage} />}
+          {page === "roster" && <ClubRosterPage twirlers={twirlers} progress={allProgress} coachAccount={coachAccount} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
+          {page === "club" && <ClubPage coachAccount={coachAccount} supabase={supabase}
+            setPage={setPage} coachClubs={coachClubs} setCoachClubs={setCoachClubs}
+            coachClubClaims={coachClubClaims} setCoachClubClaims={setCoachClubClaims}
+            loadCoachData={loadCoachData} twirlers={twirlers} />}
           {page === "history" && <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
           {page === "upcoming" && <UpcomingCompetitionsPage publicCompetitions={[]} familyAccount={null} addAttendee={() => {}} attendees={[]} twirlers={twirlers} activeTwirler={activeTwirler} addCompetition={() => {}} />}
-          {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} />}
+          {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} coachClubs={coachClubs} />}
           {page === "invite-athlete" && <InviteAthletePage coachAccount={coachAccount} supabase={supabase} setPage={setPage} loadCoachData={loadCoachData} />}
           {page === "create-competition" && <CreateCompetitionPage coachAccount={coachAccount} twirlers={twirlers} supabase={supabase} setPage={setPage} coachCreateCompetition={coachCreateCompetition} />}
           {page === "admin" && isAdmin && <AdminPage twirlers={twirlers} competitions={[]} results={[]} coaches={[]} familyAccount={null} competitionHosts={[]} approveHost={() => {}} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={null} setPreviewRole={() => {}} />}
@@ -2226,7 +2256,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 
 // ─── STUDIO ROSTER PAGE ───────────────────────────────────────────────────────
 
-function StudioRosterPage({ twirlers, progress, coachAccount, setPage, setActiveTwirlerId }) {
+function ClubRosterPage({ twirlers, progress, coachAccount, setPage, setActiveTwirlerId }) {
   const [filterOrg, setFilterOrg] = useState("");
   const [search, setSearch] = useState("");
 
@@ -2263,7 +2293,7 @@ function StudioRosterPage({ twirlers, progress, coachAccount, setPage, setActive
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${coachAccount?.studio || "Studio"}_Roster_${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `${coachAccount?.club || "Club"}_Roster_${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -2272,7 +2302,7 @@ function StudioRosterPage({ twirlers, progress, coachAccount, setPage, setActive
     <div>
       <div className="page-header flex items-center justify-between">
         <div>
-          <h1 className="page-title">Studio Roster</h1>
+          <h1 className="page-title">Club Roster</h1>
           <p className="page-sub">{twirlers.length} athlete{twirlers.length !== 1 ? "s" : ""} · all classifications at a glance</p>
         </div>
         <div className="flex gap-2">
@@ -2332,13 +2362,13 @@ function StudioRosterPage({ twirlers, progress, coachAccount, setPage, setActive
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                       <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)" }}>{t.firstName}</div>
                       {t.familyName && <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.familyName}</div>}
-                      {t.studio && (
+                      {t.club && (
                         <span className="badge" style={{ fontSize: 10,
-                          background: coachAccount?.studio && t.studio === coachAccount.studio ? "var(--brand-light)" : "var(--bg)",
-                          color: coachAccount?.studio && t.studio === coachAccount.studio ? "var(--brand)" : "var(--slate)",
-                          border: `1px solid ${coachAccount?.studio && t.studio === coachAccount.studio ? "var(--brand)" : "var(--border)"}` }}>
-                          {t.studio}
-                          {coachAccount?.studio && t.studio === coachAccount.studio && " ✓"}
+                          background: coachAccount?.club && t.club === coachAccount.club ? "var(--brand-light)" : "var(--bg)",
+                          color: coachAccount?.club && t.club === coachAccount.club ? "var(--brand)" : "var(--slate)",
+                          border: `1px solid ${coachAccount?.club && t.club === coachAccount.club ? "var(--brand)" : "var(--border)"}` }}>
+                          {t.club}
+                          {coachAccount?.club && t.club === coachAccount.club && " ✓"}
                         </span>
                       )}
                       {isAdvancing && (
@@ -2567,7 +2597,7 @@ function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler, setPage 
 
 // ─── COACH PROFILE PAGE ───────────────────────────────────────────────────────
 
-function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, invites, loadCoachData }) {
+function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, invites, loadCoachData, coachClubs }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(coachAccount || {});
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -2577,7 +2607,7 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
       .update({
         name: form.name,
         phone: form.phone,
-        studio: form.studio,
+        club: form.club,
         specialization: form.specialization,
         organizations: form.organizations || [],
         bio: form.bio,
@@ -2616,8 +2646,13 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
               <div className="form-group"><label className="label">Phone</label>
                 <input className="input" value={form.phone || ""} onChange={e => f("phone", e.target.value)} /></div>
             </div>
-            <div className="form-group"><label className="label">Studio / club</label>
-              <input className="input" value={form.studio || ""} onChange={e => f("studio", e.target.value)} /></div>
+            <div className="form-group"><label className="label">Club</label>
+              <div style={{ padding: "8px 12px", background: "var(--bg)", border: "1px solid var(--border)",
+                borderRadius: 8, fontSize: 13, color: "var(--slate)" }}>
+                {coachClubs?.length > 0 ? coachClubs.map(c => c.name).join(", ")
+                  : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>No clubs — manage via My Clubs</span>}
+              </div>
+            </div>
             <div className="form-group"><label className="label">Specialization</label>
               <input className="input" value={form.specialization || ""} onChange={e => f("specialization", e.target.value)} /></div>
             <div className="form-group">
@@ -2648,7 +2683,7 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: "var(--navy)" }}>{coachAccount?.name}</div>
                 <div style={{ fontSize: 13, color: "var(--slate)" }}>{coachAccount?.email}</div>
-                {coachAccount?.studio && <div style={{ fontSize: 13, color: "var(--slate)" }}>{coachAccount.studio}</div>}
+                {coachAccount?.club && <div style={{ fontSize: 13, color: "var(--slate)" }}>{coachAccount.club}</div>}
               </div>
             </div>
             {coachAccount?.specialization && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>Specialization: {coachAccount.specialization}</div>}
@@ -2872,7 +2907,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
       // Send email notification to family
       await sendEmail('coach_link_request', family.email, {
         coachName: coachAccount.name,
-        coachStudio: coachAccount.studio,
+        coachClub: coachAccount.club,
         coachOrgs: coachAccount.organizations,
         athleteName: familyTwirlers.map(t => t.first_name).join(', '),
       });
@@ -3208,7 +3243,7 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
         </div>
         <div className="form-group">
           <label className="label">Organization / affiliation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-          <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)} placeholder="e.g. USTA Ohio Regional Council, ABC Twirling Studio" />
+          <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)} placeholder="e.g. USTA Ohio Regional Council, ABC Twirling Club" />
         </div>
         <div className="form-group">
           <label className="label">Notes for admin <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
@@ -3446,7 +3481,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
       <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title"><span style={{ color: "var(--brand)" }}>{activeTwirler.firstName}</span>'s Dashboard</h1>
-          <p className="page-sub">Age {getAge(activeTwirler.dob)} · {activeTwirler.organizations?.join(", ")} · {activeTwirler.studio || "No studio listed"}</p>
+          <p className="page-sub">Age {getAge(activeTwirler.dob)} · {activeTwirler.organizations?.join(", ")} · {activeTwirler.club || "No club listed"}</p>
         </div>
         <button className="btn btn-primary" onClick={() => openModal("addCompetition")}>
           <Icon name="plus" size={15} /> Add Competition
@@ -3524,7 +3559,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                 Coach link request for {twirlers.find(t => t.id === link.twirlerId)?.firstName}
               </div>
               <div style={{ fontSize: 14, color: "var(--navy)", marginBottom: 2 }}>
-                {link.coachName || "A coach"}{link.coachStudio ? ` · ${link.coachStudio}` : ""}
+                {link.coachName || "A coach"}{link.coachClub ? ` · ${link.coachClub}` : ""}
               </div>
               {link.coachOrgs?.length > 0 && (
                 <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 8 }}>
@@ -4417,27 +4452,27 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                   <button className="btn btn-primary btn-sm" onClick={async () => {
             updateTwirler(activeTwirler.id, tForm);
             setEditTwirler(false);
-            // If studio changed, check if it exists as a claimed studio and request membership
-            if (tForm.studio && tForm.studio !== activeTwirler.studio) {
-              const { data: matchedStudio } = await supabase
-                .from("studios").select("id, status, owner_coach_id")
-                .eq("name", tForm.studio).single();
-              if (matchedStudio) {
-                await supabase.from("studio_members").upsert({
-                  studio_id: matchedStudio.id,
+            // If club changed, check if it exists as a claimed club and request membership
+            if (tForm.club && tForm.club !== activeTwirler.club) {
+              const { data: matchedClub } = await supabase
+                .from("clubs").select("id, status, owner_coach_id")
+                .eq("name", tForm.club).single();
+              if (matchedClub) {
+                await supabase.from("club_members").upsert({
+                  club_id: matchedClub.id,
                   twirler_id: activeTwirler.id,
-                  status: matchedStudio.status === "claimed" ? "pending" : "active",
-                }, { onConflict: "studio_id,twirler_id" });
+                  status: matchedClub.status === "claimed" ? "pending" : "active",
+                }, { onConflict: "club_id,twirler_id" });
                 // Notify coach if claimed
-                if (matchedStudio.status === "claimed" && matchedStudio.owner_coach_id) {
+                if (matchedClub.status === "claimed" && matchedClub.owner_coach_id) {
                   const { data: coachAcc } = await supabase
                     .from("coach_accounts").select("email, name")
-                    .eq("id", matchedStudio.owner_coach_id).single();
+                    .eq("id", matchedClub.owner_coach_id).single();
                   if (coachAcc?.email) {
-                    await sendEmail("studio_join_request", coachAcc.email, {
+                    await sendEmail("club_join_request", coachAcc.email, {
                       coachName: coachAcc.name,
                       twirlerName: activeTwirler.firstName,
-                      studioName: tForm.studio,
+                      clubName: tForm.club,
                     });
                   }
                 }
@@ -4456,8 +4491,8 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                 <div className="form-group"><label className="label">Date of birth</label><input className="input" type="date" value={tForm.dob || ""} onChange={e => setTF(p => ({ ...p, dob: e.target.value }))} /></div>
               </div>
               <div className="form-group">
-                <label className="label">Studio / club</label>
-                <StudioSelector value={tForm.studio || ""} onChange={v => setTF(p => ({ ...p, studio: v }))} supabase={supabase} />
+                <label className="label">Club</label>
+                <ClubSelector value={tForm.club || ""} onChange={v => setTF(p => ({ ...p, club: v }))} supabase={supabase} />
               </div>
 
               <div className="form-group">
@@ -4512,7 +4547,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                     </div>
                   </div>
                 )}
-                <div style={{ marginBottom: 8 }}><span style={{ color: "var(--slate)" }}>Studio:</span> {activeTwirler.studio || <span style={{ color: "var(--muted)" }}>Not set</span>}</div>
+                <div style={{ marginBottom: 8 }}><span style={{ color: "var(--slate)" }}>Club:</span> {activeTwirler.club || <span style={{ color: "var(--muted)" }}>Not set</span>}</div>
                 <div style={{ marginBottom: 8 }}>
                   <span style={{ color: "var(--slate)" }}>Organizations:</span>
                   <div className="flex gap-2 mt-1">
@@ -4540,7 +4575,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{l.coachName}</div>
                           {l.coachEmail && <div style={{ fontSize: 11, color: "var(--slate)" }}>{l.coachEmail}</div>}
-                          {l.coachStudio && <div style={{ fontSize: 11, color: "var(--muted)" }}>{l.coachStudio}</div>}
+                          {l.coachClub && <div style={{ fontSize: 11, color: "var(--muted)" }}>{l.coachClub}</div>}
                         </div>
                         <button className="btn btn-danger btn-sm"
                           onClick={() => { if (window.confirm(`Remove ${l.coachName} as a coach for ${activeTwirler?.firstName}?`)) respondToCoachLink(l.id, false); }}
@@ -4961,7 +4996,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
 
   const tabs = [
     { id: "hosts", label: `Host Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
-    { id: "studios", label: "Studios" },
+    { id: "clubs", label: "Clubs" },
     { id: "accounts", label: "Accounts" },
     { id: "data", label: "Data Overview" },
   ];
@@ -5100,8 +5135,8 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
         )}
 
         {/* STUDIOS */}
-        {tab === "studios" && (
-          <StudioAdminTab supabase={supabase} />
+        {tab === "clubs" && (
+          <ClubAdminTab supabase={supabase} />
         )}
 
         {/* ACCOUNTS */}
@@ -5120,22 +5155,22 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
 
 // ─── STUDIO ADMIN TAB ────────────────────────────────────────────────────────
 
-function StudioAdminTab({ supabase }) {
+function ClubAdminTab({ supabase }) {
   const [claims, setClaims] = useState([]);
-  const [studios, setStudios] = useState([]);
+  const [clubs, setClubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState({});
 
   useEffect(() => {
     async function load() {
       const [{ data: c }, { data: s }] = await Promise.all([
-        supabase.from("studio_claim_requests")
-          .select("*, studios(name, city, state, status), coach_accounts(name, email)")
+        supabase.from("club_claim_requests")
+          .select("*, clubs(name, city, state, status), coach_accounts(name, email)")
           .order("created_at", { ascending: false }),
-        supabase.from("studios").select("*").order("created_at", { ascending: false }),
+        supabase.from("clubs").select("*").order("created_at", { ascending: false }),
       ]);
       setClaims(c || []);
-      setStudios(s || []);
+      setClubs(s || []);
       setLoading(false);
     }
     load();
@@ -5144,29 +5179,29 @@ function StudioAdminTab({ supabase }) {
   async function approveClaim(claim) {
     setWorking(p => ({ ...p, [claim.id]: true }));
     // Update claim status
-    await supabase.from("studio_claim_requests").update({ status: "approved" }).eq("id", claim.id);
-    // Update studio to claimed with owner
-    await supabase.from("studios").update({
+    await supabase.from("club_claim_requests").update({ status: "approved" }).eq("id", claim.id);
+    // Update club to claimed with owner
+    await supabase.from("clubs").update({
       status: "claimed",
       owner_coach_id: claim.coach_id,
-    }).eq("id", claim.studio_id);
+    }).eq("id", claim.club_id);
     // Notify coach
-    await sendEmail("studio_claim_approved", claim.coach_accounts?.email, {
+    await sendEmail("club_claim_approved", claim.coach_accounts?.email, {
       coachName: claim.coach_accounts?.name,
-      studioName: claim.studios?.name,
+      clubName: claim.clubs?.name,
     });
     setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: "approved" } : c));
-    setStudios(prev => prev.map(s => s.id === claim.studio_id ? { ...s, status: "claimed" } : s));
+    setClubs(prev => prev.map(s => s.id === claim.club_id ? { ...s, status: "claimed" } : s));
     setWorking(p => ({ ...p, [claim.id]: false }));
   }
 
   async function denyClaim(claim) {
     if (!window.confirm(`Deny claim request from ${claim.coach_accounts?.name}?`)) return;
     setWorking(p => ({ ...p, [claim.id]: true }));
-    await supabase.from("studio_claim_requests").update({ status: "denied" }).eq("id", claim.id);
-    await sendEmail("studio_claim_denied", claim.coach_accounts?.email, {
+    await supabase.from("club_claim_requests").update({ status: "denied" }).eq("id", claim.id);
+    await sendEmail("club_claim_denied", claim.coach_accounts?.email, {
       coachName: claim.coach_accounts?.name,
-      studioName: claim.studios?.name,
+      clubName: claim.clubs?.name,
     });
     setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: "denied" } : c));
     setWorking(p => ({ ...p, [claim.id]: false }));
@@ -5189,10 +5224,10 @@ function StudioAdminTab({ supabase }) {
             <div key={c.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
               <div className="flex items-start gap-3">
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{c.studios?.name}</div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{c.clubs?.name}</div>
                   <div style={{ fontSize: 12, color: "var(--slate)" }}>
-                    {[c.studios?.city, c.studios?.state].filter(Boolean).join(", ")}
-                    <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 9 }}>{c.studios?.status}</span>
+                    {[c.clubs?.city, c.clubs?.state].filter(Boolean).join(", ")}
+                    <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 9 }}>{c.clubs?.status}</span>
                   </div>
                   <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 4 }}>
                     Claimed by: <strong>{c.coach_accounts?.name}</strong> · {c.coach_accounts?.email}
@@ -5224,13 +5259,13 @@ function StudioAdminTab({ supabase }) {
         </div>
       )}
 
-      {pending.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending studio claims.</div>}
+      {pending.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending club claims.</div>}
 
-      {/* All studios */}
+      {/* All clubs */}
       <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-        All Studios ({studios.length})
+        All Clubs ({clubs.length})
       </div>
-      {studios.map(s => (
+      {clubs.map(s => (
         <div key={s.id} className="flex items-center gap-3 mb-2" style={{ padding: "10px 12px", background: "var(--bg)", borderRadius: 8 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 500, fontSize: 13 }}>{s.name}</div>
@@ -5250,7 +5285,7 @@ function StudioAdminTab({ supabase }) {
           {resolved.map(c => (
             <div key={c.id} className="flex items-center gap-3 mb-2" style={{ padding: "8px 12px", background: "var(--bg)", borderRadius: 8 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13 }}>{c.studios?.name} — {c.coach_accounts?.name}</div>
+                <div style={{ fontSize: 13 }}>{c.clubs?.name} — {c.coach_accounts?.name}</div>
               </div>
               <span className={`badge ${c.status === "approved" ? "badge-green" : "badge-red"}`} style={{ fontSize: 10 }}>{c.status}</span>
             </div>
@@ -5464,7 +5499,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
             !search ||
             c.name?.toLowerCase().includes(search.toLowerCase()) ||
             c.email?.toLowerCase().includes(search.toLowerCase()) ||
-            c.studio?.toLowerCase().includes(search.toLowerCase())
+            c.club?.toLowerCase().includes(search.toLowerCase())
           ).length === 0 ? (
             <div className="empty-state" style={{ padding: "24px 0" }}>
               <h3>No coach accounts yet</h3>
@@ -5474,7 +5509,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
             !search ||
             c.name?.toLowerCase().includes(search.toLowerCase()) ||
             c.email?.toLowerCase().includes(search.toLowerCase()) ||
-            c.studio?.toLowerCase().includes(search.toLowerCase())
+            c.club?.toLowerCase().includes(search.toLowerCase())
           ).map(c => (
             <div key={c.id} style={{ border: "1px solid var(--border)", borderRadius: 8, marginBottom: 6,
               background: "var(--card)" }}>
@@ -5486,7 +5521,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>{c.name || "—"}</div>
                   <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.email}{c.studio ? ` · ${c.studio}` : ""}
+                    {c.email}{c.club ? ` · ${c.club}` : ""}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
@@ -5549,7 +5584,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                {a.studio && <span className="badge badge-gray" style={{ fontSize: 10 }}>{a.studio}</span>}
+                {a.club && <span className="badge badge-gray" style={{ fontSize: 10 }}>{a.club}</span>}
                 <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(a.created_at)}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2"
                   style={{ transform: expandedId === a.id ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
@@ -5566,7 +5601,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                     ["Email", a.email],
                     ["Phone", a.phone || "—"],
                     ["State", a.state || "—"],
-                    ["Studio", a.studio || "—"],
+                    ["Club", a.club || "—"],
                     ["Registered", fmtDate(a.created_at)],
                     ["Account ID", a.id?.slice(0, 8) + "..."],
                   ].map(([label, val]) => (
@@ -5685,7 +5720,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, un
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2 }}>{l.coachName || "—"}</div>
                     {l.coachEmail && <div style={{ fontSize: 13, color: "var(--slate)" }}>📧 {l.coachEmail}</div>}
-                    {l.coachStudio && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {l.coachStudio}</div>}
+                    {l.coachClub && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {l.coachClub}</div>}
                     {l.coachOrgs?.length > 0 && (
                       <div className="flex gap-1 mt-1">
                         {l.coachOrgs.map(o => (
@@ -6608,7 +6643,7 @@ function HostRegisterView({ onRegister }) {
         </div>
         <div className="form-group">
           <label className="label">Organization / affiliation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-          <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)} placeholder="e.g. USTA Ohio Regional Council, ABC Twirling Studio" />
+          <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)} placeholder="e.g. USTA Ohio Regional Council, ABC Twirling Club" />
         </div>
         <div className="form-group">
           <label className="label">Notes for admin <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
@@ -6785,7 +6820,7 @@ function NotificationsPage({ allNotifications, pendingInvites, pendingCoachLinks
       id: l.id,
       type: 'coach_link',
       title: `${l.coachName || "A coach"} wants to link with ${twirlers.find(t => t.id === l.twirlerId)?.firstName || "your athlete"}`,
-      sub: [l.coachStudio, l.coachOrgs?.join(", ")].filter(Boolean).join(" · "),
+      sub: [l.coachClub, l.coachOrgs?.join(", ")].filter(Boolean).join(" · "),
       date: l.createdAt,
       coachEmail: l.coachEmail,
       raw: l,
@@ -6967,13 +7002,13 @@ function GroupedEventPicker({ orgIds, selected, onToggle }) {
 // ─── ADD TWIRLER MODAL ───────────────────────────────────────────────────────
 
 function AddTwirlerModal({ open, onClose, onSave, onOpenHistorical }) {
-  const [form, setForm] = useState({ firstName: "", dob: "", studio: "", organizations: [], regularEvents: [] });
+  const [form, setForm] = useState({ firstName: "", dob: "", club: "", organizations: [], regularEvents: [] });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const toggleOrg = (orgId) => setForm(p => ({ ...p, organizations: p.organizations.includes(orgId) ? p.organizations.filter(o => o !== orgId) : [...p.organizations, orgId] }));
 
   function handleSave(withHistory) {
     const newTwirler = onSave(form);
-    setForm({ firstName: "", dob: "", studio: "", organizations: [], regularEvents: [] });
+    setForm({ firstName: "", dob: "", club: "", organizations: [], regularEvents: [] });
     onClose();
     if (withHistory && newTwirler) {
       // slight delay so the modal closes first
@@ -7009,7 +7044,7 @@ function AddTwirlerModal({ open, onClose, onSave, onOpenHistorical }) {
         <div className="form-group"><label className="label">First name only</label><input className="input" value={form.firstName} onChange={e => f("firstName", e.target.value)} placeholder="e.g. Emma" /></div>
         <div className="form-group"><label className="label">Date of birth</label><input className="input" type="date" value={form.dob} onChange={e => f("dob", e.target.value)} /></div>
       </div>
-      <div className="form-group"><label className="label">Studio / club</label><input className="input" value={form.studio} onChange={e => f("studio", e.target.value)} placeholder="Studio or club name" /></div>
+      <div className="form-group"><label className="label">Club</label><input className="input" value={form.club} onChange={e => f("club", e.target.value)} placeholder="Club name" /></div>
       <div className="form-group">
         <label className="label">Organizations</label>
         <div className="chip-group">
@@ -7569,11 +7604,11 @@ function PrivacyPolicyPage({ onClose }) {
 
 Account information: parent or guardian name, email address, phone number, and state of residence.
 
-Athlete information: first name, date of birth, studio or club name, and organization memberships (USTA, NBTA, TU, DMA).
+Athlete information: first name, date of birth, club name, and organization memberships (USTA, NBTA, TU, DMA).
 
 Competition data: competition names, dates, locations, organizations, results, placements, and classification levels.
 
-Coach information: coach name, email, phone, studio, and organizational affiliations.
+Coach information: coach name, email, phone, club, and organizational affiliations.
 
 We also collect your date of birth at signup to verify you are 18 or older, as required for account creation.` },
           { h: "3. How We Use Your Data", body: `We use the information we collect to:
@@ -7882,8 +7917,8 @@ function BetaFeedbackPopup({ authUser, familyAccount, coachAccount }) {
 
 // ─── STUDIOS ─────────────────────────────────────────────────────────────────
 
-// Studio search + select widget (used in twirler profile edit)
-function StudioSelector({ value, onChange, supabase }) {
+// Club search + select widget (used in twirler profile edit)
+function ClubSelector({ value, onChange, supabase }) {
   const [query, setQuery] = useState(value || "");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -7891,14 +7926,14 @@ function StudioSelector({ value, onChange, supabase }) {
   const [createForm, setCreateForm] = useState({ name: "", city: "", state: "", coachName: "", coachEmail: "" });
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState(null);
-  const debounceRef = React.useRef(null);
+  const debounceRef = useRef(null);
 
   useEffect(() => {
     if (!query || query.length < 2) { setResults([]); return; }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
-      const { data } = await supabase.from("studios").select("*").ilike("name", `%${query}%`).limit(8);
+      const { data } = await supabase.from("clubs").select("*").ilike("name", `%${query}%`).limit(8);
       setResults(data || []);
       setLoading(false);
     }, 300);
@@ -7907,34 +7942,34 @@ function StudioSelector({ value, onChange, supabase }) {
   async function handleCreate() {
     if (!createForm.name) return;
     setCreating(true);
-    const { data: studio, error } = await supabase.from("studios").insert({
+    const { data: club, error } = await supabase.from("clubs").insert({
       name: createForm.name,
       city: createForm.city || null,
       state: createForm.state || null,
       status: "unclaimed",
       created_by: "twirler",
     }).select().single();
-    if (!error && studio) {
+    if (!error && club) {
       // Notify coach by email if provided
       if (createForm.coachEmail) {
-        await sendEmail("studio_unclaimed_notify", createForm.coachEmail, {
+        await sendEmail("club_unclaimed_notify", createForm.coachEmail, {
           coachName: createForm.coachName || "Coach",
-          studioName: studio.name,
-          city: studio.city,
-          state: studio.state,
+          clubName: club.name,
+          city: club.city,
+          state: club.state,
         });
       }
-      setCreated(studio);
-      onChange(studio.name);
-      setQuery(studio.name);
+      setCreated(club);
+      onChange(club.name);
+      setQuery(club.name);
       setShowCreate(false);
     }
     setCreating(false);
   }
 
-  function selectStudio(studio) {
-    onChange(studio.name);
-    setQuery(studio.name);
+  function selectClub(club) {
+    onChange(club.name);
+    setQuery(club.name);
     setResults([]);
   }
 
@@ -7948,7 +7983,7 @@ function StudioSelector({ value, onChange, supabase }) {
     <div style={{ position: "relative" }}>
       <div style={{ position: "relative" }}>
         <input className="input" value={query} onChange={e => { setQuery(e.target.value); onChange(e.target.value); }}
-          placeholder="Search for your studio..." />
+          placeholder="Search for your club..." />
         {loading && (
           <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
             fontSize: 11, color: "var(--muted)" }}>Searching...</div>
@@ -7961,7 +7996,7 @@ function StudioSelector({ value, onChange, supabase }) {
           border: "1px solid var(--border)", borderRadius: 8, zIndex: 100, marginTop: 4,
           boxShadow: "0 4px 16px rgba(0,0,0,0.12)", maxHeight: 220, overflowY: "auto" }}>
           {results.map(s => (
-            <div key={s.id} onClick={() => selectStudio(s)}
+            <div key={s.id} onClick={() => selectClub(s)}
               style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid var(--border)",
                 display: "flex", alignItems: "center", justifyContent: "space-between" }}
               onMouseEnter={e => e.currentTarget.style.background = "var(--bg)"}
@@ -7979,7 +8014,7 @@ function StudioSelector({ value, onChange, supabase }) {
             style={{ padding: "10px 14px", cursor: "pointer", fontSize: 13, color: "var(--brand)", fontWeight: 500 }}
             onMouseEnter={e => e.currentTarget.style.background = "var(--bg)"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-            + Add "{query}" as a new studio
+            + Add "{query}" as a new club
           </div>
         </div>
       )}
@@ -7988,16 +8023,16 @@ function StudioSelector({ value, onChange, supabase }) {
       {query.length >= 2 && results.length === 0 && !loading && (
         <button className="btn btn-ghost btn-sm" style={{ marginTop: 6 }}
           onClick={() => { setShowCreate(true); setCreateForm(f => ({ ...f, name: query })); }}>
-          + Add "{query}" as a new studio
+          + Add "{query}" as a new club
         </button>
       )}
 
-      {/* Create studio form */}
+      {/* Create club form */}
       {showCreate && (
         <div className="card-sm" style={{ marginTop: 8, background: "var(--bg)", border: "1px solid var(--brand)" }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", marginBottom: 10 }}>Add new studio</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", marginBottom: 10 }}>Add new club</div>
           <div className="form-group">
-            <label className="label">Studio name *</label>
+            <label className="label">Club name *</label>
             <input className="input" value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))} />
           </div>
           <div className="form-row">
@@ -8014,7 +8049,7 @@ function StudioSelector({ value, onChange, supabase }) {
             </div>
           </div>
           <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 8 }}>
-            Know your coach's email? We'll notify them so they can claim this studio.
+            Know your coach's email? We'll notify them so they can claim this club.
           </div>
           <div className="form-row">
             <div className="form-group">
@@ -8028,7 +8063,7 @@ function StudioSelector({ value, onChange, supabase }) {
           </div>
           <div className="flex gap-2">
             <button className="btn btn-primary btn-sm" disabled={!createForm.name || creating} onClick={handleCreate}>
-              {creating ? "Adding..." : "Add Studio"}
+              {creating ? "Adding..." : "Add Club"}
             </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowCreate(false)}>Cancel</button>
           </div>
@@ -8038,456 +8073,575 @@ function StudioSelector({ value, onChange, supabase }) {
       {created && (
         <div className="alert alert-success" style={{ marginTop: 8 }}>
           <Icon name="check" size={13} color="var(--green)" />
-          <span style={{ fontSize: 12 }}>Studio added! {createForm.coachEmail ? "Coach notified by email." : ""}</span>
+          <span style={{ fontSize: 12 }}>Club added! {createForm.coachEmail ? "Coach notified by email." : ""}</span>
         </div>
       )}
     </div>
   );
 }
 
-// Studio page — coach manages their claimed studio
-function StudioPage({ coachAccount, supabase, setPage }) {
-  const [studio, setStudio] = useState(null);
-  const [members, setMembers] = useState([]);
-  const [pendingClaims, setPendingClaims] = useState([]);
-  const [loading, setLoading] = useState(true);
+// Club page — coach manages their claimed club
+function ClubPage({ coachAccount, supabase, setPage, coachClubs, setCoachClubs,
+  coachClubClaims, setCoachClubClaims, loadCoachData, twirlers }) {
+
+  const [selectedClubId, setSelectedClubId] = useState(coachClubs[0]?.id || null);
+  const [tab, setTab] = useState("profile");
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState({});
-  const [claimMode, setClaimMode] = useState(false);
-  const [claimForm, setClaimForm] = useState({ message: "" });
-  const [studioSearch, setStudioSearch] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState("profile"); // profile | members | invites
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteName, setInviteName] = useState("");
+  const [members, setMembers] = useState([]);
+  const [clubCoaches, setClubCoaches] = useState([]);
+  const [loadingClub, setLoadingClub] = useState(false);
+
+  // Create/claim flow
+  const [showCreate, setShowCreate] = useState(false);
+  const [showClaim, setShowClaim] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: coachAccount?.club || "", city: "", state: "", message: "", file: null });
+  const [claimSearch, setClaimSearch] = useState("");
+  const [claimResults, setClaimResults] = useState([]);
+  const [claimMessage, setClaimMessage] = useState("");
+  const [claimFile, setClaimFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState(null);
+
+  // Invite coach flow
+  const [inviteCoachEmail, setInviteCoachEmail] = useState("");
+  const [inviteCoachName, setInviteCoachName] = useState("");
   const [inviteSent, setInviteSent] = useState(false);
 
-  useEffect(() => { load(); }, []);
+  // Invite twirler flow
+  const [inviteTwirlerEmail, setInviteTwirlerEmail] = useState("");
+  const [inviteTwirlerName, setInviteTwirlerName] = useState("");
+  const [twirlerInviteSent, setTwirlerInviteSent] = useState(false);
 
-  async function load() {
-    setLoading(true);
-    // Load claimed studio for this coach
-    const { data: s } = await supabase.from("studios")
-      .select("*").eq("owner_coach_id", coachAccount.id).single();
-    if (s) {
-      setStudio(s);
-      setForm(s);
-      // Load members
-      const { data: m } = await supabase.from("studio_members")
-        .select("*, twirlers(first_name, organizations, family_accounts(email, parent_name))")
-        .eq("studio_id", s.id);
-      setMembers(m || []);
+  const selectedClub = coachClubs.find(c => c.id === selectedClubId) || coachClubs[0];
+  const isOwner = selectedClub?.coachRole === "owner";
+
+  useEffect(() => {
+    if (selectedClub) {
+      setForm(selectedClub);
+      loadClubDetails(selectedClub.id);
     }
-    // Load pending claim requests for this coach
-    const { data: claims } = await supabase.from("studio_claim_requests")
-      .select("*, studios(name)").eq("coach_id", coachAccount.id);
-    setPendingClaims(claims || []);
-    setLoading(false);
+  }, [selectedClubId, coachClubs.length]);
+
+  async function loadClubDetails(clubId) {
+    setLoadingClub(true);
+    const [{ data: m }, { data: cc }] = await Promise.all([
+      supabase.from("club_members")
+        .select("*, twirlers(first_name, organizations, family_accounts(email, parent_name))")
+        .eq("club_id", clubId),
+      supabase.from("club_coaches")
+        .select("*, coach_accounts(name, email, studio, organizations)")
+        .eq("club_id", clubId)
+        .eq("status", "active"),
+    ]);
+    setMembers(m || []);
+    setClubCoaches(cc || []);
+    setLoadingClub(false);
   }
 
-  async function saveStudio() {
+  async function saveClub() {
     setSaving(true);
-    const { data: updated } = await supabase.from("studios").update({
-      name: form.name,
-      city: form.city,
-      state: form.state,
-      website: form.website,
-      phone: form.phone,
-      description: form.description,
-    }).eq("id", studio.id).select().single();
-    if (updated) setStudio(updated);
+    const { data: updated } = await supabase.from("clubs").update({
+      name: form.name, city: form.city, state: form.state,
+      website: form.website, phone: form.phone, description: form.description,
+    }).eq("id", selectedClub.id).select().single();
+    if (updated) {
+      setCoachClubs(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+    }
     setEditMode(false);
     setSaving(false);
   }
 
-  async function createStudio() {
-    setSaving(true);
-    const { data: s } = await supabase.from("studios").insert({
-      name: form.name || coachAccount.studio || coachAccount.name + " Studio",
-      city: form.city || null,
-      state: form.state || null,
-      website: form.website || null,
-      phone: form.phone || null,
-      description: form.description || null,
-      status: "pending_claim",
-      created_by: "coach",
+  async function submitCreateClub() {
+    if (!createForm.name) return;
+    setSubmitting(true);
+    const { data: club } = await supabase.from("clubs").insert({
+      name: createForm.name, city: createForm.city || null,
+      state: createForm.state || null, status: "pending_claim", created_by: "coach",
     }).select().single();
-    if (s) {
-      // Upload document if provided
+    if (club) {
       let docUrl = null;
-      if (claimForm.file) {
-        const ext = claimForm.file.name.split(".").pop();
-        const path = `${coachAccount.id}/studio_claim_${s.id}.${ext}`;
-        const { data: upload } = await supabase.storage.from("documents").upload(path, claimForm.file, { upsert: true });
-        if (upload) {
-          const { data: { publicUrl } } = supabase.storage.from("documents").getPublicUrl(path);
-          docUrl = publicUrl;
-        }
+      if (createForm.file) {
+        const ext = createForm.file.name.split(".").pop();
+        const path = `${coachAccount.id}/club_claim_${club.id}.${ext}`;
+        const { data: up } = await supabase.storage.from("documents").upload(path, createForm.file, { upsert: true });
+        if (up) docUrl = supabase.storage.from("documents").getPublicUrl(path).data.publicUrl;
       }
-      // Create claim request
-      await supabase.from("studio_claim_requests").insert({
-        studio_id: s.id,
-        coach_id: coachAccount.id,
-        message: claimForm.message || "Coach created this studio.",
-        document_url: docUrl,
-        status: "pending",
+      await supabase.from("club_claim_requests").insert({
+        club_id: club.id, coach_id: coachAccount.id,
+        message: createForm.message || "Coach created this club.",
+        document_url: docUrl, status: "pending",
       });
-      // Notify admin
-      await sendEmail("studio_claim_request", "help@twirlpower.com", {
-        coachName: coachAccount.name,
-        coachEmail: coachAccount.email,
-        studioName: s.name,
-        city: s.city,
-        state: s.state,
-        message: claimForm.message,
-        type: "new",
+      await sendEmail("club_claim_request", "help@twirlpower.com", {
+        coachName: coachAccount.name, coachEmail: coachAccount.email,
+        clubName: club.name, city: club.city, state: club.state,
+        message: createForm.message, type: "new",
       });
-      setPendingClaims([{ id: "new", studios: { name: s.name }, status: "pending", created_at: new Date().toISOString() }]);
+      setCoachClubClaims(prev => [...prev, { clubs: { name: club.name }, status: "pending" }]);
+      setSuccessMsg(`Club "${club.name}" created and submitted for admin approval.`);
+      setShowCreate(false);
     }
-    setSaving(false);
-    setClaimMode(false);
-    await load();
+    setSubmitting(false);
   }
 
-  async function searchStudios() {
-    if (studioSearch.length < 2) return;
-    const { data } = await supabase.from("studios").select("*").ilike("name", `%${studioSearch}%`).limit(8);
-    setSearchResults(data || []);
+  async function searchClubsToClaim() {
+    if (claimSearch.length < 2) return;
+    const { data } = await supabase.from("clubs").select("*").ilike("name", `%${claimSearch}%`).limit(8);
+    setClaimResults(data || []);
   }
 
-  async function claimExisting(s) {
-    setSaving(true);
-    await supabase.from("studio_claim_requests").insert({
-      studio_id: s.id,
-      coach_id: coachAccount.id,
-      message: claimForm.message || "",
-      status: "pending",
+  async function submitClaimExisting(club) {
+    setSubmitting(true);
+    let docUrl = null;
+    if (claimFile) {
+      const ext = claimFile.name.split(".").pop();
+      const path = `${coachAccount.id}/club_claim_existing_${club.id}.${ext}`;
+      const { data: up } = await supabase.storage.from("documents").upload(path, claimFile, { upsert: true });
+      if (up) docUrl = supabase.storage.from("documents").getPublicUrl(path).data.publicUrl;
+    }
+    await supabase.from("club_claim_requests").insert({
+      club_id: club.id, coach_id: coachAccount.id,
+      message: claimMessage, document_url: docUrl, status: "pending",
     });
-    await sendEmail("studio_claim_request", "help@twirlpower.com", {
-      coachName: coachAccount.name,
-      coachEmail: coachAccount.email,
-      studioName: s.name,
-      city: s.city,
-      state: s.state,
-      message: claimForm.message,
-      type: "existing",
+    await sendEmail("club_claim_request", "help@twirlpower.com", {
+      coachName: coachAccount.name, coachEmail: coachAccount.email,
+      clubName: club.name, city: club.city, state: club.state,
+      message: claimMessage, type: "existing",
     });
-    setPendingClaims(prev => [...prev, { studios: { name: s.name }, status: "pending" }]);
-    setSearchResults([]);
-    setStudioSearch("");
-    setSaving(false);
+    setCoachClubClaims(prev => [...prev, { clubs: { name: club.name }, status: "pending" }]);
+    setSuccessMsg(`Claim request for "${club.name}" submitted for admin approval.`);
+    setShowClaim(false);
+    setClaimResults([]);
+    setSubmitting(false);
   }
 
   async function approveMember(memberId) {
-    await supabase.from("studio_members").update({ status: "active" }).eq("id", memberId);
+    await supabase.from("club_members").update({ status: "active" }).eq("id", memberId);
     setMembers(prev => prev.map(m => m.id === memberId ? { ...m, status: "active" } : m));
   }
 
   async function removeMember(memberId) {
-    if (!window.confirm("Remove this twirler from the studio?")) return;
-    await supabase.from("studio_members").delete().eq("id", memberId);
+    if (!window.confirm("Remove this twirler from the club?")) return;
+    await supabase.from("club_members").delete().eq("id", memberId);
     setMembers(prev => prev.filter(m => m.id !== memberId));
   }
 
-  async function sendInvite() {
-    if (!inviteEmail || !studio) return;
-    await sendEmail("studio_invite_external", inviteEmail, {
-      twirlerName: inviteName || "a twirler",
-      studioName: studio.name,
-      coachName: coachAccount.name,
-      city: studio.city,
-      state: studio.state,
+  async function promoteCoach(coachId) {
+    await supabase.from("club_coaches").update({ role: "owner" })
+      .eq("club_id", selectedClub.id).eq("coach_id", coachId);
+    setClubCoaches(prev => prev.map(c => c.coach_id === coachId ? { ...c, role: "owner" } : c));
+  }
+
+  async function removeCoach(coachId) {
+    if (!window.confirm("Remove this coach from the club?")) return;
+    await supabase.from("club_coaches").delete()
+      .eq("club_id", selectedClub.id).eq("coach_id", coachId);
+    setClubCoaches(prev => prev.filter(c => c.coach_id !== coachId));
+  }
+
+  async function sendCoachInvite() {
+    if (!inviteCoachEmail || !selectedClub) return;
+    await sendEmail("club_invite_coach", inviteCoachEmail, {
+      coachName: inviteCoachName || "Coach",
+      inviterName: coachAccount.name,
+      clubName: selectedClub.name,
+      city: selectedClub.city,
+      state: selectedClub.state,
     });
     setInviteSent(true);
-    setInviteEmail("");
-    setInviteName("");
+    setInviteCoachEmail(""); setInviteCoachName("");
     setTimeout(() => setInviteSent(false), 3000);
   }
 
-  if (loading) return <div style={{ padding: 32, textAlign: "center", color: "var(--muted)" }}>Loading studio...</div>;
-
-  // No studio yet — offer to create or claim
-  if (!studio) {
-    return (
-      <div>
-        <div className="page-header">
-          <h1 className="page-title">My Studio</h1>
-          <p className="page-sub">Create or claim your studio on TwirlPower</p>
-        </div>
-
-        {pendingClaims.length > 0 && (
-          <div className="alert alert-info mb-4">
-            <Icon name="info" size={14} color="var(--brand)" />
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>Claim request pending admin review</div>
-              <div style={{ fontSize: 12, marginTop: 2 }}>
-                {pendingClaims.map(c => c.studios?.name).join(", ")} — you'll be notified once approved.
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="grid-2" style={{ gap: 16 }}>
-          {/* Create new */}
-          <div className="card" style={{ borderTop: "3px solid var(--brand)" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🏫</div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 4 }}>Create a new studio</div>
-            <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16, lineHeight: 1.6 }}>
-              Your studio isn't on TwirlPower yet. Create a listing and request admin approval to claim it.
-            </div>
-            {claimMode === "new" ? (
-              <div>
-                <div className="form-group"><label className="label">Studio name *</label>
-                  <input className="input" value={form.name || ""} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder={coachAccount.studio || "Studio name"} /></div>
-                <div className="form-row">
-                  <div className="form-group"><label className="label">City</label>
-                    <input className="input" value={form.city || ""} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} /></div>
-                  <div className="form-group"><label className="label">State</label>
-                    <select className="select" value={form.state || ""} onChange={e => setForm(f => ({ ...f, state: e.target.value }))}>
-                      <option value="">Select</option>
-                      {US_STATES.map(s => <option key={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="form-group"><label className="label">Message to admin (optional)</label>
-                  <textarea className="textarea" value={claimForm.message} onChange={e => setClaimForm(f => ({ ...f, message: e.target.value }))}
-                    rows={2} placeholder="Brief note about your studio and why you're claiming it..." /></div>
-                <div className="form-group">
-                  <label className="label">Supporting document (optional)</label>
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                    onChange={e => setClaimForm(f => ({ ...f, file: e.target.files?.[0] }))}
-                    style={{ fontSize: 12, color: "var(--slate)" }} />
-                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Business license, studio registration, or other proof of ownership</div>
-                </div>
-                <div className="flex gap-2">
-                  <button className="btn btn-primary btn-sm" disabled={!form.name || saving} onClick={createStudio}>
-                    {saving ? "Submitting..." : "Submit for Approval"}
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setClaimMode(false)}>Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <button className="btn btn-primary btn-sm" onClick={() => { setClaimMode("new"); setForm({ name: coachAccount.studio || "" }); }}>
-                Create Studio
-              </button>
-            )}
-          </div>
-
-          {/* Claim existing */}
-          <div className="card" style={{ borderTop: "3px solid var(--slate)" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 4 }}>Claim an existing studio</div>
-            <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16, lineHeight: 1.6 }}>
-              A twirler may have already created a listing for your studio. Search and request to claim it.
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <input className="input" value={studioSearch} onChange={e => setStudioSearch(e.target.value)}
-                placeholder="Search by studio name..." onKeyDown={e => e.key === "Enter" && searchStudios()} />
-              <button className="btn btn-secondary btn-sm" onClick={searchStudios}>Search</button>
-            </div>
-            {searchResults.map(s => (
-              <div key={s.id} className="card-sm mb-2" style={{ background: "var(--bg)" }}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--muted)" }}>{[s.city, s.state].filter(Boolean).join(", ")}</div>
-                    <span className="badge badge-gray" style={{ fontSize: 9 }}>{s.status}</span>
-                  </div>
-                  {s.status !== "claimed" ? (
-                    <button className="btn btn-primary btn-sm" disabled={saving}
-                      onClick={() => claimExisting(s)}>Request Claim</button>
-                  ) : (
-                    <span className="badge badge-green" style={{ fontSize: 10 }}>Already claimed</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+  async function sendTwirlerInvite() {
+    if (!inviteTwirlerEmail || !selectedClub) return;
+    await sendEmail("club_invite_external", inviteTwirlerEmail, {
+      twirlerName: inviteTwirlerName || "a twirler",
+      clubName: selectedClub.name,
+      coachName: coachAccount.name,
+      city: selectedClub.city,
+      state: selectedClub.state,
+    });
+    setTwirlerInviteSent(true);
+    setInviteTwirlerEmail(""); setInviteTwirlerName("");
+    setTimeout(() => setTwirlerInviteSent(false), 3000);
   }
 
-  // Has a claimed (or pending) studio
   const tabs = [
-    { id: "profile", label: "Studio Profile" },
-    { id: "members", label: `Members (${members.length})` },
-    { id: "invites", label: "Invite Twirlers" },
+    { id: "profile", label: "Club Profile" },
+    { id: "coaches", label: `Coaches (${clubCoaches.length})` },
+    { id: "members", label: `Twirlers (${members.length})` },
+    { id: "invite", label: "Invite" },
   ];
 
   return (
     <div>
       <div className="page-header flex items-center justify-between">
         <div>
-          <h1 className="page-title">{studio.name}</h1>
-          <p className="page-sub">
-            {[studio.city, studio.state].filter(Boolean).join(", ")}
-            <span className={`badge ${studio.status === "claimed" ? "badge-green" : "badge-amber"}`}
-              style={{ fontSize: 10, marginLeft: 8 }}>
-              {studio.status === "claimed" ? "Claimed" : "Pending approval"}
-            </span>
-          </p>
+          <h1 className="page-title">My Clubs</h1>
+          <p className="page-sub">{coachClubs.length} club{coachClubs.length !== 1 ? "s" : ""}</p>
         </div>
-        {!editMode && studio.status === "claimed" && (
-          <button className="btn btn-ghost btn-sm" onClick={() => setEditMode(true)}>
-            <Icon name="edit" size={13} /> Edit
+        <div className="flex gap-2">
+          <button className="btn btn-secondary btn-sm" onClick={() => { setShowCreate(true); setShowClaim(false); }}>
+            + Create Club
           </button>
-        )}
+          <button className="btn btn-ghost btn-sm" onClick={() => { setShowClaim(true); setShowCreate(false); }}>
+            Claim Existing
+          </button>
+        </div>
       </div>
 
-      {studio.status === "pending_claim" && (
-        <div className="alert alert-warn mb-4">
-          <Icon name="alert" size={14} color="var(--amber)" />
-          <span style={{ fontSize: 13 }}>Your claim request is pending admin review. You'll be notified once approved. Studio details can be edited after approval.</span>
+      {/* Success message */}
+      {successMsg && (
+        <div className="alert alert-success mb-4">
+          <Icon name="check" size={14} color="var(--green)" />
+          <span style={{ fontSize: 13 }}>{successMsg}</span>
         </div>
       )}
 
-      {/* Tab bar */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
-              background: "none", fontFamily: "inherit",
-              color: tab === t.id ? "var(--brand)" : "var(--slate)",
-              borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
-              marginBottom: -1 }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Studio Profile tab */}
-      {tab === "profile" && (
-        <div className="card">
-          {editMode ? (
-            <div>
-              <div className="form-row">
-                <div className="form-group"><label className="label">Studio name</label>
-                  <input className="input" value={form.name || ""} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
-                <div className="form-group"><label className="label">Phone</label>
-                  <input className="input" value={form.phone || ""} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
-              </div>
-              <div className="form-row">
-                <div className="form-group"><label className="label">City</label>
-                  <input className="input" value={form.city || ""} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} /></div>
-                <div className="form-group"><label className="label">State</label>
-                  <select className="select" value={form.state || ""} onChange={e => setForm(f => ({ ...f, state: e.target.value }))}>
-                    <option value="">Select state</option>
-                    {US_STATES.map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="form-group"><label className="label">Website</label>
-                <input className="input" value={form.website || ""} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://" /></div>
-              <div className="form-group"><label className="label">Description</label>
-                <textarea className="textarea" value={form.description || ""} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
-              <div className="flex gap-2">
-                <button className="btn btn-primary btn-sm" disabled={saving} onClick={saveStudio}>{saving ? "Saving..." : "Save"}</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => { setForm(studio); setEditMode(false); }}>Cancel</button>
-              </div>
+      {/* Pending claims */}
+      {coachClubClaims.length > 0 && (
+        <div className="alert alert-info mb-4">
+          <Icon name="info" size={14} color="var(--brand)" />
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>Pending admin approval</div>
+            <div style={{ fontSize: 12, marginTop: 2 }}>
+              {coachClubClaims.map(c => c.clubs?.name).join(", ")} — you'll be notified once approved.
             </div>
-          ) : (
-            <div>
-              {[
-                ["Name", studio.name],
-                ["Location", [studio.city, studio.state].filter(Boolean).join(", ") || "—"],
-                ["Phone", studio.phone || "—"],
-                ["Website", studio.website || "—"],
-              ].map(([label, val]) => (
-                <div key={label} style={{ display: "flex", gap: 12, padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", width: 90, flexShrink: 0 }}>{label}</div>
-                  <div style={{ fontSize: 13, color: "var(--navy)" }}>
-                    {label === "Website" && studio.website
-                      ? <a href={studio.website} target="_blank" rel="noreferrer" style={{ color: "var(--brand)" }}>{studio.website}</a>
-                      : val}
-                  </div>
-                </div>
-              ))}
-              {studio.description && (
-                <div style={{ marginTop: 12, fontSize: 13, color: "var(--slate)", lineHeight: 1.7 }}>{studio.description}</div>
-              )}
-              {!studio.phone && !studio.website && !studio.description && studio.status === "claimed" && (
-                <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic", marginTop: 8 }}>
-                  Add your phone, website, and description to complete your studio profile.
-                </div>
-              )}
-            </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* Members tab */}
-      {tab === "members" && (
-        <div>
-          {members.length === 0 ? (
-            <div className="empty-state">
-              <div style={{ fontSize: 32, marginBottom: 8 }}>👥</div>
-              <h3>No twirlers yet</h3>
-              <p>Twirlers who select your studio will appear here. You can also invite them directly.</p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {members.map(m => {
-                const t = m.twirlers;
-                return (
-                  <div key={m.id} className="card-sm flex items-center gap-3"
-                    style={{ borderLeft: m.status === "active" ? "3px solid var(--green)" : "3px solid var(--amber)" }}>
-                    <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: "var(--brand)", color: "white" }}>
-                      {initials(t?.first_name || "?")}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600 }}>{t?.first_name}</div>
-                      <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                        {t?.family_accounts?.parent_name} · {(t?.organizations || []).join(", ")}
-                      </div>
-                    </div>
-                    {m.status === "pending" ? (
-                      <div className="flex gap-2">
-                        <span className="badge badge-amber" style={{ fontSize: 10 }}>Pending</span>
-                        <button className="btn btn-primary btn-sm" onClick={() => approveMember(m.id)}>✓ Approve</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => removeMember(m.id)}>✗</button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2 items-center">
-                        <span className="badge badge-green" style={{ fontSize: 10 }}>Active</span>
-                        <button className="btn btn-ghost btn-sm" onClick={() => removeMember(m.id)}
-                          style={{ fontSize: 11, padding: "3px 8px" }}>Remove</button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Invite tab */}
-      {tab === "invites" && (
-        <div className="card" style={{ maxWidth: 480 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>Invite a twirler by email</div>
-          <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16, lineHeight: 1.6 }}>
-            Send an invitation to twirlers who aren't on TwirlPower yet, or who haven't joined your studio.
+      {/* Create club form */}
+      {showCreate && (
+        <div className="card mb-4" style={{ borderTop: "3px solid var(--brand)" }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Create a new club</div>
+          <div className="form-row">
+            <div className="form-group"><label className="label">Club name *</label>
+              <input className="input" value={createForm.name}
+                onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Your club name" autoFocus /></div>
+            <div className="form-group"><label className="label">Phone</label>
+              <input className="input" value={createForm.phone || ""}
+                onChange={e => setCreateForm(f => ({ ...f, phone: e.target.value }))} /></div>
           </div>
           <div className="form-row">
-            <div className="form-group">
-              <label className="label">Twirler's name (optional)</label>
-              <input className="input" value={inviteName} onChange={e => setInviteName(e.target.value)} placeholder="First name" />
-            </div>
-            <div className="form-group">
-              <label className="label">Parent/guardian email *</label>
-              <input className="input" type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="family@example.com" />
+            <div className="form-group"><label className="label">City</label>
+              <input className="input" value={createForm.city}
+                onChange={e => setCreateForm(f => ({ ...f, city: e.target.value }))} /></div>
+            <div className="form-group"><label className="label">State</label>
+              <select className="select" value={createForm.state}
+                onChange={e => setCreateForm(f => ({ ...f, state: e.target.value }))}>
+                <option value="">Select state</option>
+                {US_STATES.map(s => <option key={s}>{s}</option>)}
+              </select>
             </div>
           </div>
-          <button className="btn btn-primary" disabled={!inviteEmail} onClick={sendInvite}>
-            Send Invitation
-          </button>
-          {inviteSent && (
-            <div className="alert alert-success" style={{ marginTop: 12 }}>
-              <Icon name="check" size={13} color="var(--green)" />
-              <span style={{ fontSize: 12 }}>Invitation sent!</span>
+          <div className="form-group"><label className="label">Message to admin (optional)</label>
+            <textarea className="textarea" rows={2} value={createForm.message}
+              onChange={e => setCreateForm(f => ({ ...f, message: e.target.value }))}
+              placeholder="Brief note about your club..." /></div>
+          <div className="form-group"><label className="label">Supporting document (optional)</label>
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+              onChange={e => setCreateForm(f => ({ ...f, file: e.target.files?.[0] }))}
+              style={{ fontSize: 12, color: "var(--slate)" }} />
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Business license, club registration, or proof of ownership</div>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-primary btn-sm" disabled={!createForm.name || submitting}
+              onClick={submitCreateClub}>{submitting ? "Submitting..." : "Submit for Approval"}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowCreate(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Claim existing form */}
+      {showClaim && (
+        <div className="card mb-4" style={{ borderTop: "3px solid var(--slate)" }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Claim an existing club</div>
+          <div className="flex gap-2 mb-3">
+            <input className="input" value={claimSearch}
+              onChange={e => setClaimSearch(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && searchClubsToClaim()}
+              placeholder="Search by club name..." />
+            <button className="btn btn-secondary btn-sm" onClick={searchClubsToClaim}>Search</button>
+          </div>
+          {claimResults.map(c => (
+            <div key={c.id} className="card-sm mb-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>{[c.city, c.state].filter(Boolean).join(", ")}</div>
+                  <span className={`badge ${c.status === "claimed" ? "badge-green" : "badge-gray"}`} style={{ fontSize: 9 }}>{c.status}</span>
+                </div>
+                {c.status !== "claimed" ? (
+                  <div>
+                    <textarea className="textarea" rows={1} value={claimMessage}
+                      onChange={e => setClaimMessage(e.target.value)}
+                      placeholder="Brief message (optional)" style={{ marginBottom: 6 }} />
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={e => setClaimFile(e.target.files?.[0])}
+                      style={{ fontSize: 11, marginBottom: 6 }} />
+                    <button className="btn btn-primary btn-sm" disabled={submitting}
+                      onClick={() => submitClaimExisting(c)}>
+                      {submitting ? "..." : "Request Claim"}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="badge badge-green" style={{ fontSize: 10 }}>Already claimed</span>
+                )}
+              </div>
+            </div>
+          ))}
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => setShowClaim(false)}>Cancel</button>
+        </div>
+      )}
+
+      {/* No clubs yet */}
+      {coachClubs.length === 0 && !showCreate && !showClaim && (
+        <div className="empty-state">
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🏫</div>
+          <h3>No clubs yet</h3>
+          <p>Create a new club listing or claim an existing one. Admin approval required.</p>
+        </div>
+      )}
+
+      {/* Club selector tabs if multiple clubs */}
+      {coachClubs.length > 1 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+          {coachClubs.map(c => (
+            <button key={c.id} onClick={() => setSelectedClubId(c.id)}
+              className={`chip ${c.id === selectedClubId ? "selected" : ""}`}>
+              {c.name}
+              {c.coachRole === "owner" && <span style={{ marginLeft: 4, fontSize: 10 }}>👑</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Selected club detail */}
+      {selectedClub && (
+        <div>
+          <div className="flex items-center gap-3 mb-3">
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 18 }}>{selectedClub.name}</div>
+              <div style={{ fontSize: 13, color: "var(--slate)" }}>
+                {[selectedClub.city, selectedClub.state].filter(Boolean).join(", ")}
+                <span className={`badge ${selectedClub.status === "claimed" ? "badge-green" : "badge-amber"}`}
+                  style={{ fontSize: 10, marginLeft: 8 }}>
+                  {selectedClub.status === "claimed" ? "Active" : "Pending approval"}
+                </span>
+                {selectedClub.coachRole === "owner" && (
+                  <span className="badge badge-purple" style={{ fontSize: 10, marginLeft: 4 }}>👑 Owner</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {selectedClub.status === "pending_claim" && (
+            <div className="alert alert-warn mb-4">
+              <Icon name="alert" size={14} color="var(--amber)" />
+              <span style={{ fontSize: 13 }}>Pending admin approval. You'll be notified once approved.</span>
+            </div>
+          )}
+
+          {/* Tab bar */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
+            {tabs.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer",
+                  border: "none", background: "none", fontFamily: "inherit",
+                  color: tab === t.id ? "var(--brand)" : "var(--slate)",
+                  borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+                  marginBottom: -1 }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Profile tab */}
+          {tab === "profile" && (
+            <div className="card">
+              {editMode && isOwner ? (
+                <div>
+                  <div className="form-row">
+                    <div className="form-group"><label className="label">Club name</label>
+                      <input className="input" value={form.name || ""} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+                    <div className="form-group"><label className="label">Phone</label>
+                      <input className="input" value={form.phone || ""} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group"><label className="label">City</label>
+                      <input className="input" value={form.city || ""} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} /></div>
+                    <div className="form-group"><label className="label">State</label>
+                      <select className="select" value={form.state || ""} onChange={e => setForm(f => ({ ...f, state: e.target.value }))}>
+                        <option value="">Select</option>
+                        {US_STATES.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-group"><label className="label">Website</label>
+                    <input className="input" value={form.website || ""} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://" /></div>
+                  <div className="form-group"><label className="label">Description</label>
+                    <textarea className="textarea" value={form.description || ""} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
+                  <div className="flex gap-2">
+                    <button className="btn btn-primary btn-sm" disabled={saving} onClick={saveClub}>{saving ? "Saving..." : "Save"}</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setForm(selectedClub); setEditMode(false); }}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                    {isOwner && selectedClub.status === "claimed" && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditMode(true)}>
+                        <Icon name="edit" size={13} /> Edit
+                      </button>
+                    )}
+                  </div>
+                  {[["Name", selectedClub.name], ["Location", [selectedClub.city, selectedClub.state].filter(Boolean).join(", ") || "—"],
+                    ["Phone", selectedClub.phone || "—"], ["Website", selectedClub.website || "—"]].map(([label, val]) => (
+                    <div key={label} style={{ display: "flex", gap: 12, padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", width: 90, flexShrink: 0 }}>{label}</div>
+                      <div style={{ fontSize: 13, color: "var(--navy)" }}>
+                        {label === "Website" && selectedClub.website
+                          ? <a href={selectedClub.website} target="_blank" rel="noreferrer" style={{ color: "var(--brand)" }}>{selectedClub.website}</a>
+                          : val}
+                      </div>
+                    </div>
+                  ))}
+                  {selectedClub.description && (
+                    <div style={{ marginTop: 12, fontSize: 13, color: "var(--slate)", lineHeight: 1.7 }}>{selectedClub.description}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Coaches tab */}
+          {tab === "coaches" && (
+            <div>
+              {loadingClub ? <div style={{ color: "var(--muted)", fontSize: 13 }}>Loading...</div> :
+                clubCoaches.length === 0 ? (
+                  <div className="empty-state"><h3>No other coaches yet</h3><p>Invite coaches to join your club.</p></div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                    {clubCoaches.map(cc => (
+                      <div key={cc.id} className="card-sm flex items-center gap-3">
+                        <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: "#ede9fe", color: "#6d28d9" }}>
+                          {initials(cc.coach_accounts?.name || "?")}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{cc.coach_accounts?.name}</div>
+                          <div style={{ fontSize: 11, color: "var(--muted)" }}>{cc.coach_accounts?.email}</div>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          {cc.role === "owner"
+                            ? <span className="badge badge-purple" style={{ fontSize: 10 }}>👑 Owner</span>
+                            : <span className="badge badge-gray" style={{ fontSize: 10 }}>Coach</span>}
+                          {isOwner && cc.coach_id !== coachAccount.id && (
+                            <>
+                              {cc.role !== "owner" && (
+                                <button className="btn btn-secondary btn-sm"
+                                  onClick={() => promoteCoach(cc.coach_id)}
+                                  style={{ fontSize: 10, padding: "3px 8px" }}>
+                                  Promote to Owner
+                                </button>
+                              )}
+                              <button className="btn btn-danger btn-sm"
+                                onClick={() => removeCoach(cc.coach_id)}
+                                style={{ fontSize: 10, padding: "3px 8px" }}>
+                                Remove
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+          )}
+
+          {/* Members tab */}
+          {tab === "members" && (
+            <div>
+              {loadingClub ? <div style={{ color: "var(--muted)", fontSize: 13 }}>Loading...</div> :
+                members.length === 0 ? (
+                  <div className="empty-state"><h3>No twirlers yet</h3><p>Twirlers who select your club will appear here.</p></div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {members.map(m => {
+                      const t = m.twirlers;
+                      return (
+                        <div key={m.id} className="card-sm flex items-center gap-3"
+                          style={{ borderLeft: m.status === "active" ? "3px solid var(--green)" : "3px solid var(--amber)" }}>
+                          <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: "var(--brand)", color: "white" }}>
+                            {initials(t?.first_name || "?")}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{t?.first_name}</div>
+                            <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                              {t?.family_accounts?.parent_name} · {(t?.organizations || []).join(", ")}
+                            </div>
+                          </div>
+                          {m.status === "pending" ? (
+                            <div className="flex gap-2">
+                              <span className="badge badge-amber" style={{ fontSize: 10 }}>Pending</span>
+                              <button className="btn btn-primary btn-sm" onClick={() => approveMember(m.id)}>✓ Approve</button>
+                              <button className="btn btn-danger btn-sm" onClick={() => removeMember(m.id)}>✗</button>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2 items-center">
+                              <span className="badge badge-green" style={{ fontSize: 10 }}>Active</span>
+                              <button className="btn btn-ghost btn-sm" onClick={() => removeMember(m.id)}
+                                style={{ fontSize: 11 }}>Remove</button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+            </div>
+          )}
+
+          {/* Invite tab */}
+          {tab === "invite" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Invite coach */}
+              {isOwner && (
+                <div className="card" style={{ maxWidth: 480 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Invite a coach</div>
+                  <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 12 }}>
+                    Coaches with a TwirlPower account can also request to join your club from their coach profile.
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group"><label className="label">Coach name</label>
+                      <input className="input" value={inviteCoachName} onChange={e => setInviteCoachName(e.target.value)} placeholder="Optional" /></div>
+                    <div className="form-group"><label className="label">Coach email *</label>
+                      <input className="input" type="email" value={inviteCoachEmail} onChange={e => setInviteCoachEmail(e.target.value)} placeholder="coach@example.com" /></div>
+                  </div>
+                  <button className="btn btn-primary btn-sm" disabled={!inviteCoachEmail} onClick={sendCoachInvite}>Send Coach Invite</button>
+                  {inviteSent && <div className="alert alert-success" style={{ marginTop: 8 }}><Icon name="check" size={13} color="var(--green)" /><span style={{ fontSize: 12 }}>Invitation sent!</span></div>}
+                </div>
+              )}
+
+              {/* Invite twirler */}
+              <div className="card" style={{ maxWidth: 480 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Invite a twirler</div>
+                <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 12 }}>
+                  Send an email invitation to families who aren't on TwirlPower yet.
+                </div>
+                <div className="form-row">
+                  <div className="form-group"><label className="label">Twirler name (optional)</label>
+                    <input className="input" value={inviteTwirlerName} onChange={e => setInviteTwirlerName(e.target.value)} placeholder="First name" /></div>
+                  <div className="form-group"><label className="label">Parent/guardian email *</label>
+                    <input className="input" type="email" value={inviteTwirlerEmail} onChange={e => setInviteTwirlerEmail(e.target.value)} placeholder="family@example.com" /></div>
+                </div>
+                <button className="btn btn-primary btn-sm" disabled={!inviteTwirlerEmail} onClick={sendTwirlerInvite}>Send Twirler Invite</button>
+                {twirlerInviteSent && <div className="alert alert-success" style={{ marginTop: 8 }}><Icon name="check" size={13} color="var(--green)" /><span style={{ fontSize: 12 }}>Invitation sent!</span></div>}
+              </div>
             </div>
           )}
         </div>
@@ -8495,6 +8649,7 @@ function StudioPage({ coachAccount, supabase, setPage }) {
     </div>
   );
 }
+
 
 function OverrideModal({ open, onClose, data, onSave }) {
   const [newLevel, setNewLevel] = useState("");
