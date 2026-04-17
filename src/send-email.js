@@ -313,6 +313,100 @@ export default async function handler(req, res) {
     `;
   }
 
+  else if (type === 'studio_unclaimed_notify') {
+    const { coachName, studioName, city, state } = data;
+    subject = `A twirler created a studio listing for ${studioName} on TwirlPower`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">Your studio is on TwirlPower</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        Hi ${coachName || "Coach"}, a twirler just created a studio listing for <strong>${studioName}</strong>${city || state ? ` in ${[city,state].filter(Boolean).join(", ")}` : ""} on TwirlPower.
+      </p>
+      <p style="font-size:14px;color:#475569;line-height:1.7;margin:0 0 24px;">
+        TwirlPower is a baton twirling classification tracking app. You can claim this studio listing to manage your studio profile, approve twirler memberships, and send competition invites.
+      </p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">
+          Claim Your Studio on TwirlPower
+        </a>
+      </div>
+      <p style="font-size:12px;color:#94a3b8;">Sign up as a coach, then go to My Studio to claim this listing. Admin approval is required.</p>
+    </div>${footer}</div>`;
+  }
+
+  else if (type === 'studio_claim_request') {
+    const { coachName, coachEmail, studioName, city, state, message, type: claimType } = data;
+    subject = `[TwirlPower Admin] Studio claim request — ${studioName}`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:28px 32px;">
+      <h2 style="font-size:18px;font-weight:700;color:#0f172a;margin:0 0 16px;">Studio Claim Request</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;">
+        ${[["Studio", studioName], ["Location", [city,state].filter(Boolean).join(", ") || "—"], ["Coach", coachName], ["Email", coachEmail], ["Type", claimType === "new" ? "New studio created by coach" : "Claiming existing studio"]].map(([k,v]) =>
+          `<tr><td style="padding:6px 12px;background:#f1f5f9;font-weight:600;color:#64748b;width:100px;border:1px solid #e2e8f0;">${k}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;color:#0f172a;">${v||"—"}</td></tr>`
+        ).join("")}
+      </table>
+      ${message ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;font-size:13px;color:#475569;margin-bottom:16px;white-space:pre-line;">${message}</div>` : ""}
+      <p style="font-size:13px;color:#64748b;">Review and approve or deny this request in the Admin panel.</p>
+      <div style="text-align:center;margin:20px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;text-decoration:none;">Open Admin Panel</a>
+      </div>
+    </div>${footer}</div>`;
+  }
+
+  else if (type === 'studio_claim_approved') {
+    const { coachName, studioName } = data;
+    subject = `Your studio claim has been approved — ${studioName}`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">🎉 Studio claim approved!</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        Hi ${coachName}, your claim for <strong>${studioName}</strong> has been approved. You can now manage your studio profile, approve twirler memberships, and invite new twirlers.
+      </p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">Manage Your Studio</a>
+      </div>
+    </div>${footer}</div>`;
+  }
+
+  else if (type === 'studio_claim_denied') {
+    const { coachName, studioName } = data;
+    subject = `Studio claim update — ${studioName}`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">Studio claim update</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        Hi ${coachName}, we were unable to approve your claim for <strong>${studioName}</strong> at this time. If you believe this is an error or would like to provide additional documentation, please contact us at ${CONTACT_EMAIL}.
+      </p>
+    </div>${footer}</div>`;
+  }
+
+  else if (type === 'studio_join_request') {
+    const { coachName, twirlerName, studioName } = data;
+    subject = `${twirlerName} wants to join ${studioName} on TwirlPower`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">New studio membership request</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        Hi ${coachName}, <strong>${twirlerName}</strong> has selected <strong>${studioName}</strong> as their studio on TwirlPower and is requesting to join.
+      </p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">Review in TwirlPower</a>
+      </div>
+    </div>${footer}</div>`;
+  }
+
+  else if (type === 'studio_invite_external') {
+    const { twirlerName, studioName, coachName, city, state } = data;
+    subject = `You're invited to join ${studioName} on TwirlPower`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">You're invited to TwirlPower!</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        <strong>${coachName}</strong> from <strong>${studioName}</strong>${city||state ? ` in ${[city,state].filter(Boolean).join(", ")}` : ""} has invited ${twirlerName ? `<strong>${twirlerName}</strong>` : "your twirler"} to join their studio on TwirlPower.
+      </p>
+      <p style="font-size:14px;color:#475569;line-height:1.7;margin:0 0 24px;">
+        TwirlPower tracks baton twirling classifications and competition history across USTA, NBTA, TU, and DMA — all in one place.
+      </p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">Join TwirlPower Free</a>
+      </div>
+    </div>${footer}</div>`;
+  }
+
   else {
     return res.status(400).json({ error: `Unknown email type: ${type}` });
   }

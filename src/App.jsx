@@ -2069,6 +2069,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "roster", label: "Studio Roster", icon: "users" },
+    { id: "studio", label: "My Studio", icon: "star" },
     { id: "history", label: "Competition History", icon: "history" },
     { id: "progress", label: "Progress Tracker", icon: "progress" },
     { id: "upcoming", label: "Upcoming Competitions", icon: "trophy" },
@@ -2195,6 +2196,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
           {/* Pages */}
           {page === "home" && <CoachHomePage coachAccount={coachAccount} twirlers={twirlers} coachCompetitions={coachCompetitions} progress={allProgress} activeTwirler={activeTwirler} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
           {page === "roster" && <StudioRosterPage twirlers={twirlers} progress={allProgress} coachAccount={coachAccount} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
+          {page === "studio" && <StudioPage coachAccount={coachAccount} supabase={supabase} setPage={setPage} />}
           {page === "history" && <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
           {page === "upcoming" && <UpcomingCompetitionsPage publicCompetitions={[]} familyAccount={null} addAttendee={() => {}} attendees={[]} twirlers={twirlers} activeTwirler={activeTwirler} addCompetition={() => {}} />}
@@ -3268,7 +3270,7 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
         <p>TRACK · COMPETE · ADVANCE</p>
       </div>
       <div className="sidebar-section">
-        <div className="sidebar-label">Athletes</div>
+        <div className="sidebar-label">Twirlers</div>
         {twirlers.map(t => (
           <div key={t.id} className={`sidebar-twirler ${t.id === activeTwirlerId ? "active" : ""}`} onClick={() => { setActiveTwirlerId(t.id); setPage("home"); }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -4393,7 +4395,36 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
             {!editTwirler
               ? <button className="btn btn-ghost btn-sm" onClick={() => setEditTwirler(true)}><Icon name="edit" size={13} /> Edit</button>
               : <div className="flex gap-2">
-                  <button className="btn btn-primary btn-sm" onClick={() => { updateTwirler(activeTwirler.id, tForm); setEditTwirler(false); }}>Save changes</button>
+                  <button className="btn btn-primary btn-sm" onClick={async () => {
+            updateTwirler(activeTwirler.id, tForm);
+            setEditTwirler(false);
+            // If studio changed, check if it exists as a claimed studio and request membership
+            if (tForm.studio && tForm.studio !== activeTwirler.studio) {
+              const { data: matchedStudio } = await supabase
+                .from("studios").select("id, status, owner_coach_id")
+                .eq("name", tForm.studio).single();
+              if (matchedStudio) {
+                await supabase.from("studio_members").upsert({
+                  studio_id: matchedStudio.id,
+                  twirler_id: activeTwirler.id,
+                  status: matchedStudio.status === "claimed" ? "pending" : "active",
+                }, { onConflict: "studio_id,twirler_id" });
+                // Notify coach if claimed
+                if (matchedStudio.status === "claimed" && matchedStudio.owner_coach_id) {
+                  const { data: coachAcc } = await supabase
+                    .from("coach_accounts").select("email, name")
+                    .eq("id", matchedStudio.owner_coach_id).single();
+                  if (coachAcc?.email) {
+                    await sendEmail("studio_join_request", coachAcc.email, {
+                      coachName: coachAcc.name,
+                      twirlerName: activeTwirler.firstName,
+                      studioName: tForm.studio,
+                    });
+                  }
+                }
+              }
+            }
+          }}>Save changes</button>
                   <button className="btn btn-secondary btn-sm" onClick={() => { setTF(activeTwirler); setEditTwirler(false); }}>Cancel</button>
                 </div>
             }
@@ -4405,7 +4436,10 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                 <div className="form-group"><label className="label">First name only</label><input className="input" value={tForm.firstName || ""} onChange={e => setTF(p => ({ ...p, firstName: e.target.value }))} /></div>
                 <div className="form-group"><label className="label">Date of birth</label><input className="input" type="date" value={tForm.dob || ""} onChange={e => setTF(p => ({ ...p, dob: e.target.value }))} /></div>
               </div>
-              <div className="form-group"><label className="label">Studio / club</label><input className="input" value={tForm.studio || ""} onChange={e => setTF(p => ({ ...p, studio: e.target.value }))} placeholder="Studio or club name" /></div>
+              <div className="form-group">
+                <label className="label">Studio / club</label>
+                <StudioSelector value={tForm.studio || ""} onChange={v => setTF(p => ({ ...p, studio: v }))} supabase={supabase} />
+              </div>
 
               <div className="form-group">
                 <label className="label">Organizations</label>
@@ -4908,6 +4942,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
 
   const tabs = [
     { id: "hosts", label: `Host Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
+    { id: "studios", label: "Studios" },
     { id: "accounts", label: "Accounts" },
     { id: "data", label: "Data Overview" },
   ];
@@ -5039,6 +5074,11 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
           </div>
         )}
 
+        {/* STUDIOS */}
+        {tab === "studios" && (
+          <StudioAdminTab supabase={supabase} />
+        )}
+
         {/* ACCOUNTS */}
         {tab === "accounts" && (
           <AccountsTab supabase={supabase} currentFamilyAccount={familyAccount} twirlers={twirlers} />
@@ -5049,6 +5089,143 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
           <DataOverviewTab supabase={supabase} competitionHosts={competitionHosts} pendingHosts={pendingHosts} setPage={setPage} />
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── STUDIO ADMIN TAB ────────────────────────────────────────────────────────
+
+function StudioAdminTab({ supabase }) {
+  const [claims, setClaims] = useState([]);
+  const [studios, setStudios] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [working, setWorking] = useState({});
+
+  useEffect(() => {
+    async function load() {
+      const [{ data: c }, { data: s }] = await Promise.all([
+        supabase.from("studio_claim_requests")
+          .select("*, studios(name, city, state, status), coach_accounts(name, email)")
+          .order("created_at", { ascending: false }),
+        supabase.from("studios").select("*").order("created_at", { ascending: false }),
+      ]);
+      setClaims(c || []);
+      setStudios(s || []);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  async function approveClaim(claim) {
+    setWorking(p => ({ ...p, [claim.id]: true }));
+    // Update claim status
+    await supabase.from("studio_claim_requests").update({ status: "approved" }).eq("id", claim.id);
+    // Update studio to claimed with owner
+    await supabase.from("studios").update({
+      status: "claimed",
+      owner_coach_id: claim.coach_id,
+    }).eq("id", claim.studio_id);
+    // Notify coach
+    await sendEmail("studio_claim_approved", claim.coach_accounts?.email, {
+      coachName: claim.coach_accounts?.name,
+      studioName: claim.studios?.name,
+    });
+    setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: "approved" } : c));
+    setStudios(prev => prev.map(s => s.id === claim.studio_id ? { ...s, status: "claimed" } : s));
+    setWorking(p => ({ ...p, [claim.id]: false }));
+  }
+
+  async function denyClaim(claim) {
+    if (!window.confirm(`Deny claim request from ${claim.coach_accounts?.name}?`)) return;
+    setWorking(p => ({ ...p, [claim.id]: true }));
+    await supabase.from("studio_claim_requests").update({ status: "denied" }).eq("id", claim.id);
+    await sendEmail("studio_claim_denied", claim.coach_accounts?.email, {
+      coachName: claim.coach_accounts?.name,
+      studioName: claim.studios?.name,
+    });
+    setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: "denied" } : c));
+    setWorking(p => ({ ...p, [claim.id]: false }));
+  }
+
+  if (loading) return <div style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>Loading...</div>;
+
+  const pending = claims.filter(c => c.status === "pending");
+  const resolved = claims.filter(c => c.status !== "pending");
+
+  return (
+    <div>
+      {/* Pending claims */}
+      {pending.length > 0 && (
+        <div className="mb-4">
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+            ⏳ Pending Claims ({pending.length})
+          </div>
+          {pending.map(c => (
+            <div key={c.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+              <div className="flex items-start gap-3">
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{c.studios?.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--slate)" }}>
+                    {[c.studios?.city, c.studios?.state].filter(Boolean).join(", ")}
+                    <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 9 }}>{c.studios?.status}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 4 }}>
+                    Claimed by: <strong>{c.coach_accounts?.name}</strong> · {c.coach_accounts?.email}
+                  </div>
+                  {c.message && (
+                    <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>
+                      "{c.message}"
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>{fmtDate(c.created_at)}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn btn-primary btn-sm" disabled={working[c.id]} onClick={() => approveClaim(c)}>
+                    {working[c.id] ? "..." : "✓ Approve"}
+                  </button>
+                  <button className="btn btn-danger btn-sm" disabled={working[c.id]} onClick={() => denyClaim(c)}>
+                    Deny
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {pending.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending studio claims.</div>}
+
+      {/* All studios */}
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+        All Studios ({studios.length})
+      </div>
+      {studios.map(s => (
+        <div key={s.id} className="flex items-center gap-3 mb-2" style={{ padding: "10px 12px", background: "var(--bg)", borderRadius: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500, fontSize: 13 }}>{s.name}</div>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>{[s.city, s.state].filter(Boolean).join(", ")}</div>
+          </div>
+          <span className={`badge ${s.status === "claimed" ? "badge-green" : s.status === "pending_claim" ? "badge-amber" : "badge-gray"}`}
+            style={{ fontSize: 10 }}>{s.status}</span>
+        </div>
+      ))}
+
+      {/* Resolved claims */}
+      {resolved.length > 0 && (
+        <div className="mt-4">
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+            Resolved ({resolved.length})
+          </div>
+          {resolved.map(c => (
+            <div key={c.id} className="flex items-center gap-3 mb-2" style={{ padding: "8px 12px", background: "var(--bg)", borderRadius: 8 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13 }}>{c.studios?.name} — {c.coach_accounts?.name}</div>
+              </div>
+              <span className={`badge ${c.status === "approved" ? "badge-green" : "badge-red"}`} style={{ fontSize: 10 }}>{c.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -7668,6 +7845,603 @@ function BetaFeedbackPopup({ authUser, familyAccount, coachAccount }) {
           <button className="btn btn-ghost" onClick={() => setOpen(false)}>Skip for now</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── STUDIOS ─────────────────────────────────────────────────────────────────
+
+// Studio search + select widget (used in twirler profile edit)
+function StudioSelector({ value, onChange, supabase }) {
+  const [query, setQuery] = useState(value || "");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: "", city: "", state: "", coachName: "", coachEmail: "" });
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState(null);
+  const debounceRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!query || query.length < 2) { setResults([]); return; }
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      const { data } = await supabase.from("studios").select("*").ilike("name", `%${query}%`).limit(8);
+      setResults(data || []);
+      setLoading(false);
+    }, 300);
+  }, [query]);
+
+  async function handleCreate() {
+    if (!createForm.name) return;
+    setCreating(true);
+    const { data: studio, error } = await supabase.from("studios").insert({
+      name: createForm.name,
+      city: createForm.city || null,
+      state: createForm.state || null,
+      status: "unclaimed",
+      created_by: "twirler",
+    }).select().single();
+    if (!error && studio) {
+      // Notify coach by email if provided
+      if (createForm.coachEmail) {
+        await sendEmail("studio_unclaimed_notify", createForm.coachEmail, {
+          coachName: createForm.coachName || "Coach",
+          studioName: studio.name,
+          city: studio.city,
+          state: studio.state,
+        });
+      }
+      setCreated(studio);
+      onChange(studio.name);
+      setQuery(studio.name);
+      setShowCreate(false);
+    }
+    setCreating(false);
+  }
+
+  function selectStudio(studio) {
+    onChange(studio.name);
+    setQuery(studio.name);
+    setResults([]);
+  }
+
+  const statusBadge = (s) => {
+    if (s.status === "claimed") return <span className="badge badge-green" style={{ fontSize: 9 }}>Claimed</span>;
+    if (s.status === "pending_claim") return <span className="badge badge-amber" style={{ fontSize: 9 }}>Pending</span>;
+    return <span className="badge badge-gray" style={{ fontSize: 9 }}>Unclaimed</span>;
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <div style={{ position: "relative" }}>
+        <input className="input" value={query} onChange={e => { setQuery(e.target.value); onChange(e.target.value); }}
+          placeholder="Search for your studio..." />
+        {loading && (
+          <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+            fontSize: 11, color: "var(--muted)" }}>Searching...</div>
+        )}
+      </div>
+
+      {/* Search results dropdown */}
+      {results.length > 0 && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "var(--card)",
+          border: "1px solid var(--border)", borderRadius: 8, zIndex: 100, marginTop: 4,
+          boxShadow: "0 4px 16px rgba(0,0,0,0.12)", maxHeight: 220, overflowY: "auto" }}>
+          {results.map(s => (
+            <div key={s.id} onClick={() => selectStudio(s)}
+              style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid var(--border)",
+                display: "flex", alignItems: "center", justifyContent: "space-between" }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--bg)"}
+              onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>{s.name}</div>
+                {(s.city || s.state) && (
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>{[s.city, s.state].filter(Boolean).join(", ")}</div>
+                )}
+              </div>
+              {statusBadge(s)}
+            </div>
+          ))}
+          <div onClick={() => { setShowCreate(true); setResults([]); }}
+            style={{ padding: "10px 14px", cursor: "pointer", fontSize: 13, color: "var(--brand)", fontWeight: 500 }}
+            onMouseEnter={e => e.currentTarget.style.background = "var(--bg)"}
+            onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+            + Add "{query}" as a new studio
+          </div>
+        </div>
+      )}
+
+      {/* No results — offer to create */}
+      {query.length >= 2 && results.length === 0 && !loading && (
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: 6 }}
+          onClick={() => { setShowCreate(true); setCreateForm(f => ({ ...f, name: query })); }}>
+          + Add "{query}" as a new studio
+        </button>
+      )}
+
+      {/* Create studio form */}
+      {showCreate && (
+        <div className="card-sm" style={{ marginTop: 8, background: "var(--bg)", border: "1px solid var(--brand)" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", marginBottom: 10 }}>Add new studio</div>
+          <div className="form-group">
+            <label className="label">Studio name *</label>
+            <input className="input" value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">City</label>
+              <input className="input" value={createForm.city} onChange={e => setCreateForm(f => ({ ...f, city: e.target.value }))} placeholder="Optional" />
+            </div>
+            <div className="form-group">
+              <label className="label">State</label>
+              <select className="select" value={createForm.state} onChange={e => setCreateForm(f => ({ ...f, state: e.target.value }))}>
+                <option value="">Select state</option>
+                {US_STATES.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 8 }}>
+            Know your coach's email? We'll notify them so they can claim this studio.
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">Coach name (optional)</label>
+              <input className="input" value={createForm.coachName} onChange={e => setCreateForm(f => ({ ...f, coachName: e.target.value }))} placeholder="Coach name" />
+            </div>
+            <div className="form-group">
+              <label className="label">Coach email (optional)</label>
+              <input className="input" type="email" value={createForm.coachEmail} onChange={e => setCreateForm(f => ({ ...f, coachEmail: e.target.value }))} placeholder="coach@example.com" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-primary btn-sm" disabled={!createForm.name || creating} onClick={handleCreate}>
+              {creating ? "Adding..." : "Add Studio"}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowCreate(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {created && (
+        <div className="alert alert-success" style={{ marginTop: 8 }}>
+          <Icon name="check" size={13} color="var(--green)" />
+          <span style={{ fontSize: 12 }}>Studio added! {createForm.coachEmail ? "Coach notified by email." : ""}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Studio page — coach manages their claimed studio
+function StudioPage({ coachAccount, supabase, setPage }) {
+  const [studio, setStudio] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [pendingClaims, setPendingClaims] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editMode, setEditMode] = useState(false);
+  const [form, setForm] = useState({});
+  const [claimMode, setClaimMode] = useState(false);
+  const [claimForm, setClaimForm] = useState({ message: "" });
+  const [studioSearch, setStudioSearch] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState("profile"); // profile | members | invites
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteSent, setInviteSent] = useState(false);
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    // Load claimed studio for this coach
+    const { data: s } = await supabase.from("studios")
+      .select("*").eq("owner_coach_id", coachAccount.id).single();
+    if (s) {
+      setStudio(s);
+      setForm(s);
+      // Load members
+      const { data: m } = await supabase.from("studio_members")
+        .select("*, twirlers(first_name, organizations, family_accounts(email, parent_name))")
+        .eq("studio_id", s.id);
+      setMembers(m || []);
+    }
+    // Load pending claim requests for this coach
+    const { data: claims } = await supabase.from("studio_claim_requests")
+      .select("*, studios(name)").eq("coach_id", coachAccount.id);
+    setPendingClaims(claims || []);
+    setLoading(false);
+  }
+
+  async function saveStudio() {
+    setSaving(true);
+    const { data: updated } = await supabase.from("studios").update({
+      name: form.name,
+      city: form.city,
+      state: form.state,
+      website: form.website,
+      phone: form.phone,
+      description: form.description,
+    }).eq("id", studio.id).select().single();
+    if (updated) setStudio(updated);
+    setEditMode(false);
+    setSaving(false);
+  }
+
+  async function createStudio() {
+    setSaving(true);
+    const { data: s } = await supabase.from("studios").insert({
+      name: form.name || coachAccount.studio || coachAccount.name + " Studio",
+      city: form.city || null,
+      state: form.state || null,
+      website: form.website || null,
+      phone: form.phone || null,
+      description: form.description || null,
+      status: "pending_claim",
+      created_by: "coach",
+    }).select().single();
+    if (s) {
+      // Create claim request
+      await supabase.from("studio_claim_requests").insert({
+        studio_id: s.id,
+        coach_id: coachAccount.id,
+        message: claimForm.message || "Coach created this studio.",
+        status: "pending",
+      });
+      // Notify admin
+      await sendEmail("studio_claim_request", "help@twirlpower.com", {
+        coachName: coachAccount.name,
+        coachEmail: coachAccount.email,
+        studioName: s.name,
+        city: s.city,
+        state: s.state,
+        message: claimForm.message,
+        type: "new",
+      });
+      setPendingClaims([{ id: "new", studios: { name: s.name }, status: "pending", created_at: new Date().toISOString() }]);
+    }
+    setSaving(false);
+    setClaimMode(false);
+    await load();
+  }
+
+  async function searchStudios() {
+    if (studioSearch.length < 2) return;
+    const { data } = await supabase.from("studios").select("*").ilike("name", `%${studioSearch}%`).limit(8);
+    setSearchResults(data || []);
+  }
+
+  async function claimExisting(s) {
+    setSaving(true);
+    await supabase.from("studio_claim_requests").insert({
+      studio_id: s.id,
+      coach_id: coachAccount.id,
+      message: claimForm.message || "",
+      status: "pending",
+    });
+    await sendEmail("studio_claim_request", "help@twirlpower.com", {
+      coachName: coachAccount.name,
+      coachEmail: coachAccount.email,
+      studioName: s.name,
+      city: s.city,
+      state: s.state,
+      message: claimForm.message,
+      type: "existing",
+    });
+    setPendingClaims(prev => [...prev, { studios: { name: s.name }, status: "pending" }]);
+    setSearchResults([]);
+    setStudioSearch("");
+    setSaving(false);
+  }
+
+  async function approveMember(memberId) {
+    await supabase.from("studio_members").update({ status: "active" }).eq("id", memberId);
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, status: "active" } : m));
+  }
+
+  async function removeMember(memberId) {
+    if (!window.confirm("Remove this twirler from the studio?")) return;
+    await supabase.from("studio_members").delete().eq("id", memberId);
+    setMembers(prev => prev.filter(m => m.id !== memberId));
+  }
+
+  async function sendInvite() {
+    if (!inviteEmail || !studio) return;
+    await sendEmail("studio_invite_external", inviteEmail, {
+      twirlerName: inviteName || "a twirler",
+      studioName: studio.name,
+      coachName: coachAccount.name,
+      city: studio.city,
+      state: studio.state,
+    });
+    setInviteSent(true);
+    setInviteEmail("");
+    setInviteName("");
+    setTimeout(() => setInviteSent(false), 3000);
+  }
+
+  if (loading) return <div style={{ padding: 32, textAlign: "center", color: "var(--muted)" }}>Loading studio...</div>;
+
+  // No studio yet — offer to create or claim
+  if (!studio) {
+    return (
+      <div>
+        <div className="page-header">
+          <h1 className="page-title">My Studio</h1>
+          <p className="page-sub">Create or claim your studio on TwirlPower</p>
+        </div>
+
+        {pendingClaims.length > 0 && (
+          <div className="alert alert-info mb-4">
+            <Icon name="info" size={14} color="var(--brand)" />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>Claim request pending admin review</div>
+              <div style={{ fontSize: 12, marginTop: 2 }}>
+                {pendingClaims.map(c => c.studios?.name).join(", ")} — you'll be notified once approved.
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid-2" style={{ gap: 16 }}>
+          {/* Create new */}
+          <div className="card" style={{ borderTop: "3px solid var(--brand)" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🏫</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 4 }}>Create a new studio</div>
+            <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16, lineHeight: 1.6 }}>
+              Your studio isn't on TwirlPower yet. Create a listing and request admin approval to claim it.
+            </div>
+            {claimMode === "new" ? (
+              <div>
+                <div className="form-group"><label className="label">Studio name *</label>
+                  <input className="input" value={form.name || ""} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder={coachAccount.studio || "Studio name"} /></div>
+                <div className="form-row">
+                  <div className="form-group"><label className="label">City</label>
+                    <input className="input" value={form.city || ""} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} /></div>
+                  <div className="form-group"><label className="label">State</label>
+                    <select className="select" value={form.state || ""} onChange={e => setForm(f => ({ ...f, state: e.target.value }))}>
+                      <option value="">Select</option>
+                      {US_STATES.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="form-group"><label className="label">Message to admin (optional)</label>
+                  <textarea className="textarea" value={claimForm.message} onChange={e => setClaimForm(f => ({ ...f, message: e.target.value }))}
+                    rows={2} placeholder="Brief note about your studio and why you're claiming it..." /></div>
+                <div className="flex gap-2">
+                  <button className="btn btn-primary btn-sm" disabled={!form.name || saving} onClick={createStudio}>
+                    {saving ? "Submitting..." : "Submit for Approval"}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setClaimMode(false)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn btn-primary btn-sm" onClick={() => { setClaimMode("new"); setForm({ name: coachAccount.studio || "" }); }}>
+                Create Studio
+              </button>
+            )}
+          </div>
+
+          {/* Claim existing */}
+          <div className="card" style={{ borderTop: "3px solid var(--slate)" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 4 }}>Claim an existing studio</div>
+            <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16, lineHeight: 1.6 }}>
+              A twirler may have already created a listing for your studio. Search and request to claim it.
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <input className="input" value={studioSearch} onChange={e => setStudioSearch(e.target.value)}
+                placeholder="Search by studio name..." onKeyDown={e => e.key === "Enter" && searchStudios()} />
+              <button className="btn btn-secondary btn-sm" onClick={searchStudios}>Search</button>
+            </div>
+            {searchResults.map(s => (
+              <div key={s.id} className="card-sm mb-2" style={{ background: "var(--bg)" }}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>{[s.city, s.state].filter(Boolean).join(", ")}</div>
+                    <span className="badge badge-gray" style={{ fontSize: 9 }}>{s.status}</span>
+                  </div>
+                  {s.status !== "claimed" ? (
+                    <button className="btn btn-primary btn-sm" disabled={saving}
+                      onClick={() => claimExisting(s)}>Request Claim</button>
+                  ) : (
+                    <span className="badge badge-green" style={{ fontSize: 10 }}>Already claimed</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Has a claimed (or pending) studio
+  const tabs = [
+    { id: "profile", label: "Studio Profile" },
+    { id: "members", label: `Members (${members.length})` },
+    { id: "invites", label: "Invite Twirlers" },
+  ];
+
+  return (
+    <div>
+      <div className="page-header flex items-center justify-between">
+        <div>
+          <h1 className="page-title">{studio.name}</h1>
+          <p className="page-sub">
+            {[studio.city, studio.state].filter(Boolean).join(", ")}
+            <span className={`badge ${studio.status === "claimed" ? "badge-green" : "badge-amber"}`}
+              style={{ fontSize: 10, marginLeft: 8 }}>
+              {studio.status === "claimed" ? "Claimed" : "Pending approval"}
+            </span>
+          </p>
+        </div>
+        {!editMode && studio.status === "claimed" && (
+          <button className="btn btn-ghost btn-sm" onClick={() => setEditMode(true)}>
+            <Icon name="edit" size={13} /> Edit
+          </button>
+        )}
+      </div>
+
+      {studio.status === "pending_claim" && (
+        <div className="alert alert-warn mb-4">
+          <Icon name="alert" size={14} color="var(--amber)" />
+          <span style={{ fontSize: 13 }}>Your claim request is pending admin review. You'll be notified once approved. Studio details can be edited after approval.</span>
+        </div>
+      )}
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
+              background: "none", fontFamily: "inherit",
+              color: tab === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -1 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Studio Profile tab */}
+      {tab === "profile" && (
+        <div className="card">
+          {editMode ? (
+            <div>
+              <div className="form-row">
+                <div className="form-group"><label className="label">Studio name</label>
+                  <input className="input" value={form.name || ""} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+                <div className="form-group"><label className="label">Phone</label>
+                  <input className="input" value={form.phone || ""} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label className="label">City</label>
+                  <input className="input" value={form.city || ""} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} /></div>
+                <div className="form-group"><label className="label">State</label>
+                  <select className="select" value={form.state || ""} onChange={e => setForm(f => ({ ...f, state: e.target.value }))}>
+                    <option value="">Select state</option>
+                    {US_STATES.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-group"><label className="label">Website</label>
+                <input className="input" value={form.website || ""} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="https://" /></div>
+              <div className="form-group"><label className="label">Description</label>
+                <textarea className="textarea" value={form.description || ""} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
+              <div className="flex gap-2">
+                <button className="btn btn-primary btn-sm" disabled={saving} onClick={saveStudio}>{saving ? "Saving..." : "Save"}</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setForm(studio); setEditMode(false); }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              {[
+                ["Name", studio.name],
+                ["Location", [studio.city, studio.state].filter(Boolean).join(", ") || "—"],
+                ["Phone", studio.phone || "—"],
+                ["Website", studio.website || "—"],
+              ].map(([label, val]) => (
+                <div key={label} style={{ display: "flex", gap: 12, padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", width: 90, flexShrink: 0 }}>{label}</div>
+                  <div style={{ fontSize: 13, color: "var(--navy)" }}>
+                    {label === "Website" && studio.website
+                      ? <a href={studio.website} target="_blank" rel="noreferrer" style={{ color: "var(--brand)" }}>{studio.website}</a>
+                      : val}
+                  </div>
+                </div>
+              ))}
+              {studio.description && (
+                <div style={{ marginTop: 12, fontSize: 13, color: "var(--slate)", lineHeight: 1.7 }}>{studio.description}</div>
+              )}
+              {!studio.phone && !studio.website && !studio.description && studio.status === "claimed" && (
+                <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic", marginTop: 8 }}>
+                  Add your phone, website, and description to complete your studio profile.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Members tab */}
+      {tab === "members" && (
+        <div>
+          {members.length === 0 ? (
+            <div className="empty-state">
+              <div style={{ fontSize: 32, marginBottom: 8 }}>👥</div>
+              <h3>No twirlers yet</h3>
+              <p>Twirlers who select your studio will appear here. You can also invite them directly.</p>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {members.map(m => {
+                const t = m.twirlers;
+                return (
+                  <div key={m.id} className="card-sm flex items-center gap-3"
+                    style={{ borderLeft: m.status === "active" ? "3px solid var(--green)" : "3px solid var(--amber)" }}>
+                    <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: "var(--brand)", color: "white" }}>
+                      {initials(t?.first_name || "?")}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{t?.first_name}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                        {t?.family_accounts?.parent_name} · {(t?.organizations || []).join(", ")}
+                      </div>
+                    </div>
+                    {m.status === "pending" ? (
+                      <div className="flex gap-2">
+                        <span className="badge badge-amber" style={{ fontSize: 10 }}>Pending</span>
+                        <button className="btn btn-primary btn-sm" onClick={() => approveMember(m.id)}>✓ Approve</button>
+                        <button className="btn btn-danger btn-sm" onClick={() => removeMember(m.id)}>✗</button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 items-center">
+                        <span className="badge badge-green" style={{ fontSize: 10 }}>Active</span>
+                        <button className="btn btn-ghost btn-sm" onClick={() => removeMember(m.id)}
+                          style={{ fontSize: 11, padding: "3px 8px" }}>Remove</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Invite tab */}
+      {tab === "invites" && (
+        <div className="card" style={{ maxWidth: 480 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>Invite a twirler by email</div>
+          <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16, lineHeight: 1.6 }}>
+            Send an invitation to twirlers who aren't on TwirlPower yet, or who haven't joined your studio.
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">Twirler's name (optional)</label>
+              <input className="input" value={inviteName} onChange={e => setInviteName(e.target.value)} placeholder="First name" />
+            </div>
+            <div className="form-group">
+              <label className="label">Parent/guardian email *</label>
+              <input className="input" type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="family@example.com" />
+            </div>
+          </div>
+          <button className="btn btn-primary" disabled={!inviteEmail} onClick={sendInvite}>
+            Send Invitation
+          </button>
+          {inviteSent && (
+            <div className="alert alert-success" style={{ marginTop: 12 }}>
+              <Icon name="check" size={13} color="var(--green)" />
+              <span style={{ fontSize: 12 }}>Invitation sent!</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
