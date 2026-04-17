@@ -4840,36 +4840,76 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
 
         {/* DATA OVERVIEW */}
         {tab === "data" && (
-          <div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-              {[
-                { label: "Twirlers", value: twirlers.length, icon: "👤" },
-                { label: "Competitions", value: competitions.length, icon: "🏆" },
-                { label: "Results", value: results.length, icon: "📋" },
-                { label: "Coaches", value: coaches.length, icon: "🎓" },
-                { label: "Hosts (total)", value: (competitionHosts || []).length, icon: "📅" },
-                { label: "Hosts (pending)", value: pendingHosts.length, icon: "⏳", warn: pendingHosts.length > 0 },
-              ].map(stat => (
-                <div key={stat.label} className="stat-card" style={stat.warn && stat.value > 0 ? { border: "1px solid #fed7aa", background: "#fff7ed" } : {}}>
-                  <div style={{ fontSize: 20, marginBottom: 4 }}>{stat.icon}</div>
-                  <div className="stat-value" style={{ fontSize: 22, color: stat.warn && stat.value > 0 ? "var(--red)" : "var(--navy)" }}>
-                    {stat.value}
-                  </div>
-                  <div className="stat-label">{stat.label}</div>
-                </div>
-              ))}
-            </div>
-            <div className="alert alert-info">
-              <Icon name="info" size={14} color="var(--brand)" />
-              <span style={{ fontSize: 12 }}>Phase 2: this tab will show real-time database stats across all users, error logs, and a Supabase query console.</span>
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setPage("openqs")}>
-                View Open Questions →
-              </button>
-            </div>
-          </div>
+          <DataOverviewTab supabase={supabase} competitionHosts={competitionHosts} pendingHosts={pendingHosts} setPage={setPage} />
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── DATA OVERVIEW TAB ───────────────────────────────────────────────────────
+
+function DataOverviewTab({ supabase, competitionHosts, pendingHosts, setPage }) {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      const [
+        { count: families },
+        { count: coaches },
+        { count: twirlers },
+        { count: competitions },
+        { count: results },
+        { count: bugReports },
+        { count: feedback },
+      ] = await Promise.all([
+        supabase.from('family_accounts').select('*', { count: 'exact', head: true }),
+        supabase.from('coach_accounts').select('*', { count: 'exact', head: true }),
+        supabase.from('twirlers').select('*', { count: 'exact', head: true }),
+        supabase.from('competitions').select('*', { count: 'exact', head: true }),
+        supabase.from('results').select('*', { count: 'exact', head: true }),
+        supabase.from('bug_reports').select('*', { count: 'exact', head: true }),
+        supabase.from('beta_feedback').select('*', { count: 'exact', head: true }),
+      ]);
+      setStats({ families, coaches, twirlers, competitions, results, bugReports, feedback });
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  if (loading) return <div style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>Loading stats...</div>;
+
+  const statCards = [
+    { label: "Family Accounts", value: stats.families, icon: "👨‍👩‍👧" },
+    { label: "Coach Accounts", value: stats.coaches, icon: "🎓" },
+    { label: "Twirlers", value: stats.twirlers, icon: "👤" },
+    { label: "Competitions", value: stats.competitions, icon: "🏆" },
+    { label: "Results", value: stats.results, icon: "📋" },
+    { label: "Hosts (total)", value: (competitionHosts || []).length, icon: "📅" },
+    { label: "Hosts (pending)", value: (pendingHosts || []).length, icon: "⏳", warn: (pendingHosts || []).length > 0 },
+    { label: "Bug Reports", value: stats.bugReports, icon: "🐛", warn: stats.bugReports > 0 },
+    { label: "Beta Feedback", value: stats.feedback, icon: "⭐" },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+        {statCards.map(stat => (
+          <div key={stat.label} className="stat-card"
+            style={stat.warn && stat.value > 0 ? { border: "1px solid #fed7aa", background: "#fff7ed" } : {}}>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>{stat.icon}</div>
+            <div className="stat-value" style={{ fontSize: 22, color: stat.warn && stat.value > 0 ? "var(--red)" : "var(--navy)" }}>
+              {stat.value ?? "—"}
+            </div>
+            <div className="stat-label">{stat.label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => setPage("openqs")}>
+          View Open Questions →
+        </button>
       </div>
     </div>
   );
@@ -4878,26 +4918,30 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
 // ─── ACCOUNTS TAB (ADMIN) ─────────────────────────────────────────────────────
 
 function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
+  const [accountType, setAccountType] = useState("family"); // "family" | "coach"
   const [accounts, setAccounts] = useState([]);
+  const [coachAccounts, setCoachAccounts] = useState([]);
   const [admins, setAdmins] = useState([]); // user_ids that are admins
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [accountTwirlers, setAccountTwirlers] = useState({});
-  const [adminWorking, setAdminWorking] = useState({}); // accountId → true while saving
+  const [adminWorking, setAdminWorking] = useState({});
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const [{ data: accts, error: e1 }, { data: adms, error: e2 }] = await Promise.all([
+        const [{ data: accts, error: e1 }, { data: coaches, error: e2 }, { data: adms, error: e3 }] = await Promise.all([
           supabase.from('family_accounts').select('*').order('created_at', { ascending: false }),
+          supabase.from('coach_accounts').select('*').order('created_at', { ascending: false }),
           supabase.from('admins').select('user_id'),
         ]);
         if (e1) throw e1;
-        if (e2) throw e2;
+        if (e3) throw e3;
         setAccounts(accts || []);
+        setCoachAccounts(coaches || []);
         setAdmins((adms || []).map(a => a.user_id));
       } catch (err) {
         setError(err.message);
@@ -4982,6 +5026,69 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
 
   return (
     <div>
+      {/* Account type switcher */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
+        {[
+          { id: "family", label: `Families (${accounts.length})` },
+          { id: "coach", label: `Coaches (${coachAccounts.length})` },
+        ].map(t => (
+          <button key={t.id} onClick={() => { setAccountType(t.id); setSearch(""); setExpandedId(null); }}
+            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
+              background: "none", fontFamily: "inherit",
+              color: accountType === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: accountType === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -1 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Coach accounts list */}
+      {accountType === "coach" && (
+        <div>
+          {coachAccounts.filter(c =>
+            !search ||
+            c.name?.toLowerCase().includes(search.toLowerCase()) ||
+            c.email?.toLowerCase().includes(search.toLowerCase()) ||
+            c.studio?.toLowerCase().includes(search.toLowerCase())
+          ).length === 0 ? (
+            <div className="empty-state" style={{ padding: "24px 0" }}>
+              <h3>No coach accounts yet</h3>
+              <p>Coach accounts appear here once a coach signs up.</p>
+            </div>
+          ) : coachAccounts.filter(c =>
+            !search ||
+            c.name?.toLowerCase().includes(search.toLowerCase()) ||
+            c.email?.toLowerCase().includes(search.toLowerCase()) ||
+            c.studio?.toLowerCase().includes(search.toLowerCase())
+          ).map(c => (
+            <div key={c.id} style={{ border: "1px solid var(--border)", borderRadius: 8, marginBottom: 6,
+              background: "var(--card)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+                <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0,
+                  background: "#ede9fe", color: "#6d28d9" }}>
+                  {initials(c.name || c.email || "?")}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>{c.name || "—"}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {c.email}{c.studio ? ` · ${c.studio}` : ""}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                  {c.organizations?.length > 0 && c.organizations.map(o => (
+                    <span key={o} className="badge" style={{ fontSize: 9, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>
+                  ))}
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(c.created_at)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Family accounts list */}
+      {accountType === "family" && <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <span style={{ fontSize: 13, color: "var(--slate)" }}>
           {accounts.length} account{accounts.length !== 1 ? "s" : ""}
@@ -5110,13 +5217,10 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
           </div>
         ))}
       </div>
+      </>}
     </div>
   );
-}
-
-
-
-function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, unlinkCoach, familyAccount, coachCompetitions, invites, coachCreateCompetition, coachLinks, respondToCoachLink, setPage }) {
+}{ coaches, twirlers, activeTwirler, addCoach, linkCoach, unlinkCoach, familyAccount, coachCompetitions, invites, coachCreateCompetition, coachLinks, respondToCoachLink, setPage }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showCreateComp, setShowCreateComp] = useState(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", specialization: "", organizations: [] });
