@@ -1402,7 +1402,7 @@ export default function App() {
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
           {page === "history" && <HistoryPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
-          {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} />}
+          {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} />}
           {page === "coaches" && <CoachesPage {...pageProps} />}
           {page === "openqs" && isAdmin && <OpenQuestionsPage />}
           {page === "orgs" && <OrganizationsPage />}
@@ -2920,7 +2920,7 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
 
 // ─── PROFILE PAGE ────────────────────────────────────────────────────────────
 
-function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, openModal, competitionHosts, approveHost, competitions, results, setTwirlers, setCompetitions, setResults, setCoaches, isAdmin }) {
+function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, setCoaches, openModal, competitionHosts, approveHost, competitions, results, setTwirlers, setCompetitions, setResults, isAdmin, setPage }) {
   const [editFamily, setEditFamily] = useState(false);
   const [editTwirler, setEditTwirler] = useState(false);
   const [fForm, setFF] = useState(familyAccount);
@@ -3204,7 +3204,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
       <BackupSection familyAccount={familyAccount} twirlers={twirlers} competitions={competitions} results={results} coaches={coaches} setFamilyAccount={setFamilyAccount} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} />
 
       {/* ── ADMIN SECTION ── */}
-      {isAdmin && <AdminSection competitionHosts={competitionHosts} approveHost={approveHost} familyAccount={familyAccount} isAdmin={isAdmin} setPage={setPage} />}
+      {isAdmin && <AdminSection competitionHosts={competitionHosts} approveHost={approveHost} isAdmin={isAdmin} setPage={setPage} familyAccount={familyAccount} twirlers={twirlers} competitions={competitions} results={results} coaches={coaches} supabase={supabase} />}
     </div>
   );
 }
@@ -3438,72 +3438,407 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
   );
 }
 
+// ─── ACCOUNTS TAB (ADMIN) ─────────────────────────────────────────────────────
+
+function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
+  const [accounts, setAccounts] = useState([]);
+  const [admins, setAdmins] = useState([]); // user_ids that are admins
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+  const [accountTwirlers, setAccountTwirlers] = useState({});
+  const [adminWorking, setAdminWorking] = useState({}); // accountId → true while saving
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      try {
+        const [{ data: accts, error: e1 }, { data: adms, error: e2 }] = await Promise.all([
+          supabase.from('family_accounts').select('*').order('created_at', { ascending: false }),
+          supabase.from('admins').select('user_id'),
+        ]);
+        if (e1) throw e1;
+        if (e2) throw e2;
+        setAccounts(accts || []);
+        setAdmins((adms || []).map(a => a.user_id));
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  async function loadTwirlersForAccount(familyId) {
+    if (accountTwirlers[familyId]) return;
+    const { data } = await supabase
+      .from('twirlers')
+      .select('id, first_name, dob, organizations')
+      .eq('family_id', familyId);
+    setAccountTwirlers(prev => ({ ...prev, [familyId]: data || [] }));
+  }
+
+  function toggleExpand(id) {
+    if (expandedId === id) {
+      setExpandedId(null);
+    } else {
+      setExpandedId(id);
+      loadTwirlersForAccount(id);
+    }
+  }
+
+  async function grantAdmin(account) {
+    if (!account.user_id) {
+      alert("This account doesn't have a linked auth user ID. They need to sign in at least once before admin can be granted.");
+      return;
+    }
+    if (!window.confirm(`Grant admin access to ${account.parent_name || account.email}? They will be able to approve hosts and manage accounts.`)) return;
+    setAdminWorking(p => ({ ...p, [account.id]: true }));
+    try {
+      const { error } = await supabase.from('admins').insert({ user_id: account.user_id });
+      if (error) throw error;
+      setAdmins(prev => [...prev, account.user_id]);
+    } catch (err) {
+      alert("Failed to grant admin: " + err.message);
+    } finally {
+      setAdminWorking(p => ({ ...p, [account.id]: false }));
+    }
+  }
+
+  async function revokeAdmin(account) {
+    if (account.email === currentFamilyAccount?.email) {
+      alert("You can't revoke your own admin access.");
+      return;
+    }
+    if (!window.confirm(`Revoke admin access from ${account.parent_name || account.email}?`)) return;
+    setAdminWorking(p => ({ ...p, [account.id]: true }));
+    try {
+      const { error } = await supabase.from('admins').delete().eq('user_id', account.user_id);
+      if (error) throw error;
+      setAdmins(prev => prev.filter(id => id !== account.user_id));
+    } catch (err) {
+      alert("Failed to revoke admin: " + err.message);
+    } finally {
+      setAdminWorking(p => ({ ...p, [account.id]: false }));
+    }
+  }
+
+  const filtered = accounts.filter(a =>
+    !search ||
+    a.parent_name?.toLowerCase().includes(search.toLowerCase()) ||
+    a.email?.toLowerCase().includes(search.toLowerCase()) ||
+    a.state?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const isCurrent = (a) => a.email === currentFamilyAccount?.email;
+  const isAdmin = (a) => a.user_id && admins.includes(a.user_id);
+
+  if (loading) return <div style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>Loading accounts...</div>;
+  if (error) return (
+    <div className="alert alert-warn">
+      <Icon name="alert" size={14} color="var(--amber)" />
+      <span style={{ fontSize: 12 }}>Error loading accounts: {error}. Check your Supabase RLS policies allow admins to read all rows.</span>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <span style={{ fontSize: 13, color: "var(--slate)" }}>
+          {accounts.length} account{accounts.length !== 1 ? "s" : ""}
+          {admins.length > 0 && <span style={{ marginLeft: 8, color: "var(--muted)" }}>· {admins.length} admin{admins.length !== 1 ? "s" : ""}</span>}
+        </span>
+        <div style={{ position: "relative" }}>
+          <input className="input" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search name, email, state..." style={{ paddingLeft: 30, width: 220, fontSize: 12 }} />
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+            style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+        </div>
+      </div>
+
+      {filtered.length === 0 && (
+        <div className="empty-state" style={{ padding: "24px 0" }}>
+          <h3>No accounts found</h3>
+          <p>{search ? "Try a different search" : "No family accounts registered yet"}</p>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {filtered.map(a => (
+          <div key={a.id} style={{ border: "1px solid", borderRadius: 8,
+            background: isCurrent(a) ? "rgba(13,148,136,0.05)" : "var(--card)",
+            borderColor: isAdmin(a) ? "#818cf8" : isCurrent(a) ? "var(--brand)" : "var(--border)" }}>
+
+            {/* Row header */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer" }}
+              onClick={() => toggleExpand(a.id)}>
+              <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0,
+                background: isAdmin(a) ? "#6366f1" : isCurrent(a) ? "var(--brand)" : "var(--navy2)", color: "white" }}>
+                {initials(a.parent_name || a.email || "?")}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                  {a.parent_name || "—"}
+                  {isCurrent(a) && <span className="badge badge-green" style={{ fontSize: 9 }}>You</span>}
+                  {isAdmin(a) && <span className="badge" style={{ fontSize: 9, background: "#e0e7ff", color: "#4338ca" }}>Admin</span>}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {a.email}{a.state ? ` · ${a.state}` : ""}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                {a.studio && <span className="badge badge-gray" style={{ fontSize: 10 }}>{a.studio}</span>}
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(a.created_at)}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2"
+                  style={{ transform: expandedId === a.id ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </div>
+            </div>
+
+            {/* Expanded detail */}
+            {expandedId === a.id && (
+              <div style={{ padding: "10px 14px 14px", borderTop: "1px solid var(--border)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                  {[
+                    ["Email", a.email],
+                    ["Phone", a.phone || "—"],
+                    ["State", a.state || "—"],
+                    ["Studio", a.studio || "—"],
+                    ["Registered", fmtDate(a.created_at)],
+                    ["Account ID", a.id?.slice(0, 8) + "..."],
+                  ].map(([label, val]) => (
+                    <div key={label}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.4px" }}>{label}</div>
+                      <div style={{ fontSize: 12, color: "var(--navy)", marginTop: 1 }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Twirlers */}
+                {accountTwirlers[a.id] ? (
+                  accountTwirlers[a.id].length > 0 ? (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 6 }}>
+                        Twirlers ({accountTwirlers[a.id].length})
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {accountTwirlers[a.id].map(t => (
+                          <div key={t.id} style={{ padding: "3px 10px", background: "var(--bg)", borderRadius: 20,
+                            border: "1px solid var(--border)", fontSize: 12 }}>
+                            {t.first_name}
+                            {t.organizations?.length > 0 && (
+                              <span style={{ color: "var(--muted)", fontSize: 10, marginLeft: 4 }}>{t.organizations.join(", ")}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>No twirlers on this account</div>
+                  )
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>Loading twirlers...</div>
+                )}
+
+                {/* Admin access control */}
+                <div style={{ paddingTop: 10, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--navy)" }}>Admin Access</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                      {isAdmin(a) ? "This account has full admin access." : "No admin access."}
+                    </div>
+                  </div>
+                  {isCurrent(a) ? (
+                    <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Can't change your own</span>
+                  ) : isAdmin(a) ? (
+                    <button className="btn btn-danger btn-sm" disabled={adminWorking[a.id]}
+                      onClick={() => revokeAdmin(a)}>
+                      {adminWorking[a.id] ? "Revoking..." : "Revoke Admin"}
+                    </button>
+                  ) : (
+                    <button className="btn btn-secondary btn-sm" disabled={adminWorking[a.id]}
+                      onClick={() => grantAdmin(a)}
+                      style={{ borderColor: "#818cf8", color: "#4338ca" }}>
+                      {adminWorking[a.id] ? "Granting..." : "⭐ Grant Admin"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN SECTION ────────────────────────────────────────────────────────────
 
 const ADMIN_PIN = "twirlpower2025"; // kept for reference only — no longer used
 
-function AdminSection({ competitionHosts, approveHost, isAdmin, setPage }) {
-  const pendingHosts = competitionHosts.filter(h => !h.approved);
-  const approvedHosts = competitionHosts.filter(h => h.approved);
+function AdminSection({ competitionHosts, approveHost, isAdmin, setPage, familyAccount, twirlers, competitions, results, coaches, supabase }) {
+  const [adminTab, setAdminTab] = useState("hosts"); // hosts | accounts | data
+  const [searchAccounts, setSearchAccounts] = useState("");
+
+  const pendingHosts = (competitionHosts || []).filter(h => !h.approved);
+  const approvedHosts = (competitionHosts || []).filter(h => h.approved);
+
+  // Build accounts list from localStorage — all family accounts stored
+  // In localStorage prototype, we only have the current user's data
+  // This section will become a real user list once Supabase is added
+  const localAccounts = Object.keys(localStorage)
+    .filter(k => k.startsWith("tp_family_"))
+    .map(k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } })
+    .filter(Boolean);
+
+  // Current account stats
+  const accountStats = {
+    twirlers: twirlers.length,
+    competitions: competitions.length,
+    results: results.length,
+    coaches: coaches.length,
+    hosts: (competitionHosts || []).length,
+    pendingHosts: pendingHosts.length,
+  };
+
+  const tabs = [
+    { id: "hosts", label: `Host Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
+    { id: "accounts", label: "Accounts" },
+    { id: "data", label: "Data Overview" },
+  ];
 
   return (
     <div className="card mt-4" style={{ borderTop: "3px solid var(--navy)" }}>
-      <div className="section-header">
-        <span className="section-title">TwirlPower Admin</span>
-        <span className="badge badge-green" style={{ fontSize: 10 }}>Admin access</span>
+      <div className="section-header" style={{ marginBottom: 0 }}>
+        <div className="flex items-center gap-2">
+          <span className="section-title">TwirlPower Admin</span>
+          <span className="badge badge-green" style={{ fontSize: 10 }}>Admin</span>
+        </div>
         <button className="btn btn-ghost btn-sm" onClick={() => setPage("openqs")} style={{ fontSize: 12 }}>
           Open Questions
         </button>
       </div>
-      <div className="alert alert-info mb-4">
-        <Icon name="info" size={14} color="var(--brand)" />
-        <span style={{ fontSize: 12 }}>
-          You are signed in as an administrator. Once a Competition Host is approved, they retain access permanently.
-          Phase 2: Approval notifications will be sent via email.
-        </span>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", gap: 4, marginTop: 14, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setAdminTab(t.id)}
+            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
+              background: "none", fontFamily: "inherit",
+              color: adminTab === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: adminTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -1 }}>
+            {t.label}
+          </button>
+        ))}
       </div>
-      {pendingHosts.length > 0 && (
-        <div className="mb-4">
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-            ⏳ Pending Approval ({pendingHosts.length})
+
+      {/* ── HOST APPROVALS TAB ── */}
+      {adminTab === "hosts" && (
+        <div>
+          <div className="alert alert-info mb-4">
+            <Icon name="info" size={14} color="var(--brand)" />
+            <span style={{ fontSize: 12 }}>Once approved, hosts retain access permanently. Phase 2: approval notifications via email.</span>
           </div>
-          {pendingHosts.map(h => (
-            <div key={h.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
-              <div className="flex items-start gap-3">
-                <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(h.name)}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
-                  {h.organization && <div style={{ fontSize: 12, color: "var(--slate)" }}>🏆 {h.organization}</div>}
-                  {h.email && <div style={{ fontSize: 12, color: "var(--slate)" }}>📧 {h.email}</div>}
-                  {h.phone && <div style={{ fontSize: 12, color: "var(--slate)" }}>📞 {h.phone}</div>}
-                  {h.state && <div style={{ fontSize: 12, color: "var(--slate)" }}>📍 {h.state}</div>}
-                  {h.notes && <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{h.notes}"</div>}
-                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt)}</div>
-                </div>
-                <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
+          {pendingHosts.length > 0 && (
+            <div className="mb-4">
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                ⏳ Pending ({pendingHosts.length})
               </div>
+              {pendingHosts.map(h => (
+                <div key={h.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                  <div className="flex items-start gap-3">
+                    <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(h.name)}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
+                      {h.organization && <div style={{ fontSize: 12, color: "var(--slate)" }}>🏆 {h.organization}</div>}
+                      {h.email && <div style={{ fontSize: 12, color: "var(--slate)" }}>📧 {h.email}</div>}
+                      {h.phone && <div style={{ fontSize: 12, color: "var(--slate)" }}>📞 {h.phone}</div>}
+                      {h.state && <div style={{ fontSize: 12, color: "var(--slate)" }}>📍 {h.state}</div>}
+                      {h.notes && <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{h.notes}"</div>}
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt)}</div>
+                    </div>
+                    <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+          {pendingHosts.length === 0 && (
+            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending host approvals.</div>
+          )}
+          {approvedHosts.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                ✓ Approved Hosts ({approvedHosts.length})
+              </div>
+              {approvedHosts.map(h => (
+                <div key={h.id} className="flex items-center gap-3 mb-2" style={{ padding: "10px 12px", background: "#f0fdf4", borderRadius: 8 }}>
+                  <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#bbf7d0", color: "#166534" }}>{initials(h.name)}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                      {[h.organization, h.email, h.state].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                  <span className="badge badge-green" style={{ fontSize: 10 }}>Approved</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
-      {pendingHosts.length === 0 && (
-        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>No pending host approvals.</div>
+
+      {/* ── ACCOUNTS TAB ── */}
+      {adminTab === "accounts" && (
+        <AccountsTab supabase={supabase} currentFamilyAccount={familyAccount} twirlers={twirlers} />
       )}
-      {approvedHosts.length > 0 && (
+
+      {/* ── DATA OVERVIEW TAB ── */}
+      {adminTab === "data" && (
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-            ✓ Approved Hosts ({approvedHosts.length})
-          </div>
-          {approvedHosts.map(h => (
-            <div key={h.id} className="flex items-center gap-3 mb-2 p-3" style={{ background: "#f0fdf4", borderRadius: 8 }}>
-              <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#bbf7d0", color: "#166534" }}>{initials(h.name)}</div>
-              <div style={{ flex: 1 }}>
-                <span style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</span>
-                {h.organization && <span style={{ fontSize: 12, color: "var(--slate)", marginLeft: 8 }}>{h.organization}</span>}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+            {[
+              { label: "Twirlers", value: accountStats.twirlers, icon: "👤" },
+              { label: "Competitions", value: accountStats.competitions, icon: "🏆" },
+              { label: "Results", value: accountStats.results, icon: "📋" },
+              { label: "Coaches", value: accountStats.coaches, icon: "🎓" },
+              { label: "Hosts (total)", value: accountStats.hosts, icon: "📅" },
+              { label: "Hosts (pending)", value: accountStats.pendingHosts, icon: "⏳", warn: accountStats.pendingHosts > 0 },
+            ].map(stat => (
+              <div key={stat.label} className="stat-card" style={stat.warn && stat.value > 0 ? { border: "1px solid #fed7aa", background: "#fff7ed" } : {}}>
+                <div style={{ fontSize: 20, marginBottom: 4 }}>{stat.icon}</div>
+                <div className="stat-value" style={{ fontSize: 22, color: stat.warn && stat.value > 0 ? "var(--red)" : "var(--navy)" }}>
+                  {stat.value}
+                </div>
+                <div className="stat-label">{stat.label}</div>
               </div>
-              <span className="badge badge-green" style={{ fontSize: 10 }}>Approved</span>
-            </div>
-          ))}
+            ))}
+          </div>
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+            localStorage Keys (this device)
+          </div>
+          <div style={{ background: "var(--bg)", borderRadius: 8, padding: 12, fontFamily: "monospace", fontSize: 11, color: "var(--slate)", maxHeight: 200, overflowY: "auto" }}>
+            {Object.keys(localStorage).filter(k => k.startsWith("tp_")).map(k => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px solid var(--border)" }}>
+                <span>{k}</span>
+                <span style={{ color: "var(--muted)" }}>{(localStorage.getItem(k) || "").length} chars</span>
+              </div>
+            ))}
+            {Object.keys(localStorage).filter(k => k.startsWith("tp_")).length === 0 && (
+              <span style={{ color: "var(--muted)" }}>No TwirlPower keys in localStorage</span>
+            )}
+          </div>
+          <div className="alert alert-info" style={{ marginTop: 12 }}>
+            <Icon name="info" size={14} color="var(--brand)" />
+            <span style={{ fontSize: 12 }}>Phase 2: this tab will show real-time database stats, error logs, and a Supabase query console.</span>
+          </div>
         </div>
       )}
     </div>
