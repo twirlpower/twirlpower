@@ -883,37 +883,25 @@ export default function App() {
             competitionId: i.competition_id, respondedAt: i.responded_at,
             createdAt: i.created_at,
           })));
+
+          // Load coach athlete link requests
+          const { data: coachLinks } = await supabase
+            .from('coach_athlete_links')
+            .select('*, coach_accounts(name, email, studio, organizations)')
+            .in('twirler_id', twirlerIds);
+          setCoachLinks((coachLinks || []).map(l => ({
+            ...l,
+            twirlerId: l.twirler_id,
+            coachId: l.coach_id,
+            familyId: l.family_id,
+            coachName: l.coach_accounts?.name,
+            coachEmail: l.coach_accounts?.email,
+            coachStudio: l.coach_accounts?.studio,
+            coachOrgs: l.coach_accounts?.organizations || [],
+            createdAt: l.created_at,
+            type: 'coach_link',
+          })));
         }
-
-        // Load attendees for this family's twirlers
-        const { data: att } = await supabase
-          .from('attendees').select('*').eq('twirler_id', mappedTwirlers[0]?.id || '');
-        setAttendees((att || []).map(a => ({
-          ...a, twirlerId: a.twirler_id, competitionId: a.competition_id,
-          addedAt: a.added_at,
-        })));
-      }
-
-      // Load coach athlete link requests (pending coach invites to this family's twirlers)
-      if (mappedTwirlers.length > 0) {
-        const twirlerIds = mappedTwirlers.map(t => t.id);
-        const { data: coachLinks } = await supabase
-          .from('coach_athlete_links')
-          .select('*, coach_accounts(name, email, studio, organizations)')
-          .in('twirler_id', twirlerIds);
-        setCoachLinks((coachLinks || []).map(l => ({
-          ...l,
-          twirlerId: l.twirler_id,
-          coachId: l.coach_id,
-          familyId: l.family_id,
-          coachName: l.coach_accounts?.name,
-          coachEmail: l.coach_accounts?.email,
-          coachStudio: l.coach_accounts?.studio,
-          coachOrgs: l.coach_accounts?.organizations || [],
-          createdAt: l.created_at,
-          type: 'coach_link',
-        })));
-      }
 
       // Load public competitions (visible to all)
       const { data: pubComps } = await supabase
