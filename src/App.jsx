@@ -890,6 +890,7 @@ export default function App() {
   const [modals, setModals] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useLocalStorage('tp_dark_mode', false);
+  const [previewRole, setPreviewRole] = useState(null); // null = own role, 'family'|'coach'|'host'
 
   useEffect(() => {
     document.body.classList.toggle('dark', darkMode);
@@ -1386,7 +1387,7 @@ export default function App() {
     <>
       <style>{css}</style>
       <div className="app">
-        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} />
+        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="mobile-topbar">
@@ -1405,6 +1406,7 @@ export default function App() {
           {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} />}
           {page === "coaches" && <CoachesPage {...pageProps} />}
           {page === "openqs" && isAdmin && <OpenQuestionsPage />}
+          {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} />}
           {page === "orgs" && <OrganizationsPage />}
           {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
           {page === "upcoming" && <UpcomingCompetitionsPage {...pageProps} />}
@@ -1901,7 +1903,7 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode }) {
+function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole }) {
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "history", label: "Competition History", icon: "history" },
@@ -1913,6 +1915,7 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
   const accountItems = [
     { id: "profile", label: "Family Profile", icon: "user" },
     { id: "coaches", label: "Coaches", icon: "users" },
+    ...(isAdmin ? [{ id: "admin", label: "Admin", icon: "settings", admin: true }] : []),
   ];
 
   const anyAdvanceable = Object.values(progress).some(org => Object.values(org).some(e => e.shouldAdvance));
@@ -1967,9 +1970,13 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
       <div className="sidebar-section">
         <div className="sidebar-label">Account</div>
         {accountItems.map(item => (
-          <div key={item.id} className={`nav-item ${page === item.id ? "active" : ""}`} onClick={() => setPage(item.id)}>
+          <div key={item.id}
+            className={`nav-item ${page === item.id ? "active" : ""}`}
+            onClick={() => setPage(item.id)}
+            style={item.admin ? { borderLeft: page === item.id ? "3px solid #818cf8" : "3px solid transparent" } : {}}>
             <span className="nav-icon"><Icon name={item.icon} size={16} /></span>
-            <span>{item.label}</span>
+            <span style={item.admin ? { color: page === item.id ? "#a5b4fc" : "#818cf8" } : {}}>{item.label}</span>
+            {item.admin && <span className="badge" style={{ marginLeft: "auto", fontSize: 9, background: "#312e81", color: "#a5b4fc" }}>Admin</span>}
           </div>
         ))}
       </div>
@@ -3204,7 +3211,20 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
       <BackupSection familyAccount={familyAccount} twirlers={twirlers} competitions={competitions} results={results} coaches={coaches} setFamilyAccount={setFamilyAccount} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} />
 
       {/* ── ADMIN SECTION ── */}
-      {isAdmin && <AdminSection competitionHosts={competitionHosts} approveHost={approveHost} isAdmin={isAdmin} setPage={setPage} familyAccount={familyAccount} twirlers={twirlers} competitions={competitions} results={results} coaches={coaches} supabase={supabase} />}
+      {isAdmin && (
+        <div className="card mt-4" style={{ borderTop: "3px solid #818cf8" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#4338ca" }}>TwirlPower Admin</div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>You have admin access to this account.</div>
+            </div>
+            <button className="btn btn-sm" onClick={() => setPage("admin")}
+              style={{ background: "#e0e7ff", color: "#4338ca", border: "none" }}>
+              Go to Admin Panel →
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3431,6 +3451,189 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
                 Showing 20 of {wins.length} wins — use Competition History for full view
               </div>
             )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN PAGE ──────────────────────────────────────────────────────────────
+
+function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole }) {
+  const [tab, setTab] = useState("hosts");
+
+  const pendingHosts = (competitionHosts || []).filter(h => !h.approved);
+  const approvedHosts = (competitionHosts || []).filter(h => h.approved);
+
+  const tabs = [
+    { id: "hosts", label: `Host Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
+    { id: "accounts", label: "Accounts" },
+    { id: "data", label: "Data Overview" },
+  ];
+
+  const roles = [
+    { id: "family", label: "👨‍👩‍👧 Family", desc: "Standard family account view" },
+    { id: "coach", label: "🎓 Coach", desc: "Coach account view (Phase 2)" },
+    { id: "host", label: "📅 Host", desc: "Competition host view" },
+  ];
+
+  return (
+    <div>
+      <div className="page-header">
+        <div className="flex items-center gap-3">
+          <div>
+            <h1 className="page-title">Admin Panel</h1>
+            <p className="page-sub">Manage accounts, hosts, and app settings</p>
+          </div>
+          <span className="badge" style={{ background: "#e0e7ff", color: "#4338ca", fontSize: 11 }}>Admin</span>
+        </div>
+      </div>
+
+      {/* ── ROLE PREVIEW ── */}
+      <div className="card mb-4">
+        <div className="section-header" style={{ marginBottom: 12 }}>
+          <span className="section-title">Preview as Role</span>
+          {previewRole && (
+            <button className="btn btn-sm btn-secondary" onClick={() => setPreviewRole(null)}>
+              ✕ Exit preview
+            </button>
+          )}
+        </div>
+        <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 14, lineHeight: 1.6 }}>
+          Switch to a different role view to see what families, coaches, and hosts experience. Your admin access is always one click away.
+        </p>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {roles.map(r => (
+            <div key={r.id}
+              onClick={() => { setPreviewRole(previewRole === r.id ? null : r.id); setPage("home"); }}
+              style={{ padding: "10px 16px", borderRadius: 10, cursor: "pointer", border: "2px solid",
+                borderColor: previewRole === r.id ? "var(--brand)" : "var(--border)",
+                background: previewRole === r.id ? "var(--brand-light)" : "var(--bg)",
+                transition: "all 0.15s", minWidth: 140 }}>
+              <div style={{ fontSize: 15, marginBottom: 3 }}>{r.label}</div>
+              <div style={{ fontSize: 11, color: "var(--slate)" }}>{r.desc}</div>
+              {previewRole === r.id && (
+                <div style={{ fontSize: 10, color: "var(--brand)", fontWeight: 700, marginTop: 4 }}>● ACTIVE PREVIEW</div>
+              )}
+            </div>
+          ))}
+        </div>
+        {previewRole && (
+          <div className="alert alert-info" style={{ marginTop: 12 }}>
+            <Icon name="info" size={14} color="var(--brand)" />
+            <span style={{ fontSize: 12 }}>
+              You're previewing the <strong>{previewRole}</strong> view. Navigate the sidebar to see what {previewRole}s experience.
+              Click "Exit preview" above or visit Admin again to return to your normal view.
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* ── TABS ── */}
+      <div className="card">
+        <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
+                background: "none", fontFamily: "inherit",
+                color: tab === t.id ? "var(--brand)" : "var(--slate)",
+                borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+                marginBottom: -1 }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* HOST APPROVALS */}
+        {tab === "hosts" && (
+          <div>
+            <div className="alert alert-info mb-4">
+              <Icon name="info" size={14} color="var(--brand)" />
+              <span style={{ fontSize: 12 }}>Once approved, hosts retain access permanently. Phase 2: approval notifications via email.</span>
+            </div>
+            {pendingHosts.length === 0 && (
+              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending host approvals.</div>
+            )}
+            {pendingHosts.length > 0 && (
+              <div className="mb-4">
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                  ⏳ Pending ({pendingHosts.length})
+                </div>
+                {pendingHosts.map(h => (
+                  <div key={h.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                    <div className="flex items-start gap-3">
+                      <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(h.name)}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
+                        {h.organization && <div style={{ fontSize: 12, color: "var(--slate)" }}>🏆 {h.organization}</div>}
+                        {h.email && <div style={{ fontSize: 12, color: "var(--slate)" }}>📧 {h.email}</div>}
+                        {h.phone && <div style={{ fontSize: 12, color: "var(--slate)" }}>📞 {h.phone}</div>}
+                        {h.state && <div style={{ fontSize: 12, color: "var(--slate)" }}>📍 {h.state}</div>}
+                        {h.notes && <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{h.notes}"</div>}
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt)}</div>
+                      </div>
+                      <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {approvedHosts.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                  ✓ Approved Hosts ({approvedHosts.length})
+                </div>
+                {approvedHosts.map(h => (
+                  <div key={h.id} className="flex items-center gap-3 mb-2" style={{ padding: "10px 12px", background: "#f0fdf4", borderRadius: 8 }}>
+                    <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#bbf7d0", color: "#166534" }}>{initials(h.name)}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>{[h.organization, h.email, h.state].filter(Boolean).join(" · ")}</div>
+                    </div>
+                    <span className="badge badge-green" style={{ fontSize: 10 }}>Approved</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ACCOUNTS */}
+        {tab === "accounts" && (
+          <AccountsTab supabase={supabase} currentFamilyAccount={familyAccount} twirlers={twirlers} />
+        )}
+
+        {/* DATA OVERVIEW */}
+        {tab === "data" && (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[
+                { label: "Twirlers", value: twirlers.length, icon: "👤" },
+                { label: "Competitions", value: competitions.length, icon: "🏆" },
+                { label: "Results", value: results.length, icon: "📋" },
+                { label: "Coaches", value: coaches.length, icon: "🎓" },
+                { label: "Hosts (total)", value: (competitionHosts || []).length, icon: "📅" },
+                { label: "Hosts (pending)", value: pendingHosts.length, icon: "⏳", warn: pendingHosts.length > 0 },
+              ].map(stat => (
+                <div key={stat.label} className="stat-card" style={stat.warn && stat.value > 0 ? { border: "1px solid #fed7aa", background: "#fff7ed" } : {}}>
+                  <div style={{ fontSize: 20, marginBottom: 4 }}>{stat.icon}</div>
+                  <div className="stat-value" style={{ fontSize: 22, color: stat.warn && stat.value > 0 ? "var(--red)" : "var(--navy)" }}>
+                    {stat.value}
+                  </div>
+                  <div className="stat-label">{stat.label}</div>
+                </div>
+              ))}
+            </div>
+            <div className="alert alert-info">
+              <Icon name="info" size={14} color="var(--brand)" />
+              <span style={{ fontSize: 12 }}>Phase 2: this tab will show real-time database stats across all users, error logs, and a Supabase query console.</span>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setPage("openqs")}>
+                View Open Questions →
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -3677,173 +3880,6 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
   );
 }
 
-// ─── ADMIN SECTION ────────────────────────────────────────────────────────────
-
-const ADMIN_PIN = "twirlpower2025"; // kept for reference only — no longer used
-
-function AdminSection({ competitionHosts, approveHost, isAdmin, setPage, familyAccount, twirlers, competitions, results, coaches, supabase }) {
-  const [adminTab, setAdminTab] = useState("hosts"); // hosts | accounts | data
-  const [searchAccounts, setSearchAccounts] = useState("");
-
-  const pendingHosts = (competitionHosts || []).filter(h => !h.approved);
-  const approvedHosts = (competitionHosts || []).filter(h => h.approved);
-
-  // Build accounts list from localStorage — all family accounts stored
-  // In localStorage prototype, we only have the current user's data
-  // This section will become a real user list once Supabase is added
-  const localAccounts = Object.keys(localStorage)
-    .filter(k => k.startsWith("tp_family_"))
-    .map(k => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } })
-    .filter(Boolean);
-
-  // Current account stats
-  const accountStats = {
-    twirlers: twirlers.length,
-    competitions: competitions.length,
-    results: results.length,
-    coaches: coaches.length,
-    hosts: (competitionHosts || []).length,
-    pendingHosts: pendingHosts.length,
-  };
-
-  const tabs = [
-    { id: "hosts", label: `Host Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
-    { id: "accounts", label: "Accounts" },
-    { id: "data", label: "Data Overview" },
-  ];
-
-  return (
-    <div className="card mt-4" style={{ borderTop: "3px solid var(--navy)" }}>
-      <div className="section-header" style={{ marginBottom: 0 }}>
-        <div className="flex items-center gap-2">
-          <span className="section-title">TwirlPower Admin</span>
-          <span className="badge badge-green" style={{ fontSize: 10 }}>Admin</span>
-        </div>
-        <button className="btn btn-ghost btn-sm" onClick={() => setPage("openqs")} style={{ fontSize: 12 }}>
-          Open Questions
-        </button>
-      </div>
-
-      {/* Tab bar */}
-      <div style={{ display: "flex", gap: 4, marginTop: 14, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setAdminTab(t.id)}
-            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
-              background: "none", fontFamily: "inherit",
-              color: adminTab === t.id ? "var(--brand)" : "var(--slate)",
-              borderBottom: adminTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
-              marginBottom: -1 }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── HOST APPROVALS TAB ── */}
-      {adminTab === "hosts" && (
-        <div>
-          <div className="alert alert-info mb-4">
-            <Icon name="info" size={14} color="var(--brand)" />
-            <span style={{ fontSize: 12 }}>Once approved, hosts retain access permanently. Phase 2: approval notifications via email.</span>
-          </div>
-          {pendingHosts.length > 0 && (
-            <div className="mb-4">
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-                ⏳ Pending ({pendingHosts.length})
-              </div>
-              {pendingHosts.map(h => (
-                <div key={h.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
-                  <div className="flex items-start gap-3">
-                    <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(h.name)}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
-                      {h.organization && <div style={{ fontSize: 12, color: "var(--slate)" }}>🏆 {h.organization}</div>}
-                      {h.email && <div style={{ fontSize: 12, color: "var(--slate)" }}>📧 {h.email}</div>}
-                      {h.phone && <div style={{ fontSize: 12, color: "var(--slate)" }}>📞 {h.phone}</div>}
-                      {h.state && <div style={{ fontSize: 12, color: "var(--slate)" }}>📍 {h.state}</div>}
-                      {h.notes && <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{h.notes}"</div>}
-                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt)}</div>
-                    </div>
-                    <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {pendingHosts.length === 0 && (
-            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending host approvals.</div>
-          )}
-          {approvedHosts.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-                ✓ Approved Hosts ({approvedHosts.length})
-              </div>
-              {approvedHosts.map(h => (
-                <div key={h.id} className="flex items-center gap-3 mb-2" style={{ padding: "10px 12px", background: "#f0fdf4", borderRadius: 8 }}>
-                  <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#bbf7d0", color: "#166534" }}>{initials(h.name)}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                      {[h.organization, h.email, h.state].filter(Boolean).join(" · ")}
-                    </div>
-                  </div>
-                  <span className="badge badge-green" style={{ fontSize: 10 }}>Approved</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── ACCOUNTS TAB ── */}
-      {adminTab === "accounts" && (
-        <AccountsTab supabase={supabase} currentFamilyAccount={familyAccount} twirlers={twirlers} />
-      )}
-
-      {/* ── DATA OVERVIEW TAB ── */}
-      {adminTab === "data" && (
-        <div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-            {[
-              { label: "Twirlers", value: accountStats.twirlers, icon: "👤" },
-              { label: "Competitions", value: accountStats.competitions, icon: "🏆" },
-              { label: "Results", value: accountStats.results, icon: "📋" },
-              { label: "Coaches", value: accountStats.coaches, icon: "🎓" },
-              { label: "Hosts (total)", value: accountStats.hosts, icon: "📅" },
-              { label: "Hosts (pending)", value: accountStats.pendingHosts, icon: "⏳", warn: accountStats.pendingHosts > 0 },
-            ].map(stat => (
-              <div key={stat.label} className="stat-card" style={stat.warn && stat.value > 0 ? { border: "1px solid #fed7aa", background: "#fff7ed" } : {}}>
-                <div style={{ fontSize: 20, marginBottom: 4 }}>{stat.icon}</div>
-                <div className="stat-value" style={{ fontSize: 22, color: stat.warn && stat.value > 0 ? "var(--red)" : "var(--navy)" }}>
-                  {stat.value}
-                </div>
-                <div className="stat-label">{stat.label}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-            localStorage Keys (this device)
-          </div>
-          <div style={{ background: "var(--bg)", borderRadius: 8, padding: 12, fontFamily: "monospace", fontSize: 11, color: "var(--slate)", maxHeight: 200, overflowY: "auto" }}>
-            {Object.keys(localStorage).filter(k => k.startsWith("tp_")).map(k => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", borderBottom: "1px solid var(--border)" }}>
-                <span>{k}</span>
-                <span style={{ color: "var(--muted)" }}>{(localStorage.getItem(k) || "").length} chars</span>
-              </div>
-            ))}
-            {Object.keys(localStorage).filter(k => k.startsWith("tp_")).length === 0 && (
-              <span style={{ color: "var(--muted)" }}>No TwirlPower keys in localStorage</span>
-            )}
-          </div>
-          <div className="alert alert-info" style={{ marginTop: 12 }}>
-            <Icon name="info" size={14} color="var(--brand)" />
-            <span style={{ fontSize: 12 }}>Phase 2: this tab will show real-time database stats, error logs, and a Supabase query console.</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 
 function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, unlinkCoach, familyAccount, coachCompetitions, invites, coachCreateCompetition }) {
