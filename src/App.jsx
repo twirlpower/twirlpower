@@ -5185,6 +5185,13 @@ function ClubAdminTab({ supabase }) {
       status: "claimed",
       owner_coach_id: claim.coach_id,
     }).eq("id", claim.club_id);
+    // Insert club_coaches owner row
+    await supabase.from("club_coaches").upsert({
+      club_id: claim.club_id,
+      coach_id: claim.coach_id,
+      role: "owner",
+      status: "active",
+    }, { onConflict: "club_id,coach_id" });
     // Notify coach
     await sendEmail("club_claim_approved", claim.coach_accounts?.email, {
       coachName: claim.coach_accounts?.name,
@@ -7926,9 +7933,11 @@ function ClubSelector({ value, onChange, supabase }) {
   const [createForm, setCreateForm] = useState({ name: "", city: "", state: "", coachName: "", coachEmail: "" });
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState(null);
+  const [selected, setSelected] = useState(!!value); // suppress search when value already chosen
   const debounceRef = useRef(null);
 
   useEffect(() => {
+    if (selected) return; // don't search if user already picked one
     if (!query || query.length < 2) { setResults([]); return; }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -7937,7 +7946,7 @@ function ClubSelector({ value, onChange, supabase }) {
       setResults(data || []);
       setLoading(false);
     }, 300);
-  }, [query]);
+  }, [query, selected]);
 
   async function handleCreate() {
     if (!createForm.name) return;
@@ -7950,7 +7959,6 @@ function ClubSelector({ value, onChange, supabase }) {
       created_by: "twirler",
     }).select().single();
     if (!error && club) {
-      // Notify coach by email if provided
       if (createForm.coachEmail) {
         await sendEmail("club_unclaimed_notify", createForm.coachEmail, {
           coachName: createForm.coachName || "Coach",
@@ -7962,6 +7970,8 @@ function ClubSelector({ value, onChange, supabase }) {
       setCreated(club);
       onChange(club.name);
       setQuery(club.name);
+      setSelected(true);
+      setResults([]);
       setShowCreate(false);
     }
     setCreating(false);
@@ -7970,7 +7980,15 @@ function ClubSelector({ value, onChange, supabase }) {
   function selectClub(club) {
     onChange(club.name);
     setQuery(club.name);
+    setSelected(true);
     setResults([]);
+  }
+
+  function clearSelection() {
+    setQuery("");
+    setSelected(false);
+    setResults([]);
+    onChange("");
   }
 
   const statusBadge = (s) => {
@@ -7982,11 +8000,21 @@ function ClubSelector({ value, onChange, supabase }) {
   return (
     <div style={{ position: "relative" }}>
       <div style={{ position: "relative" }}>
-        <input className="input" value={query} onChange={e => { setQuery(e.target.value); onChange(e.target.value); }}
-          placeholder="Search for your club..." />
-        {loading && (
+        <input className="input" value={query}
+          onChange={e => { setQuery(e.target.value); setSelected(false); onChange(e.target.value); }}
+          placeholder="Search for your club..."
+          style={{ paddingRight: selected ? 70 : 12 }} />
+        {loading && !selected && (
           <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
             fontSize: 11, color: "var(--muted)" }}>Searching...</div>
+        )}
+        {selected && query && (
+          <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+            display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 10, color: "var(--green)", fontWeight: 600 }}>✓ Selected</span>
+            <button onClick={clearSelection} style={{ background: "none", border: "none", cursor: "pointer",
+              color: "var(--muted)", fontSize: 14, lineHeight: 1, padding: "0 2px" }} title="Clear">×</button>
+          </div>
         )}
       </div>
 
@@ -8173,6 +8201,11 @@ function ClubPage({ coachAccount, supabase, setPage, coachClubs, setCoachClubs,
         message: createForm.message || "Coach created this club.",
         document_url: docUrl, status: "pending",
       });
+      // Insert club_coaches row so coach can see it immediately (pending approval)
+      await supabase.from("club_coaches").upsert({
+        club_id: club.id, coach_id: coachAccount.id,
+        role: "owner", status: "active",
+      }, { onConflict: "club_id,coach_id" });
       await sendEmail("club_claim_request", "help@twirlpower.com", {
         coachName: coachAccount.name, coachEmail: coachAccount.email,
         clubName: club.name, city: club.city, state: club.state,
