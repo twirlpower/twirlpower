@@ -3235,7 +3235,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
       ))}
 
       {/* ── PENDING COACH LINK REQUESTS ── */}
-      {(pendingCoachLinks || []).filter(l => l.twirlerId === activeTwirler?.id).map(link => (
+      {(pendingCoachLinks || []).filter(l => l.twirlerId === activeTwirler?.id || l.twirler_id === activeTwirler?.id).map(link => (
         <div key={link.id} className="card mb-3" style={{ borderLeft: "4px solid #818cf8", padding: "16px 20px" }}>
           <div className="flex items-start gap-3">
             <div style={{ width: 36, height: 36, background: "#e0e7ff", borderRadius: 8,
@@ -4082,7 +4082,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
 
   // Coaches linked via new coach_athlete_links (real coach accounts)
   const linkedCoachLinks = (coachLinks || []).filter(l =>
-    l.twirlerId === activeTwirler?.id && l.status === 'accepted'
+    (l.twirlerId === activeTwirler?.id || l.twirler_id === activeTwirler?.id) && l.status === 'accepted'
   );
   console.log('linkedCoachLinks debug:', { linkedCoachLinks, coachLinksAll: coachLinks, activeTwirlerID: activeTwirler?.id });
   // Also show old-style coaches from coaches table for backward compat
@@ -5067,9 +5067,9 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
 
 
 
-function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, unlinkCoach, familyAccount, coachCompetitions, invites, coachCreateCompetition }) {
+function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, unlinkCoach, familyAccount, coachCompetitions, invites, coachCreateCompetition, coachLinks, respondToCoachLink, setPage }) {
   const [showAdd, setShowAdd] = useState(false);
-  const [showCreateComp, setShowCreateComp] = useState(null); // coachId
+  const [showCreateComp, setShowCreateComp] = useState(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", specialization: "", organizations: [] });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -5078,36 +5078,104 @@ function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, un
     ...(familyAccount?.additionalGuardians || [])
   ].filter(g => g.name);
 
+  // Real coach accounts linked via coach_athlete_links
+  const realCoachLinks = (coachLinks || []).filter(l => l.status === 'accepted');
+  const pendingCoachLinks = (coachLinks || []).filter(l => l.status === 'pending');
+
   return (
     <div>
       <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title">Coaches</h1>
-          <p className="page-sub">Add coaches, manage access, and track competition invites</p>
+          <p className="page-sub">Manage coaches and their access to your athletes</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}><Icon name="plus" size={15} /> Add Coach</button>
+        <button className="btn btn-secondary" onClick={() => setShowAdd(true)}><Icon name="plus" size={15} /> Add Legacy Coach</button>
       </div>
 
       <div className="alert alert-info mb-4">
         <Icon name="info" size={16} color="var(--blue)" />
         <div>
-          <strong>How coach access works:</strong> Coaches have read-only access to linked athlete profiles. Coaches can also create competitions and invite your athletes — you'll see the invite on the dashboard and can accept or decline.
+          <strong>How coach access works:</strong> Coaches with a TwirlPower account can link directly and send competition invites. You can also add a coach manually by name and contact info for reference.
         </div>
       </div>
 
-      {coaches.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🎓</div>
-            <h3>No coaches added yet</h3>
-            <p>Add a coach by name and contact info, then select which athletes they can view.</p>
-            <button className="btn btn-primary btn-sm" style={{ marginTop: 16 }} onClick={() => setShowAdd(true)}>
-              <Icon name="plus" size={13} /> Add your first coach
-            </button>
+      {/* ── REAL COACH ACCOUNTS ── */}
+      {realCoachLinks.length > 0 && (
+        <div className="mb-4">
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+            TwirlPower Coaches ({realCoachLinks.length})
           </div>
+          {realCoachLinks.map(l => {
+            const twirler = twirlers.find(t => t.id === l.twirlerId);
+            return (
+              <div key={l.id} className="card mb-3">
+                <div className="flex items-start gap-4">
+                  <div className="avatar avatar-lg" style={{ background: "#ede9fe", color: "#6d28d9" }}>
+                    {initials(l.coachName || "?")}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2 }}>{l.coachName || "—"}</div>
+                    {l.coachEmail && <div style={{ fontSize: 13, color: "var(--slate)" }}>📧 {l.coachEmail}</div>}
+                    {l.coachStudio && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {l.coachStudio}</div>}
+                    {l.coachOrgs?.length > 0 && (
+                      <div className="flex gap-1 mt-1">
+                        {l.coachOrgs.map(o => (
+                          <span key={o} className="badge" style={{ background: orgColor(o) + "15", color: orgColor(o), fontSize: 10 }}>{o}</span>
+                        ))}
+                      </div>
+                    )}
+                    {twirler && (
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
+                        Linked to: <strong>{twirler.firstName}</strong>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2" style={{ alignItems: "flex-end" }}>
+                    <span className="badge badge-green" style={{ fontSize: 10 }}>Active</span>
+                    <button className="btn btn-danger btn-sm"
+                      onClick={() => { if (window.confirm(`Remove ${l.coachName} as coach for ${twirler?.firstName}?`)) respondToCoachLink(l.id, false); }}
+                      style={{ fontSize: 11 }}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      ) : (
-        <div className="flex-col gap-3">
+      )}
+
+      {/* ── PENDING REQUESTS ── */}
+      {pendingCoachLinks.length > 0 && (
+        <div className="mb-4">
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--amber)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+            Pending Requests ({pendingCoachLinks.length})
+          </div>
+          {pendingCoachLinks.map(l => (
+            <div key={l.id} className="card-sm mb-2" style={{ border: "1px solid #fed7aa", background: "#fff7ed" }}>
+              <div className="flex items-center gap-3">
+                <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(l.coachName || "?")}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 500, fontSize: 14 }}>{l.coachName}</div>
+                  <div style={{ fontSize: 12, color: "var(--slate)" }}>{l.coachEmail}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn btn-primary btn-sm" onClick={() => respondToCoachLink(l.id, true)}>✓ Accept</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => respondToCoachLink(l.id, false)}>Decline</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── LEGACY COACHES ── */}
+      {coaches.length > 0 && (
+        <div className="mb-4">
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+            Manually Added Coaches ({coaches.length})
+          </div>
+          <div className="flex-col gap-3">
           {coaches.map(coach => {
             const linked = coach.linkedTwirlers || [];
             const coachComps = (coachCompetitions || []).filter(c => c.createdByCoach === coach.id);
@@ -5236,6 +5304,18 @@ function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, un
               </div>
             );
           })}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state when no coaches at all */}
+      {realCoachLinks.length === 0 && pendingCoachLinks.length === 0 && coaches.length === 0 && (
+        <div className="card">
+          <div className="empty-state">
+            <div style={{ fontSize: 36, marginBottom: 12 }}>🎓</div>
+            <h3>No coaches yet</h3>
+            <p>Coaches with a TwirlPower account can send you a link request. You'll see it in your notifications. You can also add a coach manually for reference.</p>
+          </div>
         </div>
       )}
 
