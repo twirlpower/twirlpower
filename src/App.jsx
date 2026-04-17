@@ -1613,6 +1613,8 @@ export default function App() {
   return (
     <>
       <style>{css}</style>
+      <ReportIssueButton page={page} authUser={authUser} familyAccount={familyAccount} coachAccount={null} />
+      <BetaFeedbackPopup authUser={authUser} familyAccount={familyAccount} coachAccount={null} />
       <div className="app">
         <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
@@ -1649,6 +1651,8 @@ export default function App() {
           {page === "coaches" && <CoachesPage {...pageProps} />}
           {page === "openqs" && isAdmin && <OpenQuestionsPage />}
           {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} />}
+          {page === "privacy" && <PrivacyPolicyPage onClose={() => setPage("home")} />}
+          {page === "terms" && <TermsOfServicePage onClose={() => setPage("home")} />}
           {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} />}
           {page === "orgs" && <OrganizationsPage />}
           {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
@@ -1677,6 +1681,9 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [dob, setDob] = useState("");
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [showLegal, setShowLegal] = useState(null); // null | "privacy" | "terms"
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
 
@@ -1757,6 +1764,15 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
   return (
     <>
       <style>{css}</style>
+      {showLegal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.7)", zIndex: 700,
+          overflow: "auto", padding: 20 }}>
+          <div style={{ maxWidth: 720, margin: "0 auto" }}>
+            <button onClick={() => setShowLegal(null)} className="btn btn-secondary btn-sm" style={{ marginBottom: 16 }}>← Back to signup</button>
+            {showLegal === "privacy" ? <PrivacyPolicyPage /> : <TermsOfServicePage />}
+          </div>
+        </div>
+      )}
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
         background: "linear-gradient(135deg, #0f172a 0%, #1a0a10 60%, #2d0a1a 100%)", padding: "20px" }}>
         <div className="card" style={{ maxWidth: 420, width: "100%", padding: "40px 36px" }}>
@@ -1862,7 +1878,25 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
                 <Icon name="info" size={14} color="var(--brand)" />
                 <span style={{ fontSize: 12 }}>You'll receive a confirmation email. Click the link to verify your account before signing in.</span>
               </div>
-              <button className="btn btn-primary w-full" disabled={loading || !email || !password || !confirmPassword} onClick={handleSignup}>
+              <div className="form-group">
+                <label className="label">Your date of birth (must be 18+)</label>
+                <input className="input" type="date" value={dob} onChange={e => setDob(e.target.value)}
+                  max={new Date(Date.now() - 18 * 365.25 * 24 * 60 * 60 * 1000).toISOString().slice(0,10)} />
+                {dob && getAge({ dob }) < 18 && (
+                  <div style={{ fontSize: 12, color: "var(--red)", marginTop: 4 }}>You must be 18 or older to create a TwirlPower account.</div>
+                )}
+              </div>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, cursor: "pointer" }}>
+                <input type="checkbox" checked={agreedTerms} onChange={e => setAgreedTerms(e.target.checked)} style={{ marginTop: 2, flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: "var(--slate)", lineHeight: 1.6 }}>
+                  I agree to the <button type="button" onClick={() => setShowLegal("terms")}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--brand)", padding: 0, fontSize: 12, textDecoration: "underline" }}>Terms of Service</button> and <button type="button" onClick={() => setShowLegal("privacy")}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--brand)", padding: 0, fontSize: 12, textDecoration: "underline" }}>Privacy Policy</button>. I confirm I am 18 or older and am creating this account as a parent or guardian.
+                </span>
+              </label>
+              <button className="btn btn-primary w-full"
+                disabled={loading || !email || !password || !confirmPassword || !agreedTerms || !dob || getAge({ dob }) < 18}
+                onClick={handleSignup}>
                 {loading ? "Creating account..." : "Create Account"}
               </button>
             </>
@@ -2095,6 +2129,8 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
   return (
     <>
       <style>{css}</style>
+      <ReportIssueButton page={page} authUser={authUser} familyAccount={null} coachAccount={coachAccount} />
+      <BetaFeedbackPopup authUser={authUser} familyAccount={null} coachAccount={coachAccount} />
       <div className="app">
         <CoachSidebar />
         <div className="main">
@@ -2992,6 +3028,10 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
     { id: "coaches", label: "Coaches", icon: "users" },
     ...(isAdmin ? [{ id: "admin", label: "Admin", icon: "settings", admin: true }] : []),
   ];
+  const legalItems = [
+    { id: "privacy", label: "Privacy Policy" },
+    { id: "terms", label: "Terms of Service" },
+  ];
 
   const anyAdvanceable = Object.values(progress).some(org => Object.values(org).some(e => e.shouldAdvance));
 
@@ -3075,6 +3115,15 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
         <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 2 }}>{familyAccount?.parentName}</div>
         <div style={{ fontSize: 11, color: "var(--navy3)", marginBottom: 10 }}>Family Account</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            {legalItems.map(item => (
+              <button key={item.id} onClick={() => setPage(item.id)}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 0,
+                  fontSize: 10, color: "var(--navy3)", textDecoration: "underline", fontFamily: "inherit" }}>
+                {item.label}
+              </button>
+            ))}
+          </div>
           <span style={{ fontSize: 12, color: "var(--slate)" }}>{darkMode ? "Dark mode" : "Light mode"}</span>
           <button onClick={() => setDarkMode(!darkMode)}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
@@ -6974,6 +7023,340 @@ function HistoricalDataModal({ open, onClose, activeTwirler, onSave }) {
         These settings can be updated at any time from the Family Profile page.
       </div>
     </Modal>
+  );
+}
+
+// ─── LEGAL PAGES ─────────────────────────────────────────────────────────────
+
+const EFFECTIVE_DATE = "April 17, 2026";
+const LEGAL_COMPANY = "TwirlPower, a dba of OAKRAA, LLC";
+const LEGAL_EMAIL = "help@twirlpower.com";
+
+function PrivacyPolicyPage({ onClose }) {
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 0 48px" }}>
+      <div className="page-header flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Privacy Policy</h1>
+          <p className="page-sub">Effective {EFFECTIVE_DATE}</p>
+        </div>
+        {onClose && <button className="btn btn-ghost btn-sm" onClick={onClose}>← Back</button>}
+      </div>
+      <div className="card" style={{ lineHeight: 1.8, fontSize: 14, color: "var(--slate)" }}>
+        {[
+          { h: "1. Who We Are", body: `TwirlPower is a baton twirling competition tracking and progress management application operated by ${LEGAL_COMPANY} ("TwirlPower," "we," "us," or "our"), based in Colorado. You can contact us at ${LEGAL_EMAIL}.` },
+          { h: "2. What Data We Collect", body: `We collect information you provide directly when creating an account or using the app:
+
+Account information: parent or guardian name, email address, phone number, and state of residence.
+
+Athlete information: first name, date of birth, studio or club name, and organization memberships (USTA, NBTA, TU, DMA).
+
+Competition data: competition names, dates, locations, organizations, results, placements, and classification levels.
+
+Coach information: coach name, email, phone, studio, and organizational affiliations.
+
+We also collect your date of birth at signup to verify you are 18 or older, as required for account creation.` },
+          { h: "3. How We Use Your Data", body: `We use the information we collect to:
+- Provide and operate the TwirlPower app
+- Track baton twirling classifications and competition history
+- Send transactional emails (account confirmation, coach connection requests, competition invites, and advancement notifications)
+- Respond to support requests
+- Improve the app based on usage patterns
+
+We do not sell your personal data to any third party. We do not use your data for advertising.` },
+          { h: "4. Data We Share", body: `We share data only with the following service providers who help us operate TwirlPower:
+
+Supabase (supabase.com) — database hosting and authentication. Your data is stored on Supabase servers.
+
+Resend (resend.com) — transactional email delivery. Email addresses are shared only to send emails you have triggered.
+
+Stripe (stripe.com) — payment processing, once subscription billing is enabled. We never store your full credit card number.
+
+We may also disclose information if required by law or to protect the rights, property, or safety of TwirlPower, our users, or others.
+
+We plan to add Google Analytics in the future. When we do, we will update this policy and provide notice in the app.` },
+          { h: "5. Children's Privacy (COPPA)", body: `TwirlPower tracks competition data for athletes who may be under the age of 13. We comply with the Children's Online Privacy Protection Act (COPPA) as follows:
+
+Account holders must be 18 years of age or older. Athletes under 13 do not create their own accounts. All data for minor athletes is entered by a parent or guardian who holds the account.
+
+We do not knowingly collect personal information directly from children under 13. If you believe we have inadvertently collected such information, please contact us at ${LEGAL_EMAIL} and we will delete it promptly.
+
+The data we collect about minor athletes (first name, date of birth, competition history) is used solely to provide the classification tracking service and is not shared with advertisers or used for any commercial purpose beyond the app.` },
+          { h: "6. Data Retention", body: `We retain your account data for as long as your account is active. If you delete your account, we will permanently delete all associated personal data within 30 days. Competition history and athlete data associated with your account will be deleted at the same time.
+
+To request account deletion, email ${LEGAL_EMAIL} with the subject "Delete My Account."` },
+          { h: "7. Your Rights", body: `You have the right to:
+- Access the personal data we hold about you
+- Correct inaccurate data through the app settings
+- Request deletion of your account and all associated data
+- Opt out of non-transactional emails (transactional emails related to your account activity cannot be opted out while your account is active)
+
+To exercise any of these rights, contact us at ${LEGAL_EMAIL}.` },
+          { h: "8. Security", body: `We take reasonable measures to protect your data, including encrypted connections (HTTPS), Supabase row-level security policies that ensure users can only access their own data, and secure authentication through Supabase Auth. No method of transmission over the internet is 100% secure, and we cannot guarantee absolute security.` },
+          { h: "9. Changes to This Policy", body: `We may update this Privacy Policy from time to time. When we do, we will update the effective date above and notify active users by email. Continued use of TwirlPower after changes constitutes acceptance of the updated policy.` },
+          { h: "10. Contact Us", body: `If you have questions about this Privacy Policy or your data, contact The TwirlPower Team at ${LEGAL_EMAIL}.` },
+        ].map(({ h, body }) => (
+          <div key={h} style={{ marginBottom: 24 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 8 }}>{h}</div>
+            <div style={{ whiteSpace: "pre-line" }}>{body}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TermsOfServicePage({ onClose }) {
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 0 48px" }}>
+      <div className="page-header flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Terms of Service</h1>
+          <p className="page-sub">Effective {EFFECTIVE_DATE}</p>
+        </div>
+        {onClose && <button className="btn btn-ghost btn-sm" onClick={onClose}>← Back</button>}
+      </div>
+      <div className="card" style={{ lineHeight: 1.8, fontSize: 14, color: "var(--slate)" }}>
+        {[
+          { h: "1. Acceptance of Terms", body: `By creating an account or using TwirlPower, you agree to these Terms of Service and our Privacy Policy. If you do not agree, do not use the app. These terms constitute a binding agreement between you and ${LEGAL_COMPANY}.` },
+          { h: "2. Eligibility", body: `You must be at least 18 years old to create a TwirlPower account. By creating an account you represent that you are 18 or older. If you are a parent or guardian creating an account to track a minor athlete's progress, you represent that you have the authority to do so and that you accept these terms on behalf of yourself.` },
+          { h: "3. Account Responsibilities", body: `You are responsible for maintaining the confidentiality of your account credentials and for all activity that occurs under your account. You agree to notify us immediately at ${LEGAL_EMAIL} if you suspect unauthorized access to your account. TwirlPower is not liable for losses caused by unauthorized use of your account.` },
+          { h: "4. Acceptable Use", body: `You agree to use TwirlPower only for lawful purposes and in accordance with these terms. You agree not to:
+- Provide false or misleading information
+- Attempt to gain unauthorized access to any part of the app or its infrastructure
+- Use the app to harass, harm, or discriminate against any person
+- Interfere with the proper functioning of the app
+- Attempt to reverse engineer, copy, or redistribute the app or its underlying code
+- Use the app for any commercial purpose other than as permitted by your subscription` },
+          { h: "5. Classification Information — Disclaimer", body: `TwirlPower tracks win counts and competition history to help you understand classification progress under the rules of USTA, NBTA, TU, DMA, and other organizations. However:
+
+The classification levels displayed in TwirlPower are estimates based on the data you enter and our interpretation of each organization's published rules. They are not official determinations by any sanctioning organization.
+
+Classification rules change. We make reasonable efforts to keep our rules current but cannot guarantee accuracy at all times.
+
+TwirlPower is not affiliated with USTA, NBTA, TU, DMA, or any other twirling organization. Official classification determinations are made solely by those organizations according to their current rulebooks.
+
+You should always verify your athlete's classification with the relevant organization before registering for a competition. TwirlPower expressly disclaims liability for any competition entry errors, disqualifications, or other consequences arising from reliance on classification data displayed in the app.` },
+          { h: "6. Subscriptions and Refunds", body: `TwirlPower offers free and paid subscription tiers. Paid subscriptions are billed monthly or annually.
+
+Satisfaction Guarantee: If you are not satisfied with your paid subscription for any reason, contact us at ${LEGAL_EMAIL} within 30 days of your initial payment or most recent renewal and we will issue a full refund — no questions asked.
+
+After 30 days: Your subscription remains active until the end of the current billing period. We do not issue partial refunds for unused time after the 30-day window.
+
+Cancellation: You may cancel your subscription at any time from your account settings. Cancellation takes effect at the end of the current billing period.
+
+Free tier: The free tier is provided as-is with no guarantee of continued availability of specific features.` },
+          { h: "7. Intellectual Property", body: `TwirlPower and all content, features, and functionality of the app — including but not limited to the classification engine, user interface, and branding — are owned by ${LEGAL_COMPANY} and protected by copyright and other intellectual property laws. You may not copy, reproduce, distribute, or create derivative works from any part of the app without our written permission.` },
+          { h: "8. Limitation of Liability", body: `To the fullest extent permitted by Colorado law, ${LEGAL_COMPANY} shall not be liable for any indirect, incidental, special, consequential, or punitive damages — including loss of data, competition entry fees, or other losses — arising from your use of TwirlPower, even if we have been advised of the possibility of such damages. Our total liability to you for any claim arising from these terms or your use of the app shall not exceed the amount you paid us in the 12 months preceding the claim.` },
+          { h: "9. Indemnification", body: `You agree to indemnify and hold harmless ${LEGAL_COMPANY}, its officers, employees, and agents from any claims, damages, or expenses (including reasonable attorneys' fees) arising from your violation of these terms or your use of the app.` },
+          { h: "10. Termination", body: `We reserve the right to suspend or terminate your account at any time for violation of these terms, with or without notice. You may delete your account at any time by contacting ${LEGAL_EMAIL}. Upon termination, your data will be deleted within 30 days as described in our Privacy Policy.` },
+          { h: "11. Governing Law", body: `These terms are governed by the laws of the State of Colorado, without regard to conflict of law principles. Any disputes shall be resolved in the state or federal courts located in Colorado.` },
+          { h: "12. Changes to Terms", body: `We may update these Terms of Service from time to time. We will notify you of material changes by email and by displaying a notice in the app. Continued use of TwirlPower after changes constitutes acceptance of the updated terms.` },
+          { h: "13. Contact", body: `Questions about these Terms of Service? Contact The TwirlPower Team at ${LEGAL_EMAIL}.` },
+        ].map(({ h, body }) => (
+          <div key={h} style={{ marginBottom: 24 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 8 }}>{h}</div>
+            <div style={{ whiteSpace: "pre-line" }}>{body}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── REPORT ISSUE BUTTON ──────────────────────────────────────────────────────
+
+function ReportIssueButton({ page, authUser, familyAccount, coachAccount }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ description: "", expected: "", severity: "bug" });
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  async function handleSubmit() {
+    if (!form.description) return;
+    setLoading(true);
+    const report = {
+      page,
+      description: form.description,
+      expected: form.expected,
+      severity: form.severity,
+      user_email: authUser?.email || familyAccount?.email || coachAccount?.email || "unknown",
+      user_role: coachAccount ? "coach" : familyAccount ? "family" : "unknown",
+      user_agent: navigator.userAgent,
+      created_at: new Date().toISOString(),
+    };
+    await supabase.from("bug_reports").insert(report);
+    await sendEmail("bug_report", "help@twirlpower.com", {
+      ...report,
+      appUrl: window.location.href,
+    });
+    setSent(true);
+    setLoading(false);
+    setTimeout(() => { setSent(false); setOpen(false); setForm({ description: "", expected: "", severity: "bug" }); }, 2000);
+  }
+
+  return (
+    <>
+      {/* Floating button */}
+      <button onClick={() => setOpen(true)}
+        style={{ position: "fixed", bottom: 24, right: 24, zIndex: 500,
+          width: 48, height: 48, borderRadius: "50%", background: "var(--navy)",
+          border: "2px solid var(--brand)", cursor: "pointer", display: "flex",
+          alignItems: "center", justifyContent: "center",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.25)", transition: "all 0.15s" }}
+        title="Report an issue"
+        onMouseEnter={e => e.currentTarget.style.background = "var(--brand)"}
+        onMouseLeave={e => e.currentTarget.style.background = "var(--navy)"}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </button>
+
+      {/* Modal */}
+      <Modal open={open} onClose={() => setOpen(false)} title="Report an Issue"
+        footer={<>
+          <button className="btn btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
+          <button className="btn btn-primary" disabled={loading || !form.description || sent} onClick={handleSubmit}>
+            {sent ? "✓ Sent!" : loading ? "Sending..." : "Submit Report"}
+          </button>
+        </>}>
+        <div className="alert alert-info mb-3">
+          <Icon name="info" size={14} color="var(--brand)" />
+          <span style={{ fontSize: 12 }}>Thanks for helping us improve TwirlPower! We review every report.</span>
+        </div>
+        <div className="form-group">
+          <label className="label">Page / section</label>
+          <input className="input" value={page} readOnly style={{ background: "var(--bg)", color: "var(--muted)" }} />
+        </div>
+        <div className="form-group">
+          <label className="label">Severity</label>
+          <select className="select" value={form.severity} onChange={e => f("severity", e.target.value)}>
+            <option value="bug">🐛 Bug — something is broken</option>
+            <option value="ux">😤 Confusing — hard to use or understand</option>
+            <option value="missing">💡 Missing — something I expected isn't here</option>
+            <option value="other">💬 Other feedback</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="label">What happened? *</label>
+          <textarea className="textarea" value={form.description} onChange={e => f("description", e.target.value)}
+            rows={3} placeholder="Describe what you did and what went wrong..." autoFocus />
+        </div>
+        <div className="form-group">
+          <label className="label">What did you expect to happen?</label>
+          <textarea className="textarea" value={form.expected} onChange={e => f("expected", e.target.value)}
+            rows={2} placeholder="Optional — describe the expected behavior" />
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+// ─── BETA FEEDBACK POPUP ──────────────────────────────────────────────────────
+
+function BetaFeedbackPopup({ authUser, familyAccount, coachAccount }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ rating: 0, working: "", frustrating: "", missing: "" });
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  useEffect(() => {
+    const KEY = "tp_feedback_sessions";
+    const LAST_KEY = "tp_feedback_last";
+    const sessions = parseInt(localStorage.getItem(KEY) || "0") + 1;
+    localStorage.setItem(KEY, sessions);
+
+    const lastShown = localStorage.getItem(LAST_KEY);
+    const daysSinceLast = lastShown
+      ? (Date.now() - parseInt(lastShown)) / (1000 * 60 * 60 * 24)
+      : 999;
+
+    // Show on sessions 3, 7, 15, then every 30 days
+    const triggerSessions = [3, 7, 15];
+    const shouldShow = (triggerSessions.includes(sessions) || (sessions > 15 && daysSinceLast >= 30))
+      && daysSinceLast >= 1;
+
+    if (shouldShow) {
+      setTimeout(() => setOpen(true), 8000); // 8 second delay after load
+    }
+  }, []);
+
+  async function handleSubmit() {
+    if (form.rating === 0) return;
+    setLoading(true);
+    const feedback = {
+      rating: form.rating,
+      working: form.working,
+      frustrating: form.frustrating,
+      missing: form.missing,
+      user_email: authUser?.email || familyAccount?.email || coachAccount?.email || "unknown",
+      user_role: coachAccount ? "coach" : familyAccount ? "family" : "unknown",
+      created_at: new Date().toISOString(),
+    };
+    await supabase.from("beta_feedback").insert(feedback);
+    await sendEmail("beta_feedback", "help@twirlpower.com", feedback);
+    localStorage.setItem("tp_feedback_last", Date.now().toString());
+    setSent(true);
+    setLoading(false);
+    setTimeout(() => { setSent(false); setOpen(false); }, 2000);
+  }
+
+  const stars = [1, 2, 3, 4, 5];
+
+  if (!open) return null;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 600,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div className="card" style={{ maxWidth: 480, width: "100%", padding: "32px 28px",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 20, marginBottom: 4 }}>👋 Quick feedback?</div>
+            <div style={{ fontSize: 13, color: "var(--slate)" }}>You're helping us build TwirlPower. 60 seconds, we promise.</div>
+          </div>
+          <button onClick={() => setOpen(false)} style={{ background: "none", border: "none",
+            cursor: "pointer", color: "var(--muted)", fontSize: 20, lineHeight: 1, padding: 0 }}>×</button>
+        </div>
+
+        <div className="form-group">
+          <label className="label">Overall, how would you rate TwirlPower so far?</label>
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            {stars.map(s => (
+              <button key={s} onClick={() => f("rating", s)}
+                style={{ fontSize: 28, background: "none", border: "none", cursor: "pointer",
+                  opacity: form.rating >= s ? 1 : 0.3, transition: "opacity 0.1s" }}>
+                ⭐
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="form-group">
+          <label className="label">What's working well?</label>
+          <textarea className="textarea" value={form.working} onChange={e => f("working", e.target.value)}
+            rows={2} placeholder="What do you like so far?" />
+        </div>
+        <div className="form-group">
+          <label className="label">What's frustrating or confusing?</label>
+          <textarea className="textarea" value={form.frustrating} onChange={e => f("frustrating", e.target.value)}
+            rows={2} placeholder="What's not working the way you expect?" />
+        </div>
+        <div className="form-group">
+          <label className="label">What's missing?</label>
+          <textarea className="textarea" value={form.missing} onChange={e => f("missing", e.target.value)}
+            rows={2} placeholder="What would make TwirlPower more useful for you?" />
+        </div>
+        <div className="flex gap-2">
+          <button className="btn btn-primary" disabled={loading || form.rating === 0 || sent} onClick={handleSubmit}>
+            {sent ? "✓ Thank you!" : loading ? "Sending..." : "Submit Feedback"}
+          </button>
+          <button className="btn btn-ghost" onClick={() => setOpen(false)}>Skip for now</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

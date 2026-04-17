@@ -189,6 +189,60 @@ export default async function handler(req, res) {
     `;
   }
 
+  else if (type === 'bug_report') {
+    const { page, description, expected, severity, user_email, user_role, user_agent, appUrl } = data;
+    const severityLabel = { bug: '🐛 Bug', ux: '😤 UX Issue', missing: '💡 Missing Feature', other: '💬 Other' }[severity] || severity;
+    subject = `[TwirlPower Beta] ${severityLabel} — ${page}`;
+    html = `
+      <div style="${baseStyle}">
+        ${header}
+        <div style="padding: 28px 32px;">
+          <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; margin: 0 0 16px;">Bug Report</h2>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px;">
+            ${[['Severity', severityLabel], ['Page', page], ['User', user_email], ['Role', user_role]].map(([k,v]) => `
+              <tr>
+                <td style="padding: 6px 12px; background: #f1f5f9; font-weight: 600; color: #64748b; width: 120px; border: 1px solid #e2e8f0;">${k}</td>
+                <td style="padding: 6px 12px; border: 1px solid #e2e8f0; color: #0f172a;">${v || '—'}</td>
+              </tr>`).join('')}
+          </table>
+          <div style="margin-bottom: 16px;">
+            <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px; font-size: 13px;">WHAT HAPPENED</div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; font-size: 13px; color: #475569; white-space: pre-line;">${description}</div>
+          </div>
+          ${expected ? `<div style="margin-bottom: 16px;">
+            <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px; font-size: 13px;">EXPECTED</div>
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; font-size: 13px; color: #475569; white-space: pre-line;">${expected}</div>
+          </div>` : ''}
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+            URL: ${appUrl || '—'}<br/>
+            ${user_agent || ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  else if (type === 'beta_feedback') {
+    const { rating, working, frustrating, missing, user_email, user_role } = data;
+    const stars = '⭐'.repeat(rating) + '☆'.repeat(5 - rating);
+    subject = `[TwirlPower Beta] Feedback — ${stars} from ${user_email}`;
+    html = `
+      <div style="${baseStyle}">
+        ${header}
+        <div style="padding: 28px 32px;">
+          <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; margin: 0 0 8px;">Beta Feedback</h2>
+          <div style="font-size: 24px; margin-bottom: 16px;">${stars}</div>
+          <div style="font-size: 13px; color: #64748b; margin-bottom: 20px;">From: ${user_email} (${user_role})</div>
+          ${[['What\'s working well', working], ['What\'s frustrating', frustrating], ['What\'s missing', missing]].filter(([,v]) => v).map(([k,v]) => `
+            <div style="margin-bottom: 16px;">
+              <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px; font-size: 13px;">${k.toUpperCase()}</div>
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; font-size: 13px; color: #475569; white-space: pre-line;">${v}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   else {
     return res.status(400).json({ error: `Unknown email type: ${type}` });
   }
