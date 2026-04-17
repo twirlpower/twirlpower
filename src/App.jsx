@@ -1283,6 +1283,17 @@ export default function App() {
 
   // ── HOST MUTATIONS ──
   async function registerHost(data) {
+    // Upload document if provided
+    let docUrl = null;
+    if (data.file) {
+      const ext = data.file.name.split(".").pop();
+      const path = `${authUser?.id}/host_registration_${Date.now()}.${ext}`;
+      const { data: upload } = await supabase.storage.from("documents").upload(path, data.file, { upsert: true });
+      if (upload) {
+        const { data: { publicUrl } } = supabase.storage.from("documents").getPublicUrl(path);
+        docUrl = publicUrl;
+      }
+    }
     const { data: inserted, error } = await supabase.from('competition_hosts').insert({
       user_id: authUser?.id,
       name: data.name,
@@ -1291,10 +1302,11 @@ export default function App() {
       organization: data.organization || null,
       state: data.state || null,
       notes: data.notes || null,
+      document_url: docUrl,
       approved: false,
     }).select().single();
     if (error) { console.error('registerHost:', error); return; }
-    const h = { ...inserted, createdAt: inserted.created_at };
+    const h = { ...inserted, createdAt: inserted.created_at, document_url: inserted.document_url };
     setCompetitionHosts(prev => [...prev, h]);
     return h;
   }
@@ -1675,7 +1687,7 @@ export default function App() {
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
           {page === "history" && <HistoryPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
-          {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} authUser={authUser} />}
+          {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} authUser={authUser} supabase={supabase} />}
           {page === "coaches" && <CoachesPage {...pageProps} />}
           {page === "openqs" && isAdmin && <OpenQuestionsPage />}
           {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} />}
@@ -3203,6 +3215,13 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
           <textarea className="textarea" rows={2} value={form.notes} onChange={e => f("notes", e.target.value)}
             placeholder="Any context about your role or why you're registering..." />
         </div>
+        <div className="form-group">
+          <label className="label">Supporting document <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+            onChange={e => f("file", e.target.files?.[0])}
+            style={{ fontSize: 12, color: "var(--slate)" }} />
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Organization credentials, event flyer, or other supporting documentation</div>
+        </div>
         <div className="alert alert-info mb-4">
           <Icon name="info" size={15} color="var(--brand)" />
           <div style={{ fontSize: 12 }}>
@@ -4326,7 +4345,7 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
 
 // ─── PROFILE PAGE ────────────────────────────────────────────────────────────
 
-function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, setCoaches, openModal, competitionHosts, approveHost, competitions, results, setTwirlers, setCompetitions, setResults, isAdmin, setPage, coachLinks, respondToCoachLink, authUser }) {
+function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, setCoaches, openModal, competitionHosts, approveHost, competitions, results, setTwirlers, setCompetitions, setResults, isAdmin, setPage, coachLinks, respondToCoachLink, authUser, supabase }) {
   const [editFamily, setEditFamily] = useState(false);
   const [editTwirler, setEditTwirler] = useState(false);
   const [fForm, setFF] = useState(familyAccount);
@@ -5046,6 +5065,12 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
                         {h.phone && <div style={{ fontSize: 12, color: "var(--slate)" }}>📞 {h.phone}</div>}
                         {h.state && <div style={{ fontSize: 12, color: "var(--slate)" }}>📍 {h.state}</div>}
                         {h.notes && <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{h.notes}"</div>}
+                        {h.document_url && (
+                          <a href={h.document_url} target="_blank" rel="noreferrer"
+                            style={{ fontSize: 12, color: "var(--brand)", display: "inline-block", marginTop: 4 }}>
+                            📎 View attached document
+                          </a>
+                        )}
                         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt)}</div>
                       </div>
                       <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
@@ -5176,6 +5201,12 @@ function StudioAdminTab({ supabase }) {
                     <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>
                       "{c.message}"
                     </div>
+                  )}
+                  {c.document_url && (
+                    <a href={c.document_url} target="_blank" rel="noreferrer"
+                      style={{ fontSize: 12, color: "var(--brand)", display: "inline-block", marginTop: 4 }}>
+                      📎 View attached document
+                    </a>
                   )}
                   <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>{fmtDate(c.created_at)}</div>
                 </div>
@@ -8083,11 +8114,23 @@ function StudioPage({ coachAccount, supabase, setPage }) {
       created_by: "coach",
     }).select().single();
     if (s) {
+      // Upload document if provided
+      let docUrl = null;
+      if (claimForm.file) {
+        const ext = claimForm.file.name.split(".").pop();
+        const path = `${coachAccount.id}/studio_claim_${s.id}.${ext}`;
+        const { data: upload } = await supabase.storage.from("documents").upload(path, claimForm.file, { upsert: true });
+        if (upload) {
+          const { data: { publicUrl } } = supabase.storage.from("documents").getPublicUrl(path);
+          docUrl = publicUrl;
+        }
+      }
       // Create claim request
       await supabase.from("studio_claim_requests").insert({
         studio_id: s.id,
         coach_id: coachAccount.id,
         message: claimForm.message || "Coach created this studio.",
+        document_url: docUrl,
         status: "pending",
       });
       // Notify admin
@@ -8211,6 +8254,13 @@ function StudioPage({ coachAccount, supabase, setPage }) {
                 <div className="form-group"><label className="label">Message to admin (optional)</label>
                   <textarea className="textarea" value={claimForm.message} onChange={e => setClaimForm(f => ({ ...f, message: e.target.value }))}
                     rows={2} placeholder="Brief note about your studio and why you're claiming it..." /></div>
+                <div className="form-group">
+                  <label className="label">Supporting document (optional)</label>
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    onChange={e => setClaimForm(f => ({ ...f, file: e.target.files?.[0] }))}
+                    style={{ fontSize: 12, color: "var(--slate)" }} />
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Business license, studio registration, or other proof of ownership</div>
+                </div>
                 <div className="flex gap-2">
                   <button className="btn btn-primary btn-sm" disabled={!form.name || saving} onClick={createStudio}>
                     {saving ? "Submitting..." : "Submit for Approval"}
