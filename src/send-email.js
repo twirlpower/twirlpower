@@ -243,6 +243,76 @@ export default async function handler(req, res) {
     `;
   }
 
+  else if (type === 'advancement_alert') {
+    const { athleteName, orgId, orgName, event, currentLevel, nextLevel, winsCount, winsNeeded } = data;
+    subject = `${athleteName} is ready to advance in ${orgId} ${event}!`;
+    html = `
+      <div style="${baseStyle}">
+        ${header}
+        <div style="padding: 32px;">
+          <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 12px;">
+            🏆 Advancement milestone reached!
+          </h2>
+          <p style="font-size: 15px; color: #475569; line-height: 1.7; margin: 0 0 20px;">
+            <strong>${athleteName}</strong> has reached the win threshold to advance in <strong>${orgId} ${event}</strong>.
+          </p>
+          <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 10px; padding: 20px; margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div style="text-align: center; flex: 1;">
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Current Level</div>
+                <div style="font-size: 20px; font-weight: 700; color: #0f172a;">${currentLevel}</div>
+              </div>
+              <div style="font-size: 24px; color: #0d9488; padding: 0 16px;">→</div>
+              <div style="text-align: center; flex: 1;">
+                <div style="font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Next Level</div>
+                <div style="font-size: 20px; font-weight: 700; color: #0d9488;">${nextLevel}</div>
+              </div>
+            </div>
+            <div style="text-align: center; margin-top: 12px; font-size: 13px; color: #64748b;">
+              ${orgId} · ${event} · ${winsCount} of ${winsNeeded} wins
+            </div>
+          </div>
+          <p style="font-size: 13px; color: #475569; line-height: 1.7; margin: 0 0 24px;">
+            Remember to verify the advancement with <strong>${orgName}</strong> according to their official rulebook before registering at the new level. TwirlPower tracks wins to help you stay informed, but official classifications are determined by each organization.
+          </p>
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="${appUrl}" style="display: inline-block; background: #0d9488; color: white; font-size: 15px; font-weight: 600; padding: 14px 32px; border-radius: 8px; text-decoration: none;">
+              View Progress in TwirlPower
+            </a>
+          </div>
+        </div>
+        ${footer}
+      </div>
+    `;
+  }
+
+  else if (type === 'advancement_alert_coach') {
+    const { athleteName, familyName, orgId, orgName, event, currentLevel, nextLevel } = data;
+    subject = `${athleteName} is ready to advance — ${orgId} ${event}`;
+    html = `
+      <div style="${baseStyle}">
+        ${header}
+        <div style="padding: 32px;">
+          <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 12px;">
+            🏆 Athlete advancement milestone
+          </h2>
+          <p style="font-size: 15px; color: #475569; line-height: 1.7; margin: 0 0 20px;">
+            Your athlete <strong>${athleteName}</strong> (${familyName}) has reached the win threshold to advance in <strong>${orgId} ${event}</strong> from <strong>${currentLevel}</strong> to <strong>${nextLevel}</strong>.
+          </p>
+          <p style="font-size: 13px; color: #475569; line-height: 1.7; margin: 0 0 24px;">
+            The family has been notified. You can view their full classification progress in TwirlPower.
+          </p>
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="${appUrl}" style="display: inline-block; background: #0d9488; color: white; font-size: 15px; font-weight: 600; padding: 14px 32px; border-radius: 8px; text-decoration: none;">
+              View in TwirlPower
+            </a>
+          </div>
+        </div>
+        ${footer}
+      </div>
+    `;
+  }
+
   else {
     return res.status(400).json({ error: `Unknown email type: ${type}` });
   }

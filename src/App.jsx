@@ -885,11 +885,10 @@ export default function App() {
           })));
 
           // Load coach athlete link requests
-          const { data: coachLinks, error: clError } = await supabase
+          const { data: coachLinks } = await supabase
             .from('coach_athlete_links')
             .select('*, coach_accounts(name, email, studio, organizations)')
             .in('twirler_id', twirlerIds);
-          console.log('coach_athlete_links query:', { coachLinks, clError, twirlerIds });
           setCoachLinks((coachLinks || []).map(l => ({
             ...l,
             twirlerId: l.twirler_id,
@@ -1039,7 +1038,6 @@ export default function App() {
   );
 
   const pendingCoachLinks = coachLinks.filter(l => l.status === 'pending');
-  console.log('coachLinks state:', coachLinks, 'pendingCoachLinks:', pendingCoachLinks);
 
   // All pending notifications combined
   const allNotifications = [
@@ -1050,23 +1048,53 @@ export default function App() {
   // Pass resolved id as the canonical activeTwirlerId throughout the app
   const effectiveActiveTwirlerId = resolvedActiveTwirlerId;
 
-  // Advanceable events check
+  // Advanceable events check — send email when athlete first hits advancement threshold
   useEffect(() => {
-    if (!activeTwirler) return;
-    let updated = false;
-    const newState = { ...(activeTwirler.classificationState || {}) };
+    if (!activeTwirler || !familyAccount) return;
+    const sentKey = `tp_advance_alerts_${activeTwirler.id}`;
+    const alreadySent = JSON.parse(localStorage.getItem(sentKey) || '{}');
+    const newlySent = { ...alreadySent };
+    let anyNew = false;
+
     for (const orgId of activeTwirler.organizations || []) {
       const org = ORGS[orgId];
       if (!org) continue;
       for (const event of org.leveledEvents) {
-        const classKey = `${orgId}__${event}`;
         const prog = progress?.[orgId]?.[event];
-        if (prog?.shouldAdvance && !prog?.manualOverride && newState[classKey]?.level === prog.currentLevel) {
-          // flag for advance notification — don't auto-advance; show in UI
+        const alertKey = `${orgId}__${event}__${prog?.currentLevel}`;
+        if (prog?.shouldAdvance && !prog?.manualOverride && !alreadySent[alertKey]) {
+          newlySent[alertKey] = true;
+          anyNew = true;
+          // Send email to family
+          sendEmail('advancement_alert', familyAccount.email, {
+            athleteName: activeTwirler.firstName,
+            orgId,
+            orgName: org.name,
+            event,
+            currentLevel: prog.currentLevel,
+            nextLevel: prog.nextLevel,
+            winsCount: prog.winsCount,
+            winsNeeded: prog.winsNeeded,
+          });
+          // Also notify linked coaches
+          (coachLinks || []).filter(l => l.twirlerId === activeTwirler.id && l.status === 'accepted').forEach(l => {
+            if (l.coachEmail) {
+              sendEmail('advancement_alert_coach', l.coachEmail, {
+                athleteName: activeTwirler.firstName,
+                familyName: familyAccount.parentName,
+                orgId,
+                orgName: org.name,
+                event,
+                currentLevel: prog.currentLevel,
+                nextLevel: prog.nextLevel,
+              });
+            }
+          });
         }
       }
     }
-  }, [results, activeTwirler]);
+    if (anyNew) localStorage.setItem(sentKey, JSON.stringify(newlySent));
+  }, [progress, activeTwirler?.id]);
 
   // ── TWIRLER MUTATIONS ──
   async function addTwirler(data) {
@@ -2033,8 +2061,14 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
   const activeTwirler = twirlers.find(t => t.id === activeTwirlerId) || twirlers[0];
   const pendingLinks = invites.filter(i => i.type === 'athlete_link' && i.status === 'pending');
 
+  // Calculate progress for all twirlers (for roster view)
+  const allProgress = Object.fromEntries(
+    twirlers.map(t => [t.id, calculateProgress(t, [])])
+  );
+
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
+    { id: "roster", label: "Studio Roster", icon: "users" },
     { id: "history", label: "Competition History", icon: "history" },
     { id: "progress", label: "Progress Tracker", icon: "progress" },
     { id: "upcoming", label: "Upcoming Competitions", icon: "trophy" },
@@ -2156,7 +2190,8 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
           )}
 
           {/* Pages */}
-          {page === "home" && <CoachHomePage coachAccount={coachAccount} twirlers={twirlers} coachCompetitions={coachCompetitions} progress={progress} activeTwirler={activeTwirler} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
+          {page === "home" && <CoachHomePage coachAccount={coachAccount} twirlers={twirlers} coachCompetitions={coachCompetitions} progress={allProgress} activeTwirler={activeTwirler} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
+          {page === "roster" && <StudioRosterPage twirlers={twirlers} progress={allProgress} coachAccount={coachAccount} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
           {page === "history" && <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
           {page === "upcoming" && <UpcomingCompetitionsPage publicCompetitions={[]} familyAccount={null} addAttendee={() => {}} attendees={[]} twirlers={twirlers} activeTwirler={activeTwirler} addCompetition={() => {}} />}
@@ -2171,6 +2206,166 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 }
 
 // ─── COACH HOME PAGE ──────────────────────────────────────────────────────────
+
+// ─── STUDIO ROSTER PAGE ───────────────────────────────────────────────────────
+
+function StudioRosterPage({ twirlers, progress, coachAccount, setPage, setActiveTwirlerId }) {
+  const [filterOrg, setFilterOrg] = useState("");
+  const [search, setSearch] = useState("");
+
+  const filtered = twirlers
+    .filter(t => !search || t.firstName?.toLowerCase().includes(search.toLowerCase()) || t.familyName?.toLowerCase().includes(search.toLowerCase()))
+    .filter(t => !filterOrg || (t.organizations || []).includes(filterOrg));
+
+  const allOrgs = [...new Set(twirlers.flatMap(t => t.organizations || []))];
+
+  function exportRoster() {
+    const rows = [
+      ["Athlete", "Family", "Organization", "Event", "Current Level", "Wins", "Next Level", "Ready to Advance"],
+      ...twirlers.flatMap(t =>
+        (t.organizations || []).flatMap(orgId =>
+          (ORGS[orgId]?.leveledEvents || []).map(event => {
+            const prog = progress?.[t.id]?.[orgId]?.[event];
+            if (!prog) return null;
+            return [
+              t.firstName,
+              t.familyName || "",
+              orgId,
+              event,
+              prog.currentLevel,
+              prog.winsCount || 0,
+              prog.nextLevel || "Advanced",
+              prog.shouldAdvance ? "YES" : "no",
+            ];
+          }).filter(Boolean)
+        )
+      ),
+    ];
+    const csv = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${coachAccount?.studio || "Studio"}_Roster_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div>
+      <div className="page-header flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Studio Roster</h1>
+          <p className="page-sub">{twirlers.length} athlete{twirlers.length !== 1 ? "s" : ""} · all classifications at a glance</p>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn btn-secondary btn-sm" onClick={exportRoster}>
+            <Icon name="export" size={13} /> Export CSV
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={() => setPage("invite-athlete")}>
+            + Invite Athlete
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="filter-bar mb-4">
+        <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
+          <input className="input" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search athletes..." style={{ paddingLeft: 32 }} />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+            style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+          </svg>
+        </div>
+        <select className="select" value={filterOrg} onChange={e => setFilterOrg(e.target.value)}>
+          <option value="">All Orgs</option>
+          {allOrgs.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="empty-state">
+          <div style={{ fontSize: 36, marginBottom: 12 }}>👥</div>
+          <h3>{twirlers.length === 0 ? "No athletes linked yet" : "No athletes match your filters"}</h3>
+          {twirlers.length === 0 && (
+            <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => setPage("invite-athlete")}>
+              Invite your first athlete
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {filtered.map(t => {
+            const tProgress = progress?.[t.id] || {};
+            const advancingEvents = Object.entries(tProgress).flatMap(([orgId, events]) =>
+              Object.entries(events).filter(([, p]) => p.shouldAdvance).map(([event, p]) => ({ orgId, event, p }))
+            );
+            const isAdvancing = advancingEvents.length > 0;
+
+            return (
+              <div key={t.id} className="card"
+                style={{ borderLeft: isAdvancing ? "4px solid var(--green)" : "4px solid var(--border)", cursor: "pointer" }}
+                onClick={() => { setActiveTwirlerId(t.id); setPage("progress"); }}>
+                <div className="flex items-start gap-4">
+                  <div className="avatar avatar-lg" style={{ background: isAdvancing ? "#dcfce7" : "var(--brand)", color: isAdvancing ? "#166534" : "white" }}>
+                    {initials(t.firstName)}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)" }}>{t.firstName}</div>
+                      {t.familyName && <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.familyName}</div>}
+                      {isAdvancing && (
+                        <span className="badge badge-green" style={{ fontSize: 10 }}>
+                          {advancingEvents.length} ready to advance
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Classification grid */}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                      {(t.organizations || []).flatMap(orgId =>
+                        (ORGS[orgId]?.leveledEvents || []).map(event => {
+                          const prog = tProgress?.[orgId]?.[event];
+                          if (!prog) return null;
+                          return (
+                            <div key={`${orgId}-${event}`}
+                              style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11,
+                                background: prog.shouldAdvance ? "#dcfce7" : "var(--bg)",
+                                border: `1px solid ${prog.shouldAdvance ? "#86efac" : "var(--border)"}` }}>
+                              <span style={{ fontWeight: 700, color: orgColor(orgId) }}>{orgId}</span>
+                              <span style={{ color: "var(--muted)", margin: "0 4px" }}>·</span>
+                              <span style={{ color: "var(--slate)" }}>{event}</span>
+                              <span style={{ color: "var(--muted)", margin: "0 4px" }}>·</span>
+                              <span style={{ fontWeight: 600, color: prog.shouldAdvance ? "var(--green)" : "var(--navy)" }}>
+                                {prog.currentLevel}
+                              </span>
+                              {prog.nextLevel && (
+                                <span style={{ color: "var(--muted)", marginLeft: 4 }}>
+                                  {prog.winsCount}/{prog.winsNeeded}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        }).filter(Boolean)
+                      )}
+                      {(t.organizations || []).length === 0 && (
+                        <span style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>No organizations set</span>
+                      )}
+                    </div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, activeTwirler, setPage, setActiveTwirlerId }) {
   const upcomingComps = (coachCompetitions || [])
@@ -4133,7 +4328,6 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
   const linkedCoachLinks = (coachLinks || []).filter(l =>
     (l.twirlerId === activeTwirler?.id || l.twirler_id === activeTwirler?.id) && l.status === 'accepted'
   );
-  console.log('linkedCoachLinks debug:', { linkedCoachLinks, coachLinksAll: coachLinks, activeTwirlerID: activeTwirler?.id });
   // Also show old-style coaches from coaches table for backward compat
   const legacyCoaches = coaches.filter(c => c.linkedTwirlers?.includes(activeTwirler?.id));
   const additionalGuardians = familyAccount?.additionalGuardians || [];
