@@ -4084,6 +4084,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
   const linkedCoachLinks = (coachLinks || []).filter(l =>
     l.twirlerId === activeTwirler?.id && l.status === 'accepted'
   );
+  console.log('linkedCoachLinks debug:', { linkedCoachLinks, coachLinksAll: coachLinks, activeTwirlerID: activeTwirler?.id });
   // Also show old-style coaches from coaches table for backward compat
   const legacyCoaches = coaches.filter(c => c.linkedTwirlers?.includes(activeTwirler?.id));
   const additionalGuardians = familyAccount?.additionalGuardians || [];
