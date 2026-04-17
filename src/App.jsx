@@ -884,7 +884,7 @@ export default function App() {
             createdAt: i.created_at,
           })));
 
-          // Load coach athlete link requests
+          // Load coach twirler link requests
           const { data: coachLinks } = await supabase
             .from('coach_athlete_links')
             .select('*, coach_accounts(name, email, studio, organizations)')
@@ -960,7 +960,7 @@ export default function App() {
   const [hostMode, setHostMode] = useState(null); // null | host object — set when logging in as host
 
   async function loadCoachData(coachId) {
-    // Load athletes linked to this coach
+    // Load twirlers linked to this coach
     const { data: links } = await supabase
       .from('coach_athlete_links')
       .select('*, twirlers(*), family_accounts(parent_name, email, state)')
@@ -996,7 +996,7 @@ export default function App() {
       })));
     }
 
-    // Load pending link requests (athletes invited to this coach)
+    // Load pending link requests (twirlers invited to this coach)
     const { data: pendingLinks } = await supabase
       .from('coach_athlete_links')
       .select('*, twirlers(first_name), family_accounts(parent_name, email)')
@@ -1856,7 +1856,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
               <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20 }}>What best describes you?</p>
               {[
                 { id: "family", icon: "👨‍👩‍👧", label: "Family / Athlete", desc: "Track classifications and competition history for your twirler" },
-                { id: "coach", icon: "🎓", label: "Coach", desc: "Manage your athletes, send competition invites, and track their progress" },
+                { id: "coach", icon: "🎓", label: "Coach", desc: "Manage your twirlers, send competition invites, and track their progress" },
               ].map(r => (
                 <div key={r.id} onClick={() => setSignupRole(r.id)}
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
@@ -2090,21 +2090,24 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 
         {/* Athletes */}
         <div className="sidebar-section">
-          <div className="sidebar-label">Athletes ({twirlers.length})</div>
+          <div className="sidebar-label">Twirlers ({twirlers.length})</div>
           {twirlers.length === 0 ? (
-            <div style={{ padding: "8px 20px", fontSize: 12, color: "var(--slate)" }}>No athletes linked yet</div>
+            <div style={{ padding: "8px 20px", fontSize: 12, color: "var(--slate)" }}>No twirlers linked yet</div>
           ) : twirlers.map(t => (
             <div key={t.id}
               className={`sidebar-twirler ${activeTwirlerId === t.id ? "active" : ""}`}
               onClick={() => { setActiveTwirlerId(t.id); setSidebarOpen(false); }}>
               <div className="name">{t.firstName}</div>
-              <div className="sub">{t.familyName || ""}{t.organizations?.length > 0 ? ` · ${t.organizations.join(", ")}` : ""}</div>
+              <div className="sub">
+                {t.studio || t.familyName || ""}
+                {t.organizations?.length > 0 && <span style={{ marginLeft: 4 }}>{t.organizations.join(", ")}</span>}
+              </div>
             </div>
           ))}
           <div style={{ padding: "6px 20px" }}>
             <button className="btn btn-ghost btn-sm w-full" onClick={() => { setPage("invite-athlete"); setSidebarOpen(false); }}
               style={{ fontSize: 12, justifyContent: "center" }}>
-              + Invite Athlete
+              + Invite Twirler
             </button>
           </div>
         </div>
@@ -2179,12 +2182,12 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
             <div style={{ width: 30 }} />
           </div>
 
-          {/* Pending athlete links banner */}
+          {/* Pending twirler links banner */}
           {pendingLinks.length > 0 && (
             <div className="alert alert-info mb-4">
               <Icon name="info" size={14} color="var(--brand)" />
               <span style={{ fontSize: 13 }}>
-                {pendingLinks.length} pending athlete link{pendingLinks.length !== 1 ? "s" : ""} — families need to accept before you can see their data.
+                {pendingLinks.length} pending twirler link{pendingLinks.length !== 1 ? "s" : ""} — families need to accept before you can see their data.
               </span>
             </div>
           )}
@@ -2263,7 +2266,7 @@ function StudioRosterPage({ twirlers, progress, coachAccount, setPage, setActive
             <Icon name="export" size={13} /> Export CSV
           </button>
           <button className="btn btn-primary btn-sm" onClick={() => setPage("invite-athlete")}>
-            + Invite Athlete
+            + Invite Twirler
           </button>
         </div>
       </div>
@@ -2272,7 +2275,7 @@ function StudioRosterPage({ twirlers, progress, coachAccount, setPage, setActive
       <div className="filter-bar mb-4">
         <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
           <input className="input" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search athletes..." style={{ paddingLeft: 32 }} />
+            placeholder="Search twirlers..." style={{ paddingLeft: 32 }} />
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
             style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
             <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
@@ -2287,7 +2290,7 @@ function StudioRosterPage({ twirlers, progress, coachAccount, setPage, setActive
       {filtered.length === 0 ? (
         <div className="empty-state">
           <div style={{ fontSize: 36, marginBottom: 12 }}>👥</div>
-          <h3>{twirlers.length === 0 ? "No athletes linked yet" : "No athletes match your filters"}</h3>
+          <h3>{twirlers.length === 0 ? "No twirlers linked yet" : "No twirlers match your filters"}</h3>
           {twirlers.length === 0 && (
             <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => setPage("invite-athlete")}>
               Invite your first athlete
@@ -2315,6 +2318,15 @@ function StudioRosterPage({ twirlers, progress, coachAccount, setPage, setActive
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                       <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)" }}>{t.firstName}</div>
                       {t.familyName && <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.familyName}</div>}
+                      {t.studio && (
+                        <span className="badge" style={{ fontSize: 10,
+                          background: coachAccount?.studio && t.studio === coachAccount.studio ? "var(--brand-light)" : "var(--bg)",
+                          color: coachAccount?.studio && t.studio === coachAccount.studio ? "var(--brand)" : "var(--slate)",
+                          border: `1px solid ${coachAccount?.studio && t.studio === coachAccount.studio ? "var(--brand)" : "var(--border)"}` }}>
+                          {t.studio}
+                          {coachAccount?.studio && t.studio === coachAccount.studio && " ✓"}
+                        </span>
+                      )}
                       {isAdvancing && (
                         <span className="badge badge-green" style={{ fontSize: 10 }}>
                           {advancingEvents.length} ready to advance
@@ -2383,15 +2395,15 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
       {/* Athlete snapshot */}
       <div className="card mb-4">
         <div className="section-header">
-          <span className="section-title">My Athletes ({twirlers.length})</span>
+          <span className="section-title">My Twirlers ({twirlers.length})</span>
           <div className="flex gap-2">
             <button className="btn btn-primary btn-sm" onClick={() => setPage("create-competition")}>+ Create Competition</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setPage("invite-athlete")}>+ Invite Athlete</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setPage("invite-athlete")}>+ Invite Twirler</button>
           </div>
         </div>
         {twirlers.length === 0 ? (
           <div className="empty-state" style={{ padding: "24px 0" }}>
-            <h3>No athletes linked yet</h3>
+            <h3>No twirlers linked yet</h3>
             <p>Invite athletes by email or share your coach code with families.</p>
           </div>
         ) : (
@@ -2452,7 +2464,7 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
       {/* Quick stats */}
       <div className="grid-3">
         {[
-          { label: "Athletes", value: twirlers.length, icon: "👤" },
+          { label: "Twirlers", value: twirlers.length, icon: "👤" },
           { label: "Competitions", value: (coachCompetitions || []).length, icon: "🏆" },
           { label: "Advancing", value: twirlers.filter(t => Object.values(progress?.[t.id] || {}).some(org => Object.values(org).some(e => e.shouldAdvance))).length, icon: "⬆️" },
         ].map(s => (
@@ -2481,7 +2493,7 @@ function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler, setPage 
       <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title">Competition History</h1>
-          <p className="page-sub">Competitions you've created and invited athletes to</p>
+          <p className="page-sub">Competitions you've created and invited twirlers to</p>
         </div>
         <button className="btn btn-primary btn-sm" onClick={() => setPage("create-competition")}>
           + Create Competition
@@ -2490,7 +2502,7 @@ function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler, setPage 
 
       <div className="filter-bar mb-4">
         <select className="select" value={filterTwirler} onChange={e => setFilterTwirler(e.target.value)}>
-          <option value="">All athletes</option>
+          <option value="">All twirlers</option>
           {twirlers.map(t => <option key={t.id} value={t.id}>{t.firstName}</option>)}
         </select>
       </div>
@@ -2568,7 +2580,7 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
     <div>
       <div className="page-header">
         <h1 className="page-title">Coach Profile</h1>
-        <p className="page-sub">Manage your profile and linked athletes</p>
+        <p className="page-sub">Manage your profile and linked twirlers</p>
       </div>
 
       <div className="card mb-4">
@@ -2641,12 +2653,12 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
       {/* Linked athletes */}
       <div className="card">
         <div className="section-header">
-          <span className="section-title">Linked Athletes ({twirlers.length})</span>
+          <span className="section-title">Linked Twirlers ({twirlers.length})</span>
         </div>
         {twirlers.length === 0 ? (
           <div className="empty-state" style={{ padding: "24px 0" }}>
-            <h3>No athletes linked yet</h3>
-            <p>Use "Invite Athlete" to send a link request to a family.</p>
+            <h3>No twirlers linked yet</h3>
+            <p>Use "Invite Twirler" to send a link request to a family.</p>
           </div>
         ) : twirlers.map(t => (
           <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
@@ -2703,7 +2715,7 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
     <div>
       <div className="page-header">
         <h1 className="page-title">Create Competition Invite</h1>
-        <p className="page-sub">Add a competition and invite your athletes</p>
+        <p className="page-sub">Add a competition and invite your twirlers</p>
       </div>
 
       <div className="card" style={{ maxWidth: 560 }}>
@@ -2742,7 +2754,7 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
         <div className="form-group">
           <label className="label">Invite athletes *</label>
           {twirlers.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>No linked athletes yet.</div>
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>No linked twirlers yet.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {twirlers.map(t => (
@@ -2785,7 +2797,7 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
         <div className="flex gap-2">
           <button className="btn btn-primary" disabled={loading || !form.name || selectedTwirlers.length === 0}
             onClick={handleSubmit}>
-            {loading ? "Sending..." : `Send Invite to ${selectedTwirlers.length} athlete${selectedTwirlers.length !== 1 ? "s" : ""}`}
+            {loading ? "Sending..." : `Send Invite to ${selectedTwirlers.length} twirler${selectedTwirlers.length !== 1 ? "s" : ""}`}
           </button>
           <button className="btn btn-ghost" onClick={() => setPage("history")}>Cancel</button>
         </div>
@@ -2858,7 +2870,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">Invite Athlete</h1>
+        <h1 className="page-title">Invite Twirler</h1>
         <p className="page-sub">Send a link request to a family by their email address</p>
       </div>
 
@@ -2869,7 +2881,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
             placeholder="family@example.com" autoFocus
             onKeyDown={e => e.key === "Enter" && handleInvite()} />
           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-            The family must already have a TwirlPower account. Once they accept, you'll be able to see their athletes' classifications and send competition invites.
+            The family must already have a TwirlPower account. Once they accept, you'll be able to see their twirlers' classifications and send competition invites.
           </div>
         </div>
 
@@ -4377,7 +4389,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
       {activeTwirler && (
         <div className="card mb-4">
           <div className="section-header">
-            <span className="section-title">Athlete Profile — {activeTwirler.firstName}</span>
+            <span className="section-title">Twirler Profile — {activeTwirler.firstName}</span>
             {!editTwirler
               ? <button className="btn btn-ghost btn-sm" onClick={() => setEditTwirler(true)}><Icon name="edit" size={13} /> Edit</button>
               : <div className="flex gap-2">
@@ -5436,7 +5448,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, un
       <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title">Coaches</h1>
-          <p className="page-sub">Manage coaches and their access to your athletes</p>
+          <p className="page-sub">Manage coaches and their access to your twirlers</p>
         </div>
         <button className="btn btn-secondary" onClick={() => setShowAdd(true)}><Icon name="plus" size={15} /> Add Legacy Coach</button>
       </div>
@@ -5547,8 +5559,8 @@ function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, un
 
                     <div className="divider" />
 
-                    {/* Athlete access */}
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>Athlete access — click to toggle</div>
+                    {/* Twirler access */}
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>Twirler access — click to toggle</div>
                     <div className="flex gap-2 flex-wrap mb-2">
                       {twirlers.map(t => {
                         const isLinked = linked.includes(t.id);
@@ -5561,7 +5573,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, un
                       })}
                     </div>
                     {linked.length === 0 && (
-                      <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>No athletes linked — this coach cannot view any profiles yet.</div>
+                      <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>No twirlers linked — this coach cannot view any profiles yet.</div>
                     )}
 
                     {linked.length > 0 && (
@@ -5599,7 +5611,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, un
                     {coachComps.length === 0 ? (
                       <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>
                         No competitions created by this coach yet.
-                        {linked.length > 0 && " Use the button above to create one and invite athletes."}
+                        {linked.length > 0 && " Use the button above to create one and invite twirlers."}
                       </div>
                     ) : (
                       <div className="flex-col gap-2">
@@ -5743,7 +5755,7 @@ function CoachCreateCompModal({ open, onClose, coach, twirlers, onSave }) {
   const allOrgIds = [...new Set(twirlers.flatMap(t => t.organizations || []))];
 
   return (
-    <Modal open={open} onClose={onClose} title="Create Competition & Invite Athletes"
+    <Modal open={open} onClose={onClose} title="Create Competition & Invite Twirlers"
       footer={<>
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" disabled={!valid}
@@ -7375,7 +7387,7 @@ Stripe (stripe.com) — payment processing, once subscription billing is enabled
 We may also disclose information if required by law or to protect the rights, property, or safety of TwirlPower, our users, or others.
 
 We plan to add Google Analytics in the future. When we do, we will update this policy and provide notice in the app.` },
-          { h: "5. Children's Privacy (COPPA)", body: `TwirlPower tracks competition data for athletes who may be under the age of 13. We comply with the Children's Online Privacy Protection Act (COPPA) as follows:
+          { h: "5. Children's Privacy (COPPA)", body: `TwirlPower tracks competition data for twirlers who may be under the age of 13. We comply with the Children's Online Privacy Protection Act (COPPA) as follows:
 
 Account holders must be 18 years of age or older. Athletes under 13 do not create their own accounts. All data for minor athletes is entered by a parent or guardian who holds the account.
 
