@@ -633,20 +633,18 @@ function BatonIcon({ size = 48, className = "" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className}
       xmlns="http://www.w3.org/2000/svg" aria-label="Baton">
-      {/* Shaft — angled from bottom-left to upper-right */}
-      <line x1="8" y1="40" x2="40" y2="8" stroke="white" strokeWidth="3.5"
-        strokeLinecap="round" opacity="0.9" />
-      {/* Ball tip — large end, upper right */}
-      <circle cx="41" cy="7" r="5" fill="#e11d6a" stroke="white" strokeWidth="1.5" />
-      {/* Small tip — lower left */}
-      <circle cx="7" cy="41" r="2.5" fill="white" opacity="0.7" />
-      {/* Grip wrap lines — decorative */}
-      <line x1="20" y1="28" x2="23" y2="25" stroke="white" strokeWidth="1.5"
-        strokeLinecap="round" opacity="0.35" />
-      <line x1="24" y1="24" x2="27" y2="21" stroke="white" strokeWidth="1.5"
-        strokeLinecap="round" opacity="0.35" />
-      <line x1="28" y1="20" x2="31" y2="17" stroke="white" strokeWidth="1.5"
-        strokeLinecap="round" opacity="0.35" />
+      <g transform="translate(24,24) rotate(-35)">
+        {/* Shaft */}
+        <line x1="-16" y1="0" x2="16" y2="0" stroke="white" strokeWidth="3.5" strokeLinecap="butt" opacity="0.9"/>
+        {/* Left tip — flared trapezoid */}
+        <polygon points="-16,-2.5 -16,2.5 -21.5,5 -21.5,-5" fill="#e11d6a" stroke="white" strokeWidth="1"/>
+        {/* Right tip — flared trapezoid */}
+        <polygon points="16,-2.5 16,2.5 21.5,5 21.5,-5" fill="#e11d6a" stroke="white" strokeWidth="1"/>
+        {/* Grip wraps */}
+        <line x1="-6" y1="-3" x2="-6" y2="3" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
+        <line x1="0" y1="-3" x2="0" y2="3" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
+        <line x1="6" y1="-3" x2="6" y2="3" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.3"/>
+      </g>
     </svg>
   );
 }
@@ -657,16 +655,14 @@ function BatonIconDark({ size = 48 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" fill="none"
       xmlns="http://www.w3.org/2000/svg" aria-label="Baton">
-      <line x1="8" y1="40" x2="40" y2="8" stroke="#0f172a" strokeWidth="3.5"
-        strokeLinecap="round" opacity="0.85" />
-      <circle cx="41" cy="7" r="5" fill="#e11d6a" stroke="#0f172a" strokeWidth="1.5" />
-      <circle cx="7" cy="41" r="2.5" fill="#64748b" />
-      <line x1="20" y1="28" x2="23" y2="25" stroke="#64748b" strokeWidth="1.5"
-        strokeLinecap="round" opacity="0.5" />
-      <line x1="24" y1="24" x2="27" y2="21" stroke="#64748b" strokeWidth="1.5"
-        strokeLinecap="round" opacity="0.5" />
-      <line x1="28" y1="20" x2="31" y2="17" stroke="#64748b" strokeWidth="1.5"
-        strokeLinecap="round" opacity="0.5" />
+      <g transform="translate(24,24) rotate(-35)">
+        <line x1="-16" y1="0" x2="16" y2="0" stroke="#0f172a" strokeWidth="3.5" strokeLinecap="butt" opacity="0.85"/>
+        <polygon points="-16,-2.5 -16,2.5 -21.5,5 -21.5,-5" fill="#e11d6a" stroke="#0f172a" strokeWidth="1"/>
+        <polygon points="16,-2.5 16,2.5 21.5,5 21.5,-5" fill="#e11d6a" stroke="#0f172a" strokeWidth="1"/>
+        <line x1="-6" y1="-3" x2="-6" y2="3" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+        <line x1="0" y1="-3" x2="0" y2="3" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+        <line x1="6" y1="-3" x2="6" y2="3" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+      </g>
     </svg>
   );
 }
