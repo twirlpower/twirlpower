@@ -1645,7 +1645,7 @@ export default function App() {
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
           {page === "history" && <HistoryPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
-          {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} />}
+          {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} authUser={authUser} />}
           {page === "coaches" && <CoachesPage {...pageProps} />}
           {page === "openqs" && isAdmin && <OpenQuestionsPage />}
           {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} />}
@@ -4068,7 +4068,7 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
 
 // ─── PROFILE PAGE ────────────────────────────────────────────────────────────
 
-function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, setCoaches, openModal, competitionHosts, approveHost, competitions, results, setTwirlers, setCompetitions, setResults, isAdmin, setPage, coachLinks, respondToCoachLink }) {
+function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, setCoaches, openModal, competitionHosts, approveHost, competitions, results, setTwirlers, setCompetitions, setResults, isAdmin, setPage, coachLinks, respondToCoachLink, authUser }) {
   const [editFamily, setEditFamily] = useState(false);
   const [editTwirler, setEditTwirler] = useState(false);
   const [fForm, setFF] = useState(familyAccount);
@@ -4094,9 +4094,10 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
     setFamilyAccount(updated);
 
     // Persist to Supabase
-    await supabase.from('family_accounts')
+    const { error } = await supabase.from('family_accounts')
       .update({ additional_guardians: updated.additionalGuardians })
-      .eq('id', familyAccount.id);
+      .eq('user_id', authUser?.id);
+    if (error) console.error('saveGuardian error:', error);
 
     // Send invite email if they provided an email address
     if (guardianForm.email) {
@@ -4115,9 +4116,10 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
   async function removeGuardian(id) {
     const updated = { ...familyAccount, additionalGuardians: additionalGuardians.filter(g => g.id !== id) };
     setFamilyAccount(updated);
-    await supabase.from('family_accounts')
+    const { error } = await supabase.from('family_accounts')
       .update({ additional_guardians: updated.additionalGuardians })
-      .eq('id', familyAccount.id);
+      .eq('user_id', authUser?.id);
+    if (error) console.error('removeGuardian error:', error);
   }
 
   return (
