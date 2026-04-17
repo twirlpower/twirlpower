@@ -4068,7 +4068,7 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
 
 // ─── PROFILE PAGE ────────────────────────────────────────────────────────────
 
-function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, setCoaches, openModal, competitionHosts, approveHost, competitions, results, setTwirlers, setCompetitions, setResults, isAdmin, setPage }) {
+function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, familyAccount, setFamilyAccount, coaches, setCoaches, openModal, competitionHosts, approveHost, competitions, results, setTwirlers, setCompetitions, setResults, isAdmin, setPage, coachLinks, respondToCoachLink }) {
   const [editFamily, setEditFamily] = useState(false);
   const [editTwirler, setEditTwirler] = useState(false);
   const [fForm, setFF] = useState(familyAccount);
@@ -4080,7 +4080,12 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
   useEffect(() => { setTF(activeTwirler || {}); }, [activeTwirler]);
   useEffect(() => { setFF(familyAccount); }, [familyAccount]);
 
-  const linkedCoaches = coaches.filter(c => c.linkedTwirlers?.includes(activeTwirler?.id));
+  // Coaches linked via new coach_athlete_links (real coach accounts)
+  const linkedCoachLinks = (coachLinks || []).filter(l =>
+    l.twirlerId === activeTwirler?.id && l.status === 'accepted'
+  );
+  // Also show old-style coaches from coaches table for backward compat
+  const legacyCoaches = coaches.filter(c => c.linkedTwirlers?.includes(activeTwirler?.id));
   const additionalGuardians = familyAccount?.additionalGuardians || [];
 
   async function saveGuardian() {
@@ -4215,23 +4220,37 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                 </div>
               </div>
               <div>
-                {linkedCoaches.length > 0 && (
+                {(linkedCoachLinks.length > 0 || legacyCoaches.length > 0) ? (
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>Coaches with access</div>
-                    {linkedCoaches.map(c => (
+                    {linkedCoachLinks.map(l => (
+                      <div key={l.id} className="flex items-center gap-2 mb-2">
+                        <div className="avatar" style={{ width: 28, height: 28, fontSize: 11, background: "#ede9fe", color: "#6d28d9" }}>{initials(l.coachName || "?")}</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{l.coachName}</div>
+                          {l.coachEmail && <div style={{ fontSize: 11, color: "var(--slate)" }}>{l.coachEmail}</div>}
+                          {l.coachStudio && <div style={{ fontSize: 11, color: "var(--muted)" }}>{l.coachStudio}</div>}
+                        </div>
+                        <button className="btn btn-danger btn-sm"
+                          onClick={() => { if (window.confirm(`Remove ${l.coachName} as a coach for ${activeTwirler?.firstName}?`)) respondToCoachLink(l.id, false); }}
+                          style={{ fontSize: 11, padding: "3px 8px" }}>
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    {legacyCoaches.map(c => (
                       <div key={c.id} className="flex items-center gap-2 mb-2">
                         <div className="avatar" style={{ width: 28, height: 28, fontSize: 11, background: "#ede9fe", color: "#6d28d9" }}>{initials(c.name)}</div>
-                        <div>
+                        <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{c.name}</div>
                           {c.email && <div style={{ fontSize: 11, color: "var(--slate)" }}>{c.email}</div>}
                         </div>
-                        <span className="badge badge-gray" style={{ marginLeft: "auto", fontSize: 10 }}>Read-only</span>
+                        <span className="badge badge-gray" style={{ fontSize: 10 }}>Legacy</span>
                       </div>
                     ))}
                   </div>
-                )}
-                {linkedCoaches.length === 0 && (
-                  <div style={{ fontSize: 13, color: "var(--muted)" }}>No coaches linked yet. Go to the Coaches page to add one.</div>
+                ) : (
+                  <div style={{ fontSize: 13, color: "var(--muted)" }}>No coaches linked yet.</div>
                 )}
               </div>
             </div>
@@ -4321,8 +4340,9 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
               {g.email && <div style={{ color: "var(--slate)", fontSize: 13 }}>📧 {g.email}</div>}
               {g.phone && <div style={{ color: "var(--slate)", fontSize: 13 }}>📞 {g.phone}</div>}
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => removeGuardian(g.id)} title="Remove guardian">
-              <Icon name="trash" size={13} color="var(--red)" />
+            <button className="btn btn-danger btn-sm" onClick={() => { if (window.confirm(`Remove ${g.name} from this family account?`)) removeGuardian(g.id); }}
+              style={{ fontSize: 11, padding: "4px 10px", flexShrink: 0 }}>
+              Remove
             </button>
           </div>
         ))}
@@ -4356,7 +4376,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
       </div>
 
       {/* ── COACH CONTACT VISIBILITY NOTE ── */}
-      {linkedCoaches.length > 0 && (
+      {(linkedCoachLinks.length > 0 || legacyCoaches.length > 0) && (
         <div className="alert alert-info mb-4">
           <Icon name="info" size={16} color="var(--blue)" />
           <div>
