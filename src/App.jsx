@@ -733,6 +733,8 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState(null); // 'family' | 'coach' | 'host' | null
+  const [coachAccount, setCoachAccount] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -779,7 +781,8 @@ export default function App() {
   useEffect(() => {
     if (!authUser) {
       loadedForUserRef.current = null;
-      setFamilyAccount(null); setTwirlers([]); setCompetitions([]);
+      setFamilyAccount(null); setCoachAccount(null); setUserRole(null);
+      setTwirlers([]); setCompetitions([]);
       setResults([]); setCoaches([]); setCoachCompetitions([]);
       setInvites([]); setCompetitionHosts([]); setPublicCompetitions([]);
       setAttendees([]);
@@ -794,6 +797,24 @@ export default function App() {
   async function loadAllData(userId) {
     setDataLoading(true);
     try {
+      // Load user role first
+      const { data: roleData } = await supabase
+        .from('user_roles').select('role').eq('user_id', userId).single();
+      const role = roleData?.role || null;
+      setUserRole(role);
+
+      // If coach — load coach data and return
+      if (role === 'coach') {
+        const { data: ca } = await supabase
+          .from('coach_accounts').select('*').eq('user_id', userId).single();
+        if (ca) {
+          setCoachAccount({ ...ca, organizations: ca.organizations || [] });
+          await loadCoachData(ca.id);
+        }
+        setDataLoading(false);
+        return;
+      }
+
       // Load family account
       const { data: fa } = await supabase
         .from('family_accounts').select('*').eq('user_id', userId).single();
@@ -907,6 +928,59 @@ export default function App() {
   const closeModal = (name) => setModals(m => ({ ...m, [name]: { ...m[name], open: false } }));
 
   const [hostMode, setHostMode] = useState(null); // null | host object — set when logging in as host
+
+  async function loadCoachData(coachId) {
+    // Load athletes linked to this coach
+    const { data: links } = await supabase
+      .from('coach_athlete_links')
+      .select('*, twirlers(*), family_accounts(parent_name, email, state)')
+      .eq('coach_id', coachId)
+      .eq('status', 'accepted');
+
+    if (links && links.length > 0) {
+      // Build twirlers list from links
+      const linkedTwirlers = links.map(l => ({
+        ...l.twirlers,
+        firstName: l.twirlers.first_name,
+        classificationState: l.twirlers.classification_state || {},
+        classificationHistory: l.twirlers.classification_history || [],
+        organizations: l.twirlers.organizations || [],
+        familyName: l.family_accounts?.parent_name,
+        familyEmail: l.family_accounts?.email,
+        linkId: l.id,
+        linkStatus: l.status,
+      }));
+      setTwirlers(linkedTwirlers);
+
+      // Load competitions created by this coach
+      const { data: coachComps } = await supabase
+        .from('coach_competitions')
+        .select('*, coach_competition_invites(*)')
+        .eq('coach_id', coachId)
+        .order('date', { ascending: false });
+      setCoachCompetitions((coachComps || []).map(c => ({
+        ...c, orgId: c.org_id,
+        invites: (c.coach_competition_invites || []).map(i => ({
+          ...i, twirlerId: i.twirler_id, status: i.status,
+        }))
+      })));
+    }
+
+    // Load pending link requests (athletes invited to this coach)
+    const { data: pendingLinks } = await supabase
+      .from('coach_athlete_links')
+      .select('*, twirlers(first_name), family_accounts(parent_name, email)')
+      .eq('coach_id', coachId)
+      .eq('status', 'pending');
+    setInvites((pendingLinks || []).map(l => ({
+      ...l,
+      twirlerId: l.twirler_id,
+      twirlerName: l.twirlers?.first_name,
+      familyName: l.family_accounts?.parent_name,
+      familyEmail: l.family_accounts?.email,
+      type: 'athlete_link',
+    })));
+  }
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -1289,12 +1363,59 @@ export default function App() {
     );
   }
 
+  // ── Coach account → show coach UI ──
+  if (userRole === 'coach') {
+    if (!coachAccount) {
+      return (
+        <CoachSetupScreen
+          authUser={authUser}
+          onComplete={async data => {
+            const { data: inserted, error } = await supabase.from('coach_accounts').insert({
+              user_id: authUser.id,
+              name: data.name,
+              email: authUser.email,
+              phone: data.phone || null,
+              studio: data.studio || null,
+              specialization: data.specialization || null,
+              organizations: data.organizations || [],
+              bio: data.bio || null,
+            }).select().single();
+            if (error) { console.error('coach setup:', error); return; }
+            setCoachAccount({ ...inserted, organizations: inserted.organizations || [] });
+          }}
+        />
+      );
+    }
+    return (
+      <CoachApp
+        authUser={authUser}
+        coachAccount={coachAccount}
+        setCoachAccount={setCoachAccount}
+        twirlers={twirlers}
+        setTwirlers={setTwirlers}
+        coachCompetitions={coachCompetitions}
+        invites={invites}
+        progress={progress}
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        isAdmin={isAdmin}
+        onSignOut={signOut}
+        supabase={supabase}
+        loadCoachData={loadCoachData}
+        page={page}
+        setPage={setPage}
+        openModal={openModal}
+        closeModal={closeModal}
+        modals={modals}
+      />
+    );
+  }
+
   // ── Authenticated but no family profile yet → show SetupScreen ──
   if (!familyAccount) {
     return (
       <SetupScreen
         onComplete={async data => {
-          // Save family account to Supabase
           const { data: inserted, error } = await supabase.from('family_accounts').insert({
             user_id: authUser.id,
             parent_name: data.parentName,
@@ -1306,6 +1427,9 @@ export default function App() {
           }).select().single();
           if (error) { console.error('setup:', error); return; }
           setFamilyAccount({ ...inserted, parentName: inserted.parent_name, additionalGuardians: [] });
+          // Seed user_roles as family
+          await supabase.from('user_roles').upsert({ user_id: authUser.id, role: 'family' });
+          setUserRole('family');
           setPage("home");
         }}
         onHostPath={host => setHostMode(host)}
@@ -1425,7 +1549,8 @@ export default function App() {
 // ─── AUTH SCREEN ─────────────────────────────────────────────────────────────
 
 function AuthScreen({ onAuth, authError, setAuthError }) {
-  const [mode, setMode] = useState("login"); // "login" | "signup" | "reset"
+  const [mode, setMode] = useState("login"); // "login" | "signup" | "coach-signup" | "reset"
+  const [signupRole, setSignupRole] = useState(null); // null | "family" | "coach"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -1439,11 +1564,8 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
     setAuthError(null);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
-    if (error) {
-      setAuthError(error.message);
-    } else {
-      onAuth(data.user);
-    }
+    if (error) setAuthError(error.message);
+    else onAuth(data.user);
   }
 
   async function handleSignup(e) {
@@ -1454,10 +1576,20 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
     setLoading(true);
     setAuthError(null);
     const { data, error } = await supabase.auth.signUp({ email, password });
-    setLoading(false);
     if (error) {
+      setLoading(false);
       setAuthError(error.message);
-    } else if (data.user && !data.session) {
+      return;
+    }
+    // Seed user_roles with selected role
+    if (data.user) {
+      await supabase.from('user_roles').upsert({
+        user_id: data.user.id,
+        role: signupRole || 'family'
+      });
+    }
+    setLoading(false);
+    if (data.user && !data.session) {
       setMessage("Check your email for a confirmation link, then come back to sign in.");
       setMode("login");
     } else if (data.user) {
@@ -1474,12 +1606,8 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
       redirectTo: window.location.origin,
     });
     setLoading(false);
-    if (error) {
-      setAuthError(error.message);
-    } else {
-      setMessage("Password reset email sent. Check your inbox.");
-      setMode("login");
-    }
+    if (error) setAuthError(error.message);
+    else { setMessage("Password reset email sent. Check your inbox."); setMode("login"); }
   }
 
   const Logo = () => (
@@ -1519,6 +1647,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
             </div>
           )}
 
+          {/* ── LOGIN ── */}
           {mode === "login" && (
             <>
               <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 20 }}>Sign in to your account</div>
@@ -1538,7 +1667,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
                 {loading ? "Signing in..." : "Sign In"}
               </button>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => { setMode("signup"); setAuthError(null); setMessage(null); }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setMode("signup"); setSignupRole(null); setAuthError(null); setMessage(null); }}>
                   Create account
                 </button>
                 <button className="btn btn-ghost btn-sm" onClick={() => { setMode("reset"); setAuthError(null); setMessage(null); }}>
@@ -1548,9 +1677,43 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
             </>
           )}
 
-          {mode === "signup" && (
+          {/* ── SIGNUP ROLE SELECTION ── */}
+          {mode === "signup" && !signupRole && (
             <>
-              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 20 }}>Create your account</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 8 }}>Create your account</div>
+              <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20 }}>What best describes you?</p>
+              {[
+                { id: "family", icon: "👨‍👩‍👧", label: "Family / Athlete", desc: "Track classifications and competition history for your twirler" },
+                { id: "coach", icon: "🎓", label: "Coach", desc: "Manage your athletes, send competition invites, and track their progress" },
+              ].map(r => (
+                <div key={r.id} onClick={() => setSignupRole(r.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
+                    border: "2px solid var(--border)", borderRadius: 10, cursor: "pointer",
+                    marginBottom: 10, transition: "all 0.15s" }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = "var(--brand)"}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border)"}>
+                  <div style={{ fontSize: 28 }}>{r.icon}</div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>{r.label}</div>
+                    <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>{r.desc}</div>
+                  </div>
+                </div>
+              ))}
+              <button className="btn btn-ghost w-full" style={{ marginTop: 8 }} onClick={() => { setMode("login"); setAuthError(null); }}>
+                ← Back to sign in
+              </button>
+            </>
+          )}
+
+          {/* ── SIGNUP FORM (family or coach) ── */}
+          {mode === "signup" && signupRole && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+                <button onClick={() => setSignupRole(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--slate)", fontSize: 18, lineHeight: 1 }}>←</button>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)" }}>
+                  {signupRole === "coach" ? "🎓 Create Coach Account" : "👨‍👩‍👧 Create Family Account"}
+                </div>
+              </div>
               <div className="form-group">
                 <label className="label">Email</label>
                 <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)}
@@ -1569,17 +1732,15 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
               </div>
               <div className="alert alert-info mb-4">
                 <Icon name="info" size={14} color="var(--brand)" />
-                <span style={{ fontSize: 12 }}>You'll receive a confirmation email. Click the link to verify your account.</span>
+                <span style={{ fontSize: 12 }}>You'll receive a confirmation email. Click the link to verify your account before signing in.</span>
               </div>
               <button className="btn btn-primary w-full" disabled={loading || !email || !password || !confirmPassword} onClick={handleSignup}>
                 {loading ? "Creating account..." : "Create Account"}
               </button>
-              <button className="btn btn-ghost w-full" style={{ marginTop: 8 }} onClick={() => { setMode("login"); setAuthError(null); }}>
-                ← Back to sign in
-              </button>
             </>
           )}
 
+          {/* ── RESET ── */}
           {mode === "reset" && (
             <>
               <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 8 }}>Reset your password</div>
@@ -1601,6 +1762,656 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
         </div>
       </div>
     </>
+  );
+}
+
+// ─── COACH SETUP SCREEN ──────────────────────────────────────────────────────
+
+function CoachSetupScreen({ authUser, onComplete }) {
+  const [form, setForm] = useState({
+    name: "", phone: "", studio: "", specialization: "", organizations: [], bio: ""
+  });
+  const [loading, setLoading] = useState(false);
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  async function handleSubmit() {
+    if (!form.name) return;
+    setLoading(true);
+    await onComplete(form);
+    setLoading(false);
+  }
+
+  return (
+    <>
+      <style>{css}</style>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+        background: "linear-gradient(135deg, #0f172a 0%, #1a0a10 60%, #2d0a1a 100%)", padding: "20px" }}>
+        <div className="card" style={{ maxWidth: 480, width: "100%", padding: "40px 36px" }}>
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>🎓</div>
+            <h1 className="serif" style={{ fontSize: 26, color: "var(--navy)", marginBottom: 4 }}>
+              Set up your coach profile
+            </h1>
+            <p style={{ color: "var(--slate)", fontSize: 13 }}>
+              Signed in as {authUser?.email}
+            </p>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">Your name *</label>
+              <input className="input" value={form.name} onChange={e => f("name", e.target.value)}
+                placeholder="Full name" autoFocus />
+            </div>
+            <div className="form-group">
+              <label className="label">Phone</label>
+              <input className="input" value={form.phone} onChange={e => f("phone", e.target.value)}
+                placeholder="Optional" />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="label">Studio / club</label>
+            <input className="input" value={form.studio} onChange={e => f("studio", e.target.value)}
+              placeholder="Studio or club name" />
+          </div>
+          <div className="form-group">
+            <label className="label">Specialization</label>
+            <input className="input" value={form.specialization} onChange={e => f("specialization", e.target.value)}
+              placeholder="e.g. Solo, Corps, All Events" />
+          </div>
+          <div className="form-group">
+            <label className="label">Organizations you coach</label>
+            <div className="chip-group">
+              {Object.values(ORGS).map(org => {
+                const selected = form.organizations.includes(org.id);
+                return (
+                  <div key={org.id} className={`chip ${selected ? "selected" : ""}`}
+                    onClick={() => f("organizations", selected
+                      ? form.organizations.filter(o => o !== org.id)
+                      : [...form.organizations, org.id])}>
+                    <span style={{ fontWeight: 600 }}>{org.id}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="label">Bio (optional)</label>
+            <textarea className="textarea" value={form.bio} onChange={e => f("bio", e.target.value)}
+              rows={2} placeholder="A short intro about your coaching experience..." />
+          </div>
+
+          <button className="btn btn-primary w-full" disabled={loading || !form.name} onClick={handleSubmit}>
+            {loading ? "Setting up..." : "Complete Setup →"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── COACH APP ────────────────────────────────────────────────────────────────
+
+function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirlers, coachCompetitions,
+  invites, progress, darkMode, setDarkMode, isAdmin, onSignOut, supabase, loadCoachData,
+  page, setPage, openModal, closeModal, modals }) {
+
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeTwirlerId, setActiveTwirlerId] = useState(twirlers[0]?.id || null);
+  const [searchAthletes, setSearchAthletes] = useState("");
+
+  useEffect(() => {
+    if (twirlers.length > 0 && !activeTwirlerId) setActiveTwirlerId(twirlers[0].id);
+  }, [twirlers]);
+
+  useEffect(() => {
+    document.body.classList.toggle('dark', darkMode);
+  }, [darkMode]);
+
+  const activeTwirler = twirlers.find(t => t.id === activeTwirlerId) || twirlers[0];
+  const pendingLinks = invites.filter(i => i.type === 'athlete_link' && i.status === 'pending');
+
+  const navItems = [
+    { id: "home", label: "Dashboard", icon: "home" },
+    { id: "history", label: "Competition History", icon: "history" },
+    { id: "progress", label: "Progress Tracker", icon: "progress" },
+    { id: "upcoming", label: "Upcoming Competitions", icon: "trophy" },
+  ];
+
+  const accountItems = [
+    { id: "coach-profile", label: "Coach Profile", icon: "user" },
+    ...(isAdmin ? [{ id: "admin", label: "Admin", icon: "settings", admin: true }] : []),
+  ];
+
+  const CoachSidebar = () => (
+    <>
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+      <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+        <div className="sidebar-logo">
+          <h1 className="serif">Twirl<span>Power</span></h1>
+          <p>COACH</p>
+        </div>
+
+        {/* Athletes */}
+        <div className="sidebar-section">
+          <div className="sidebar-label">Athletes ({twirlers.length})</div>
+          {twirlers.length === 0 ? (
+            <div style={{ padding: "8px 20px", fontSize: 12, color: "var(--slate)" }}>No athletes linked yet</div>
+          ) : twirlers.map(t => (
+            <div key={t.id}
+              className={`sidebar-twirler ${activeTwirlerId === t.id ? "active" : ""}`}
+              onClick={() => { setActiveTwirlerId(t.id); setSidebarOpen(false); }}>
+              <div className="name">{t.firstName}</div>
+              <div className="sub">{t.familyName || ""}{t.organizations?.length > 0 ? ` · ${t.organizations.join(", ")}` : ""}</div>
+            </div>
+          ))}
+          <div style={{ padding: "6px 20px" }}>
+            <button className="btn btn-ghost btn-sm w-full" onClick={() => { setPage("invite-athlete"); setSidebarOpen(false); }}
+              style={{ fontSize: 12, justifyContent: "center" }}>
+              + Invite Athlete
+            </button>
+          </div>
+        </div>
+
+        {/* Nav */}
+        <div className="sidebar-section">
+          <div className="sidebar-label">Navigation</div>
+          {navItems.map(item => (
+            <div key={item.id} className={`nav-item ${page === item.id ? "active" : ""}`} onClick={() => { setPage(item.id); setSidebarOpen(false); }}>
+              <span className="nav-icon"><Icon name={item.icon} size={16} /></span>
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Account */}
+        <div className="sidebar-section">
+          <div className="sidebar-label">Account</div>
+          {accountItems.map(item => (
+            <div key={item.id} className={`nav-item ${page === item.id ? "active" : ""}`} onClick={() => { setPage(item.id); setSidebarOpen(false); }}
+              style={item.admin ? { borderLeft: page === item.id ? "3px solid #818cf8" : "3px solid transparent" } : {}}>
+              <span className="nav-icon"><Icon name={item.icon} size={16} /></span>
+              <span style={item.admin ? { color: "#818cf8" } : {}}>{item.label}</span>
+              {item.admin && <span className="badge" style={{ marginLeft: "auto", fontSize: 9, background: "#312e81", color: "#a5b4fc" }}>Admin</span>}
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div style={{ marginTop: "auto", padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 2 }}>{coachAccount?.name}</div>
+          <div style={{ fontSize: 11, color: "var(--navy3)", marginBottom: 10 }}>Coach Account</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: "var(--slate)" }}>{darkMode ? "Dark mode" : "Light mode"}</span>
+            <button onClick={() => setDarkMode(!darkMode)}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
+                background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 20, color: "var(--muted)", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+              {darkMode ? "☀️ Light" : "🌙 Dark"}
+            </button>
+          </div>
+          <button onClick={onSignOut}
+            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
+              background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 8, color: "var(--muted)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+            </svg>
+            Sign out
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <style>{css}</style>
+      <div className="app">
+        <CoachSidebar />
+        <div className="main">
+          {/* Mobile topbar */}
+          <div className="mobile-topbar">
+            <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <span className="mobile-topbar-title">TwirlPower <span style={{ color: "var(--brand)", fontSize: 12 }}>Coach</span></span>
+            <div style={{ width: 30 }} />
+          </div>
+
+          {/* Pending athlete links banner */}
+          {pendingLinks.length > 0 && (
+            <div className="alert alert-info mb-4">
+              <Icon name="info" size={14} color="var(--brand)" />
+              <span style={{ fontSize: 13 }}>
+                {pendingLinks.length} pending athlete link{pendingLinks.length !== 1 ? "s" : ""} — families need to accept before you can see their data.
+              </span>
+            </div>
+          )}
+
+          {/* Pages */}
+          {page === "home" && <CoachHomePage coachAccount={coachAccount} twirlers={twirlers} coachCompetitions={coachCompetitions} progress={progress} activeTwirler={activeTwirler} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
+          {page === "history" && <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} />}
+          {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
+          {page === "upcoming" && <UpcomingCompetitionsPage publicCompetitions={[]} familyAccount={null} addAttendee={() => {}} attendees={[]} twirlers={twirlers} activeTwirler={activeTwirler} addCompetition={() => {}} />}
+          {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} />}
+          {page === "invite-athlete" && <InviteAthletePage coachAccount={coachAccount} supabase={supabase} setPage={setPage} loadCoachData={loadCoachData} />}
+          {page === "admin" && isAdmin && <AdminPage twirlers={twirlers} competitions={[]} results={[]} coaches={[]} familyAccount={null} competitionHosts={[]} approveHost={() => {}} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={null} setPreviewRole={() => {}} />}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── COACH HOME PAGE ──────────────────────────────────────────────────────────
+
+function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, activeTwirler, setPage, setActiveTwirlerId }) {
+  const upcomingComps = (coachCompetitions || [])
+    .filter(c => c.date >= new Date().toISOString().slice(0, 10))
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(0, 3);
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">Coach Dashboard</h1>
+        <p className="page-sub">Welcome back, {coachAccount?.name}</p>
+      </div>
+
+      {/* Athlete snapshot */}
+      <div className="card mb-4">
+        <div className="section-header">
+          <span className="section-title">My Athletes ({twirlers.length})</span>
+          <button className="btn btn-primary btn-sm" onClick={() => setPage("invite-athlete")}>+ Invite Athlete</button>
+        </div>
+        {twirlers.length === 0 ? (
+          <div className="empty-state" style={{ padding: "24px 0" }}>
+            <h3>No athletes linked yet</h3>
+            <p>Invite athletes by email or share your coach code with families.</p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {twirlers.map(t => {
+              const tProgress = progress?.[t.id] || {};
+              const advancing = Object.values(tProgress).some(org => Object.values(org).some(e => e.shouldAdvance));
+              return (
+                <div key={t.id}
+                  onClick={() => { setActiveTwirlerId(t.id); setPage("progress"); }}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+                    background: "var(--bg)", borderRadius: 8, cursor: "pointer",
+                    border: advancing ? "1px solid #86efac" : "1px solid var(--border)" }}>
+                  <div className="avatar" style={{ background: "var(--brand)", color: "white", fontSize: 13 }}>
+                    {initials(t.firstName)}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{t.firstName}</div>
+                    <div style={{ fontSize: 12, color: "var(--slate)" }}>
+                      {t.familyName || ""}
+                      {t.organizations?.length > 0 && <span style={{ marginLeft: 4 }}>{t.organizations.join(", ")}</span>}
+                    </div>
+                  </div>
+                  {advancing && <span className="badge badge-green" style={{ fontSize: 10 }}>Ready to advance</span>}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Upcoming competitions */}
+      {upcomingComps.length > 0 && (
+        <div className="card mb-4">
+          <div className="section-header">
+            <span className="section-title">Upcoming Competitions</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPage("history")}>View all</button>
+          </div>
+          {upcomingComps.map(c => (
+            <div key={c.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: "var(--navy)" }}>{c.name}</div>
+              <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
+                {fmtDate(c.date)}{c.location ? ` · ${c.location}` : ""}
+                {c.org_id && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{c.org_id}</span>}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                {(c.invites || []).length} athlete{(c.invites || []).length !== 1 ? "s" : ""} invited
+                · {(c.invites || []).filter(i => i.status === 'accepted').length} accepted
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Quick stats */}
+      <div className="grid-3">
+        {[
+          { label: "Athletes", value: twirlers.length, icon: "👤" },
+          { label: "Competitions", value: (coachCompetitions || []).length, icon: "🏆" },
+          { label: "Advancing", value: twirlers.filter(t => Object.values(progress?.[t.id] || {}).some(org => Object.values(org).some(e => e.shouldAdvance))).length, icon: "⬆️" },
+        ].map(s => (
+          <div key={s.label} className="stat-card">
+            <div style={{ fontSize: 22, marginBottom: 4 }}>{s.icon}</div>
+            <div className="stat-value">{s.value}</div>
+            <div className="stat-label">{s.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── COACH HISTORY PAGE ───────────────────────────────────────────────────────
+
+function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler }) {
+  const [filterTwirler, setFilterTwirler] = useState("");
+
+  const comps = (coachCompetitions || [])
+    .filter(c => !filterTwirler || (c.invites || []).some(i => i.twirler_id === filterTwirler))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  return (
+    <div>
+      <div className="page-header flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Competition History</h1>
+          <p className="page-sub">Competitions you've created and invited athletes to</p>
+        </div>
+      </div>
+
+      <div className="filter-bar mb-4">
+        <select className="select" value={filterTwirler} onChange={e => setFilterTwirler(e.target.value)}>
+          <option value="">All athletes</option>
+          {twirlers.map(t => <option key={t.id} value={t.id}>{t.firstName}</option>)}
+        </select>
+      </div>
+
+      {comps.length === 0 ? (
+        <div className="empty-state">
+          <h3>No competitions yet</h3>
+          <p>Create competition invites from the athlete cards on your dashboard.</p>
+        </div>
+      ) : comps.map(c => (
+        <div key={c.id} className="card mb-3">
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{c.name}</div>
+              <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>
+                {fmtDate(c.date)}{c.location ? ` · ${c.location}` : ""}
+                {c.org_id && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{c.org_id}</span>}
+              </div>
+            </div>
+          </div>
+          {(c.invites || []).length > 0 && (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                Invites
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {c.invites.map(i => {
+                  const t = twirlers.find(tw => tw.id === i.twirler_id);
+                  const color = i.status === 'accepted' ? "var(--green)" : i.status === 'declined' ? "var(--red)" : "var(--amber)";
+                  return (
+                    <div key={i.id} style={{ padding: "4px 10px", borderRadius: 20, background: "var(--bg)",
+                      border: `1px solid ${color}`, fontSize: 12 }}>
+                      {t?.firstName || "Unknown"}
+                      <span style={{ marginLeft: 6, color, fontWeight: 600, fontSize: 10 }}>
+                        {i.status === 'accepted' ? '✓' : i.status === 'declined' ? '✗' : '⏳'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── COACH PROFILE PAGE ───────────────────────────────────────────────────────
+
+function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, invites, loadCoachData }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState(coachAccount || {});
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  async function saveProfile() {
+    const { data, error } = await supabase.from('coach_accounts')
+      .update({
+        name: form.name,
+        phone: form.phone,
+        studio: form.studio,
+        specialization: form.specialization,
+        organizations: form.organizations || [],
+        bio: form.bio,
+      })
+      .eq('id', coachAccount.id)
+      .select().single();
+    if (!error) {
+      setCoachAccount({ ...data, organizations: data.organizations || [] });
+      setEditing(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">Coach Profile</h1>
+        <p className="page-sub">Manage your profile and linked athletes</p>
+      </div>
+
+      <div className="card mb-4">
+        <div className="section-header">
+          <span className="section-title">Profile</span>
+          {!editing
+            ? <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}><Icon name="edit" size={13} /> Edit</button>
+            : <div className="flex gap-2">
+                <button className="btn btn-primary btn-sm" onClick={saveProfile}>Save</button>
+                <button className="btn btn-secondary btn-sm" onClick={() => { setForm(coachAccount); setEditing(false); }}>Cancel</button>
+              </div>}
+        </div>
+
+        {editing ? (
+          <div>
+            <div className="form-row">
+              <div className="form-group"><label className="label">Name</label>
+                <input className="input" value={form.name || ""} onChange={e => f("name", e.target.value)} /></div>
+              <div className="form-group"><label className="label">Phone</label>
+                <input className="input" value={form.phone || ""} onChange={e => f("phone", e.target.value)} /></div>
+            </div>
+            <div className="form-group"><label className="label">Studio / club</label>
+              <input className="input" value={form.studio || ""} onChange={e => f("studio", e.target.value)} /></div>
+            <div className="form-group"><label className="label">Specialization</label>
+              <input className="input" value={form.specialization || ""} onChange={e => f("specialization", e.target.value)} /></div>
+            <div className="form-group">
+              <label className="label">Organizations</label>
+              <div className="chip-group">
+                {Object.values(ORGS).map(org => {
+                  const selected = (form.organizations || []).includes(org.id);
+                  return (
+                    <div key={org.id} className={`chip ${selected ? "selected" : ""}`}
+                      onClick={() => f("organizations", selected
+                        ? (form.organizations || []).filter(o => o !== org.id)
+                        : [...(form.organizations || []), org.id])}>
+                      {org.id}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="form-group"><label className="label">Bio</label>
+              <textarea className="textarea" value={form.bio || ""} onChange={e => f("bio", e.target.value)} rows={2} /></div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+              <div className="avatar avatar-lg" style={{ background: "var(--brand)", color: "white" }}>
+                {initials(coachAccount?.name || "?")}
+              </div>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "var(--navy)" }}>{coachAccount?.name}</div>
+                <div style={{ fontSize: 13, color: "var(--slate)" }}>{coachAccount?.email}</div>
+                {coachAccount?.studio && <div style={{ fontSize: 13, color: "var(--slate)" }}>{coachAccount.studio}</div>}
+              </div>
+            </div>
+            {coachAccount?.specialization && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>Specialization: {coachAccount.specialization}</div>}
+            {coachAccount?.organizations?.length > 0 && (
+              <div className="chip-group">
+                {coachAccount.organizations.map(o => (
+                  <div key={o} className="chip selected" style={{ cursor: "default" }}>{o}</div>
+                ))}
+              </div>
+            )}
+            {coachAccount?.bio && <p style={{ fontSize: 13, color: "var(--slate)", marginTop: 10, lineHeight: 1.6 }}>{coachAccount.bio}</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Linked athletes */}
+      <div className="card">
+        <div className="section-header">
+          <span className="section-title">Linked Athletes ({twirlers.length})</span>
+        </div>
+        {twirlers.length === 0 ? (
+          <div className="empty-state" style={{ padding: "24px 0" }}>
+            <h3>No athletes linked yet</h3>
+            <p>Use "Invite Athlete" to send a link request to a family.</p>
+          </div>
+        ) : twirlers.map(t => (
+          <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
+            borderBottom: "1px solid var(--border)" }}>
+            <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: "var(--brand)", color: "white" }}>
+              {initials(t.firstName)}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--navy)" }}>{t.firstName}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.familyName || ""}</div>
+            </div>
+            <span className="badge badge-green" style={{ fontSize: 10 }}>Linked</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── INVITE ATHLETE PAGE ──────────────────────────────────────────────────────
+
+function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null); // null | 'sent' | 'not_found' | 'error'
+
+  async function handleInvite() {
+    if (!email) return;
+    setLoading(true);
+    setResult(null);
+
+    // Look up family by email
+    const { data: family } = await supabase
+      .from('family_accounts')
+      .select('id, parent_name, email')
+      .eq('email', email.toLowerCase().trim())
+      .single();
+
+    if (!family) {
+      setResult('not_found');
+      setLoading(false);
+      return;
+    }
+
+    // Get their twirlers
+    const { data: familyTwirlers } = await supabase
+      .from('twirlers')
+      .select('id, first_name')
+      .eq('family_id', family.id);
+
+    if (!familyTwirlers || familyTwirlers.length === 0) {
+      setResult('no_twirlers');
+      setLoading(false);
+      return;
+    }
+
+    // Create pending links for all their twirlers
+    const links = familyTwirlers.map(t => ({
+      coach_id: coachAccount.id,
+      twirler_id: t.id,
+      family_id: family.id,
+      status: 'pending',
+      invited_by: 'coach',
+    }));
+
+    const { error } = await supabase.from('coach_athlete_links').insert(links);
+    if (error) {
+      setResult('error');
+    } else {
+      setResult({ type: 'sent', family, twirlers: familyTwirlers });
+      await loadCoachData(coachAccount.id);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">Invite Athlete</h1>
+        <p className="page-sub">Send a link request to a family by their email address</p>
+      </div>
+
+      <div className="card" style={{ maxWidth: 480 }}>
+        <div className="form-group">
+          <label className="label">Family email address</label>
+          <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)}
+            placeholder="family@example.com" autoFocus
+            onKeyDown={e => e.key === "Enter" && handleInvite()} />
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+            The family must already have a TwirlPower account. Once they accept, you'll be able to see their athletes' classifications and send competition invites.
+          </div>
+        </div>
+
+        <button className="btn btn-primary" disabled={loading || !email} onClick={handleInvite}>
+          {loading ? "Looking up..." : "Send Invite Request"}
+        </button>
+        <button className="btn btn-ghost" style={{ marginLeft: 8 }} onClick={() => setPage("home")}>
+          Cancel
+        </button>
+
+        {result === 'not_found' && (
+          <div className="alert alert-warn" style={{ marginTop: 16 }}>
+            <Icon name="alert" size={14} color="var(--amber)" />
+            <span style={{ fontSize: 13 }}>No TwirlPower account found with that email. The family needs to sign up first.</span>
+          </div>
+        )}
+        {result === 'no_twirlers' && (
+          <div className="alert alert-warn" style={{ marginTop: 16 }}>
+            <Icon name="alert" size={14} color="var(--amber)" />
+            <span style={{ fontSize: 13 }}>That family account has no athletes yet. Ask them to add their twirler profile first.</span>
+          </div>
+        )}
+        {result === 'error' && (
+          <div className="alert alert-warn" style={{ marginTop: 16 }}>
+            <Icon name="alert" size={14} color="var(--amber)" />
+            <span style={{ fontSize: 13 }}>Something went wrong. The invite may already exist, or there was a database error.</span>
+          </div>
+        )}
+        {result?.type === 'sent' && (
+          <div className="alert alert-success" style={{ marginTop: 16 }}>
+            <Icon name="check" size={14} color="var(--green)" />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Invite sent to {result.family.parent_name || result.family.email}</div>
+              <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
+                {result.twirlers.map(t => t.first_name).join(", ")} — pending family acceptance
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
