@@ -5220,7 +5220,9 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
       </>}
     </div>
   );
-}{ coaches, twirlers, activeTwirler, addCoach, linkCoach, unlinkCoach, familyAccount, coachCompetitions, invites, coachCreateCompetition, coachLinks, respondToCoachLink, setPage }) {
+}
+
+function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, unlinkCoach, familyAccount, coachCompetitions, invites, coachCreateCompetition, coachLinks, respondToCoachLink, setPage }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showCreateComp, setShowCreateComp] = useState(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", specialization: "", organizations: [] });
