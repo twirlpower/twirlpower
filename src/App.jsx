@@ -740,15 +740,17 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setAuthUser(session?.user ?? null);
       setAuthLoading(false);
-      if (session?.user) checkAdmin(session.user.id);
+      if (session?.user) {
+        checkAdmin(session.user.id);
+      } else {
+        setDataLoading(false); // No user — stop loading immediately
+      }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      // Only update on meaningful auth events, not TOKEN_REFRESHED or focus events
-      // This prevents modal data loss when switching browser tabs
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
         setAuthUser(session?.user ?? null);
         if (session?.user) checkAdmin(session.user.id);
-        else setIsAdmin(false);
+        else { setIsAdmin(false); setDataLoading(false); }
       }
     });
     return () => subscription.unsubscribe();
@@ -773,7 +775,7 @@ export default function App() {
   const [competitionHosts, setCompetitionHosts] = useState([]);
   const [publicCompetitions, setPublicCompetitions] = useState([]);
   const [attendees, setAttendees] = useState([]);
-  const [dataLoading, setDataLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
 
   // ── Load all user data from Supabase when auth user ID changes ──
   const loadedForUserRef = useRef(null);
