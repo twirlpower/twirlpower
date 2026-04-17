@@ -772,6 +772,7 @@ export default function App() {
   const [coaches, setCoaches] = useState([]);
   const [coachCompetitions, setCoachCompetitions] = useState([]);
   const [invites, setInvites] = useState([]);
+  const [coachLinks, setCoachLinks] = useState([]);
   const [competitionHosts, setCompetitionHosts] = useState([]);
   const [publicCompetitions, setPublicCompetitions] = useState([]);
   const [attendees, setAttendees] = useState([]);
@@ -890,6 +891,27 @@ export default function App() {
         setAttendees((att || []).map(a => ({
           ...a, twirlerId: a.twirler_id, competitionId: a.competition_id,
           addedAt: a.added_at,
+        })));
+      }
+
+      // Load coach athlete link requests (pending coach invites to this family's twirlers)
+      if (mappedTwirlers.length > 0) {
+        const twirlerIds = mappedTwirlers.map(t => t.id);
+        const { data: coachLinks } = await supabase
+          .from('coach_athlete_links')
+          .select('*, coach_accounts(name, email, studio, organizations)')
+          .in('twirler_id', twirlerIds);
+        setCoachLinks((coachLinks || []).map(l => ({
+          ...l,
+          twirlerId: l.twirler_id,
+          coachId: l.coach_id,
+          familyId: l.family_id,
+          coachName: l.coach_accounts?.name,
+          coachEmail: l.coach_accounts?.email,
+          coachStudio: l.coach_accounts?.studio,
+          coachOrgs: l.coach_accounts?.organizations || [],
+          createdAt: l.created_at,
+          type: 'coach_link',
         })));
       }
 
@@ -1017,6 +1039,14 @@ export default function App() {
   const pendingInvites = invites.filter(i =>
     twirlers.some(t => t.id === i.twirlerId) && i.status === "pending"
   );
+
+  const pendingCoachLinks = coachLinks.filter(l => l.status === 'pending');
+
+  // All pending notifications combined
+  const allNotifications = [
+    ...pendingInvites.map(i => ({ ...i, notifType: 'competition_invite' })),
+    ...pendingCoachLinks.map(l => ({ ...l, notifType: 'coach_link' })),
+  ];
 
   // Pass resolved id as the canonical activeTwirlerId throughout the app
   const effectiveActiveTwirlerId = resolvedActiveTwirlerId;
@@ -1330,6 +1360,12 @@ export default function App() {
     }
   }
 
+  async function respondToCoachLink(linkId, accept) {
+    const status = accept ? 'accepted' : 'declined';
+    setCoachLinks(prev => prev.map(l => l.id === linkId ? { ...l, status } : l));
+    await supabase.from('coach_athlete_links').update({ status }).eq('id', linkId);
+  }
+
   // ── Data loading overlay ──
   if (dataLoading) {
     return (
@@ -1512,13 +1548,13 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, addAttendee, removeAttendee, setFamilyAccount };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, addAttendee, removeAttendee, setFamilyAccount };
 
   return (
     <>
       <style>{css}</style>
       <div className="app">
-        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} />
+        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="mobile-topbar">
@@ -1526,9 +1562,24 @@ export default function App() {
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
           <span className="mobile-topbar-title">Twirl<span style={{ color: "#e11d6a" }}>Power</span></span>
-          <button className="mobile-menu-btn" onClick={() => openModal("addCompetition")} aria-label="Add competition">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <button className="mobile-menu-btn" style={{ position: "relative" }}
+              onClick={() => { setPage("notifications"); setSidebarOpen(false); }} aria-label="Notifications">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+              </svg>
+              {allNotifications?.length > 0 && (
+                <span style={{ position: "absolute", top: 0, right: 0, width: 16, height: 16,
+                  background: "#e11d6a", borderRadius: "50%", fontSize: 9, fontWeight: 700,
+                  color: "white", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {allNotifications.length}
+                </span>
+              )}
+            </button>
+            <button className="mobile-menu-btn" onClick={() => openModal("addCompetition")} aria-label="Add competition">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+          </div>
         </div>
         <div className="main">
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
@@ -1537,6 +1588,7 @@ export default function App() {
           {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} />}
           {page === "coaches" && <CoachesPage {...pageProps} />}
           {page === "openqs" && isAdmin && <OpenQuestionsPage />}
+          {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} />}
           {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} />}
           {page === "orgs" && <OrganizationsPage />}
           {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
@@ -2726,7 +2778,7 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole }) {
+function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications }) {
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "history", label: "Competition History", icon: "history" },
@@ -2746,9 +2798,25 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
   return (
     <div className={`sidebar${sidebarOpen ? " open" : ""}`}>
       <div className="sidebar-logo">
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <BatonIcon size={36} />
-          <h1>Twirl<span style={{ color: "#e11d6a" }}>Power</span></h1>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <BatonIcon size={36} />
+            <h1>Twirl<span style={{ color: "#e11d6a" }}>Power</span></h1>
+          </div>
+          <button onClick={() => setPage("notifications")}
+            style={{ position: "relative", background: "none", border: "none", cursor: "pointer",
+              padding: 4, color: allNotifications?.length > 0 ? "white" : "var(--slate)", display: "flex" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+            </svg>
+            {allNotifications?.length > 0 && (
+              <span style={{ position: "absolute", top: 0, right: 0, width: 14, height: 14,
+                background: "#e11d6a", borderRadius: "50%", fontSize: 8, fontWeight: 700,
+                color: "white", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {allNotifications.length}
+              </span>
+            )}
+          </button>
         </div>
         <p>TRACK · COMPETE · ADVANCE</p>
       </div>
@@ -2834,7 +2902,7 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
 
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
 
-function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId }) {
+function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink }) {
   if (!activeTwirler) return <div className="empty-state"><h3>No twirler selected</h3></div>;
 
   const lastComp = twirlerComps.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
@@ -2963,6 +3031,42 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
         <div key={i} className="alert alert-warn mb-3">
           <Icon name="alert" size={16} color="var(--amber)" />
           <span>Some cross-org win recognition rules are unknown. Wins are being counted by default. See Open Questions for details.</span>
+        </div>
+      ))}
+
+      {/* ── PENDING COACH LINK REQUESTS ── */}
+      {(pendingCoachLinks || []).filter(l => l.twirlerId === activeTwirler?.id).map(link => (
+        <div key={link.id} className="card mb-3" style={{ borderLeft: "4px solid #818cf8", padding: "16px 20px" }}>
+          <div className="flex items-start gap-3">
+            <div style={{ width: 36, height: 36, background: "#e0e7ff", borderRadius: 8,
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 18 }}>
+              🎓
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 2 }}>
+                Coach link request for {twirlers.find(t => t.id === link.twirlerId)?.firstName}
+              </div>
+              <div style={{ fontSize: 14, color: "var(--navy)", marginBottom: 2 }}>
+                {link.coachName || "A coach"}{link.coachStudio ? ` · ${link.coachStudio}` : ""}
+              </div>
+              {link.coachOrgs?.length > 0 && (
+                <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 8 }}>
+                  Coaches: {link.coachOrgs.join(", ")}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button className="btn btn-primary btn-sm" onClick={() => respondToCoachLink(link.id, true)}>
+                  ✓ Accept
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => respondToCoachLink(link.id, false)}>
+                  Decline
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setPage("notifications")}>
+                  View all notifications
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       ))}
 
@@ -5761,6 +5865,100 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── NOTIFICATIONS PAGE ───────────────────────────────────────────────────────
+
+function NotificationsPage({ allNotifications, pendingInvites, pendingCoachLinks, respondToInvite, respondToCoachLink, twirlers, coachCompetitions, setPage }) {
+
+  const notifications = [
+    ...(pendingCoachLinks || []).map(l => ({
+      id: l.id,
+      type: 'coach_link',
+      title: `${l.coachName || "A coach"} wants to link with ${twirlers.find(t => t.id === l.twirlerId)?.firstName || "your athlete"}`,
+      sub: [l.coachStudio, l.coachOrgs?.join(", ")].filter(Boolean).join(" · "),
+      date: l.createdAt,
+      coachEmail: l.coachEmail,
+      raw: l,
+    })),
+    ...(pendingInvites || []).map(i => {
+      const comp = coachCompetitions?.find(c => c.id === i.competitionId);
+      const twirler = twirlers.find(t => t.id === i.twirlerId);
+      return {
+        id: i.id,
+        type: 'competition_invite',
+        title: `Competition invite for ${twirler?.firstName || "your athlete"}`,
+        sub: comp ? `${comp.name} · ${fmtDate(comp.date)}` : "Competition details unavailable",
+        date: i.createdAt,
+        raw: i,
+      };
+    }),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  return (
+    <div>
+      <div className="page-header flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Notifications</h1>
+          <p className="page-sub">{notifications.length} pending action{notifications.length !== 1 ? "s" : ""}</p>
+        </div>
+      </div>
+
+      {notifications.length === 0 ? (
+        <div className="empty-state">
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🔔</div>
+          <h3>All caught up</h3>
+          <p>No pending notifications right now.</p>
+        </div>
+      ) : notifications.map(n => (
+        <div key={n.id} className="card mb-3">
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
+              background: n.type === 'coach_link' ? "#e0e7ff" : "#dbeafe",
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+              {n.type === 'coach_link' ? "🎓" : "🏆"}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 2 }}>
+                {n.title}
+              </div>
+              {n.sub && <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 4 }}>{n.sub}</div>}
+              {n.type === 'coach_link' && n.coachEmail && (
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>📧 {n.coachEmail}</div>
+              )}
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>{fmtDate(n.date)}</div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+            {n.type === 'coach_link' ? (
+              <>
+                <button className="btn btn-primary btn-sm"
+                  onClick={() => respondToCoachLink(n.id, true)}>
+                  ✓ Accept
+                </button>
+                <button className="btn btn-secondary btn-sm"
+                  onClick={() => respondToCoachLink(n.id, false)}>
+                  Decline
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="btn btn-primary btn-sm"
+                  onClick={() => respondToInvite(n.id, true)}>
+                  ✓ Accept — add to competitions
+                </button>
+                <button className="btn btn-secondary btn-sm"
+                  onClick={() => respondToInvite(n.id, false)}>
+                  Decline
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
