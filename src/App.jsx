@@ -885,10 +885,11 @@ export default function App() {
           })));
 
           // Load coach athlete link requests
-          const { data: coachLinks } = await supabase
+          const { data: coachLinks, error: clError } = await supabase
             .from('coach_athlete_links')
             .select('*, coach_accounts(name, email, studio, organizations)')
             .in('twirler_id', twirlerIds);
+          console.log('coach_athlete_links query:', { coachLinks, clError, twirlerIds });
           setCoachLinks((coachLinks || []).map(l => ({
             ...l,
             twirlerId: l.twirler_id,
@@ -902,6 +903,15 @@ export default function App() {
             type: 'coach_link',
           })));
         }
+
+        // Load attendees for this family's twirlers
+        const { data: att } = await supabase
+          .from('attendees').select('*').eq('twirler_id', mappedTwirlers[0]?.id || '');
+        setAttendees((att || []).map(a => ({
+          ...a, twirlerId: a.twirler_id, competitionId: a.competition_id,
+          addedAt: a.added_at,
+        })));
+      }
 
       // Load public competitions (visible to all)
       const { data: pubComps } = await supabase
@@ -1029,6 +1039,7 @@ export default function App() {
   );
 
   const pendingCoachLinks = coachLinks.filter(l => l.status === 'pending');
+  console.log('coachLinks state:', coachLinks, 'pendingCoachLinks:', pendingCoachLinks);
 
   // All pending notifications combined
   const allNotifications = [
