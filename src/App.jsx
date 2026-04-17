@@ -1323,46 +1323,106 @@ export default function App() {
   }
 
   // ── COACH COMPETITION INVITES (still local for now) ──
-  function coachCreateCompetition(coachId, compData, invitedTwirlerIds) {
-    const compId = uid();
-    const newComp = { id: compId, ...compData, createdByCoach: coachId };
-    setCoachCompetitions(prev => [...prev, newComp]);
-    const today = new Date().toISOString().slice(0, 10);
-    const newInvites = invitedTwirlerIds.map(twirlerId => ({
-      id: uid(),
-      competitionId: compId,
-      coachId,
-      twirlerId,
-      status: "pending", // "pending" | "accepted" | "declined"
-      createdAt: today,
-      respondedAt: null,
-    }));
-    setInvites(prev => [...prev, ...newInvites]);
+  async function coachCreateCompetition(coachId, compData, invitedTwirlerIds) {
+    // Insert competition to Supabase
+    const { data: newComp, error: compError } = await supabase
+      .from('coach_competitions')
+      .insert({
+        coach_id: coachId,
+        name: compData.name,
+        date: compData.date || null,
+        location: compData.location || null,
+        org_id: compData.orgId || null,
+        notes: compData.notes || null,
+      })
+      .select().single();
+    if (compError) { console.error('coach comp insert:', compError); return; }
+
+    // Insert invites and notify families by email
+    if (invitedTwirlerIds.length > 0) {
+      const inviteRows = invitedTwirlerIds.map(twirlerId => ({
+        competition_id: newComp.id,
+        twirler_id: twirlerId,
+        coach_id: coachId,
+        status: 'pending',
+      }));
+      await supabase.from('coach_competition_invites').insert(inviteRows);
+
+      // Look up family emails for each invited twirler and send notifications
+      for (const twirlerId of invitedTwirlerIds) {
+        const { data: twirlerData } = await supabase
+          .from('twirlers')
+          .select('first_name, family_accounts(email, parent_name)')
+          .eq('id', twirlerId)
+          .single();
+        if (twirlerData?.family_accounts?.email) {
+          await sendEmail('competition_invite', twirlerData.family_accounts.email, {
+            coachName: coachAccount?.name || 'Your coach',
+            athleteName: twirlerData.first_name,
+            compName: compData.name,
+            compDate: compData.date ? new Date(compData.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null,
+            compLocation: compData.location || null,
+            compOrg: compData.orgId || null,
+          });
+        }
+      }
+    }
+
+    // Reload coach data to reflect new competition
+    await loadCoachData(coachId);
   }
 
-  // Family accepts or declines an invite
-  function respondToInvite(inviteId, accept) {
-    const invite = invites.find(i => i.id === inviteId);
-    if (!invite) return;
-    setInvites(prev => prev.map(i => i.id === inviteId
-      ? { ...i, status: accept ? "accepted" : "declined", respondedAt: new Date().toISOString().slice(0, 10) }
-      : i));
+  async function respondToInvite(inviteId, accept) {
+    const status = accept ? 'accepted' : 'declined';
+    setInvites(prev => prev.map(i => i.id === inviteId ? { ...i, status } : i));
+    await supabase.from('coach_competition_invites').update({ status }).eq('id', inviteId);
+
     if (accept) {
-      const coachComp = coachCompetitions.find(c => c.id === invite.competitionId);
-      if (coachComp) {
-        // Add to family competitions if not already there
-        setCompetitions(prev => {
-          if (prev.find(c => c.id === coachComp.id)) return prev;
-          return [...prev, { ...coachComp, acceptedFromInvite: true }];
-        });
+      // Find the coach competition and add to family competitions
+      const invite = invites.find(i => i.id === inviteId);
+      if (invite) {
+        const { data: coachComp } = await supabase
+          .from('coach_competitions')
+          .select('*')
+          .eq('id', invite.competitionId)
+          .single();
+        if (coachComp && activeTwirler) {
+          // Add to family competitions table
+          const { data: inserted } = await supabase
+            .from('competitions')
+            .insert({
+              twirler_id: invite.twirlerId,
+              name: coachComp.name,
+              date: coachComp.date,
+              location: coachComp.location,
+              org_id: coachComp.org_id,
+              notes: coachComp.notes,
+              from_coach: true,
+            })
+            .select().single();
+          if (inserted) {
+            setCompetitions(prev => [...prev, { ...inserted, orgId: inserted.org_id }]);
+          }
+        }
       }
     }
   }
 
   async function respondToCoachLink(linkId, accept) {
     const status = accept ? 'accepted' : 'declined';
+    const link = coachLinks.find(l => l.id === linkId);
     setCoachLinks(prev => prev.map(l => l.id === linkId ? { ...l, status } : l));
     await supabase.from('coach_athlete_links').update({ status }).eq('id', linkId);
+
+    // Notify the coach by email
+    if (link?.coachEmail) {
+      const twirler = twirlers.find(t => t.id === link.twirlerId);
+      await sendEmail('coach_link_accepted', link.coachEmail, {
+        familyName: familyAccount?.parentName || 'A family',
+        athleteName: twirler?.firstName || 'the athlete',
+        accepted: accept,
+      });
+    }
   }
 
   // ── Data loading overlay ──
@@ -1453,6 +1513,7 @@ export default function App() {
         openModal={openModal}
         closeModal={closeModal}
         modals={modals}
+        coachCreateCompetition={coachCreateCompetition}
       />
     );
   }
@@ -1921,7 +1982,7 @@ function CoachSetupScreen({ authUser, onComplete }) {
 
 function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirlers, coachCompetitions,
   invites, progress, darkMode, setDarkMode, isAdmin, onSignOut, supabase, loadCoachData,
-  page, setPage, openModal, closeModal, modals }) {
+  page, setPage, openModal, closeModal, modals, coachCreateCompetition }) {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTwirlerId, setActiveTwirlerId] = useState(twirlers[0]?.id || null);
@@ -2060,11 +2121,12 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 
           {/* Pages */}
           {page === "home" && <CoachHomePage coachAccount={coachAccount} twirlers={twirlers} coachCompetitions={coachCompetitions} progress={progress} activeTwirler={activeTwirler} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
-          {page === "history" && <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} />}
+          {page === "history" && <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
           {page === "upcoming" && <UpcomingCompetitionsPage publicCompetitions={[]} familyAccount={null} addAttendee={() => {}} attendees={[]} twirlers={twirlers} activeTwirler={activeTwirler} addCompetition={() => {}} />}
           {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} />}
           {page === "invite-athlete" && <InviteAthletePage coachAccount={coachAccount} supabase={supabase} setPage={setPage} loadCoachData={loadCoachData} />}
+          {page === "create-competition" && <CreateCompetitionPage coachAccount={coachAccount} twirlers={twirlers} supabase={supabase} setPage={setPage} coachCreateCompetition={coachCreateCompetition} />}
           {page === "admin" && isAdmin && <AdminPage twirlers={twirlers} competitions={[]} results={[]} coaches={[]} familyAccount={null} competitionHosts={[]} approveHost={() => {}} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={null} setPreviewRole={() => {}} />}
         </div>
       </div>
@@ -2091,7 +2153,10 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
       <div className="card mb-4">
         <div className="section-header">
           <span className="section-title">My Athletes ({twirlers.length})</span>
-          <button className="btn btn-primary btn-sm" onClick={() => setPage("invite-athlete")}>+ Invite Athlete</button>
+          <div className="flex gap-2">
+            <button className="btn btn-primary btn-sm" onClick={() => setPage("create-competition")}>+ Create Competition</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => setPage("invite-athlete")}>+ Invite Athlete</button>
+          </div>
         </div>
         {twirlers.length === 0 ? (
           <div className="empty-state" style={{ padding: "24px 0" }}>
@@ -2173,7 +2238,7 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
 
 // ─── COACH HISTORY PAGE ───────────────────────────────────────────────────────
 
-function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler }) {
+function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler, setPage }) {
   const [filterTwirler, setFilterTwirler] = useState("");
 
   const comps = (coachCompetitions || [])
@@ -2187,6 +2252,9 @@ function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler }) {
           <h1 className="page-title">Competition History</h1>
           <p className="page-sub">Competitions you've created and invited athletes to</p>
         </div>
+        <button className="btn btn-primary btn-sm" onClick={() => setPage("create-competition")}>
+          + Create Competition
+        </button>
       </div>
 
       <div className="filter-bar mb-4">
@@ -2369,6 +2437,132 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
 
 // ─── INVITE ATHLETE PAGE ──────────────────────────────────────────────────────
 
+// ─── CREATE COMPETITION PAGE (COACH) ─────────────────────────────────────────
+
+function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coachCreateCompetition }) {
+  const [form, setForm] = useState({
+    name: "", date: "", location: "", orgId: "", notes: ""
+  });
+  const [selectedTwirlers, setSelectedTwirlers] = useState(twirlers.map(t => t.id));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  async function handleSubmit() {
+    if (!form.name || selectedTwirlers.length === 0) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await coachCreateCompetition(coachAccount.id, form, selectedTwirlers);
+      setPage("history");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggleTwirler(id) {
+    setSelectedTwirlers(prev =>
+      prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
+    );
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">Create Competition Invite</h1>
+        <p className="page-sub">Add a competition and invite your athletes</p>
+      </div>
+
+      <div className="card" style={{ maxWidth: 560 }}>
+        <div className="form-group">
+          <label className="label">Competition name *</label>
+          <input className="input" value={form.name} onChange={e => f("name", e.target.value)}
+            placeholder="e.g. State Championship 2026" autoFocus />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label className="label">Date</label>
+            <input className="input" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="label">Organization</label>
+            <select className="select" value={form.orgId} onChange={e => f("orgId", e.target.value)}>
+              <option value="">Select org</option>
+              {Object.values(ORGS).map(o => (
+                <option key={o.id} value={o.id}>{o.id} — {o.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="form-group">
+          <label className="label">Location</label>
+          <input className="input" value={form.location} onChange={e => f("location", e.target.value)}
+            placeholder="City, State or venue name" />
+        </div>
+        <div className="form-group">
+          <label className="label">Notes</label>
+          <textarea className="textarea" value={form.notes} onChange={e => f("notes", e.target.value)}
+            rows={2} placeholder="Any details for families — registration deadlines, hotel info, etc." />
+        </div>
+
+        {/* Athlete selection */}
+        <div className="form-group">
+          <label className="label">Invite athletes *</label>
+          {twirlers.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>No linked athletes yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {twirlers.map(t => (
+                <div key={t.id}
+                  onClick={() => toggleTwirler(t.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                    borderRadius: 8, cursor: "pointer", border: "2px solid",
+                    borderColor: selectedTwirlers.includes(t.id) ? "var(--brand)" : "var(--border)",
+                    background: selectedTwirlers.includes(t.id) ? "var(--brand-light)" : "var(--bg)" }}>
+                  <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid",
+                    borderColor: selectedTwirlers.includes(t.id) ? "var(--brand)" : "var(--border)",
+                    background: selectedTwirlers.includes(t.id) ? "var(--brand)" : "white",
+                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {selectedTwirlers.includes(t.id) && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                    )}
+                  </div>
+                  <div className="avatar" style={{ width: 28, height: 28, fontSize: 11, background: "var(--brand)", color: "white" }}>
+                    {initials(t.firstName)}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>{t.firstName}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>{t.familyName || ""}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className="alert alert-warn mb-3">
+            <Icon name="alert" size={14} color="var(--amber)" />
+            <span style={{ fontSize: 12 }}>{error}</span>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button className="btn btn-primary" disabled={loading || !form.name || selectedTwirlers.length === 0}
+            onClick={handleSubmit}>
+            {loading ? "Sending..." : `Send Invite to ${selectedTwirlers.length} athlete${selectedTwirlers.length !== 1 ? "s" : ""}`}
+          </button>
+          <button className="btn btn-ghost" onClick={() => setPage("history")}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -2404,7 +2598,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
       return;
     }
 
-    // Create pending links for all their twirlers
+    // Insert pending links for all their twirlers
     const links = familyTwirlers.map(t => ({
       coach_id: coachAccount.id,
       twirler_id: t.id,
@@ -2418,6 +2612,13 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
       setResult('error');
     } else {
       setResult({ type: 'sent', family, twirlers: familyTwirlers });
+      // Send email notification to family
+      await sendEmail('coach_link_request', family.email, {
+        coachName: coachAccount.name,
+        coachStudio: coachAccount.studio,
+        coachOrgs: coachAccount.organizations,
+        athleteName: familyTwirlers.map(t => t.first_name).join(', '),
+      });
       await loadCoachData(coachAccount.id);
     }
     setLoading(false);
@@ -3626,6 +3827,20 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
   );
 }
 
+// ── Email helper ─────────────────────────────────────────────────────────────
+async function sendEmail(type, to, data) {
+  try {
+    const res = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, to, data }),
+    });
+    if (!res.ok) console.warn('Email send failed:', await res.text());
+  } catch (err) {
+    console.warn('Email error:', err);
+  }
+}
+
 function exportAccountBackup(familyAccount, twirlers, competitions, results, coaches) {
   const data = {
     exportedAt: new Date().toISOString(),
@@ -3868,15 +4083,36 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
   const linkedCoaches = coaches.filter(c => c.linkedTwirlers?.includes(activeTwirler?.id));
   const additionalGuardians = familyAccount?.additionalGuardians || [];
 
-  function saveGuardian() {
-    const updated = { ...familyAccount, additionalGuardians: [...additionalGuardians, { id: uid(), ...guardianForm }] };
+  async function saveGuardian() {
+    const newGuardian = { id: uid(), ...guardianForm };
+    const updated = { ...familyAccount, additionalGuardians: [...additionalGuardians, newGuardian] };
     setFamilyAccount(updated);
+
+    // Persist to Supabase
+    await supabase.from('family_accounts')
+      .update({ additional_guardians: updated.additionalGuardians })
+      .eq('id', familyAccount.id);
+
+    // Send invite email if they provided an email address
+    if (guardianForm.email) {
+      await sendEmail('family_invite', guardianForm.email, {
+        inviterName: familyAccount.parentName || 'Your family',
+        guardianName: guardianForm.name,
+        relationship: guardianForm.relationship,
+        athleteNames: twirlers.map(t => t.firstName).join(', '),
+      });
+    }
+
     setGF({ name: "", email: "", phone: "", relationship: "Parent" });
     setShowAddGuardian(false);
   }
 
-  function removeGuardian(id) {
-    setFamilyAccount({ ...familyAccount, additionalGuardians: additionalGuardians.filter(g => g.id !== id) });
+  async function removeGuardian(id) {
+    const updated = { ...familyAccount, additionalGuardians: additionalGuardians.filter(g => g.id !== id) };
+    setFamilyAccount(updated);
+    await supabase.from('family_accounts')
+      .update({ additional_guardians: updated.additionalGuardians })
+      .eq('id', familyAccount.id);
   }
 
   return (
