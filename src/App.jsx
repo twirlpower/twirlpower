@@ -799,10 +799,19 @@ export default function App() {
   async function loadAllData(userId) {
     setDataLoading(true);
     try {
-      // Load user role first
-      const { data: roleData } = await supabase
+      // Load user role — seed from auth metadata if missing
+      let { data: roleData } = await supabase
         .from('user_roles').select('role').eq('user_id', userId).single();
-      const role = roleData?.role || null;
+
+      if (!roleData) {
+        // Role row missing — read from auth user metadata and create it
+        const { data: { user } } = await supabase.auth.getUser();
+        const metaRole = user?.user_metadata?.role || 'family';
+        await supabase.from('user_roles').upsert({ user_id: userId, role: metaRole });
+        roleData = { role: metaRole };
+      }
+
+      const role = roleData?.role || 'family';
       setUserRole(role);
 
       // If coach — load coach data and return
@@ -1577,14 +1586,19 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
     if (password.length < 8) { setAuthError("Password must be at least 8 characters."); return; }
     setLoading(true);
     setAuthError(null);
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    // Store role in user metadata — survives the email confirmation roundtrip
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { role: signupRole || 'family' } }
+    });
     if (error) {
       setLoading(false);
       setAuthError(error.message);
       return;
     }
-    // Seed user_roles with selected role
-    if (data.user) {
+    // If no email confirmation required, seed role immediately
+    if (data.user && data.session) {
       await supabase.from('user_roles').upsert({
         user_id: data.user.id,
         role: signupRole || 'family'
