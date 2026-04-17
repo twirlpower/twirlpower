@@ -1014,16 +1014,22 @@ export default function App() {
     })));
 
     // Load clubs this coach belongs to
-    const { data: clubMemberships } = await supabase
+    const { data: clubMemberships, error: cmError } = await supabase
       .from('club_coaches')
-      .select('*, clubs(id, name, city, state, website, phone, description, status, owner_coach_id)')
+      .select('*')
       .eq('coach_id', coachId)
       .eq('status', 'active');
-    setCoachClubs((clubMemberships || []).map(m => ({
-      ...m.clubs,
-      coachRole: m.role,
-      membershipId: m.id,
-    })));
+    if (clubMemberships && clubMemberships.length > 0) {
+      const clubIds = clubMemberships.map(m => m.club_id);
+      const { data: clubData } = await supabase
+        .from('clubs').select('*').in('id', clubIds);
+      setCoachClubs((clubMemberships || []).map(m => {
+        const club = (clubData || []).find(c => c.id === m.club_id) || {};
+        return { ...club, coachRole: m.role, membershipId: m.id };
+      }));
+    } else {
+      setCoachClubs([]);
+    }
 
     // Load pending club claim requests for this coach
     const { data: claimReqs } = await supabase
