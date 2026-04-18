@@ -889,7 +889,7 @@ export default function App() {
           // Load coach twirler link requests
           const { data: coachLinks } = await supabase
             .from('coach_athlete_links')
-            .select('*, coach_accounts(name, email, club, organizations)')
+            .select('*, coach_accounts(name, email, studio, organizations)')
             .in('twirler_id', twirlerIds);
           setCoachLinks((coachLinks || []).map(l => ({
             ...l,
@@ -898,7 +898,7 @@ export default function App() {
             familyId: l.family_id,
             coachName: l.coach_accounts?.name,
             coachEmail: l.coach_accounts?.email,
-            coachClub: l.coach_accounts?.club,
+            coachStudio: l.coach_accounts?.studio,
             coachOrgs: l.coach_accounts?.organizations || [],
             createdAt: l.created_at,
             type: 'coach_link',
@@ -2939,7 +2939,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
       // Send email notification to family
       await sendEmail('coach_link_request', family.email, {
         coachName: coachAccount.name,
-        coachClub: coachAccount.club,
+        coachStudio: coachAccount.studio,
         coachOrgs: coachAccount.organizations,
         athleteName: familyTwirlers.map(t => t.first_name).join(', '),
       });
@@ -3591,7 +3591,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                 Coach link request for {twirlers.find(t => t.id === link.twirlerId)?.firstName}
               </div>
               <div style={{ fontSize: 14, color: "var(--navy)", marginBottom: 2 }}>
-                {link.coachName || "A coach"}{link.coachClub ? ` · ${link.coachClub}` : ""}
+                {link.coachName || "A coach"}{link.coachStudio ? ` · ${link.coachStudio}` : ""}
               </div>
               {link.coachOrgs?.length > 0 && (
                 <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 8 }}>
@@ -4420,9 +4420,19 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showAddGuardian, setShowAddGuardian] = useState(false);
   const [guardianForm, setGF] = useState({ name: "", email: "", phone: "", relationship: "Parent" });
+  const [registeredEmails, setRegisteredEmails] = useState(new Set());
 
   useEffect(() => { setTF(activeTwirler || {}); }, [activeTwirler]);
   useEffect(() => { setFF(familyAccount); }, [familyAccount]);
+
+  // Check which guardian emails have already registered
+  useEffect(() => {
+    const emails = (familyAccount?.additionalGuardians || []).map(g => g.email).filter(Boolean);
+    if (emails.length === 0) return;
+    supabase.from("family_accounts").select("email").in("email", emails).then(({ data }) => {
+      if (data) setRegisteredEmails(new Set(data.map(r => r.email)));
+    });
+  }, [familyAccount?.additionalGuardians]);
 
   // Coaches linked via new coach_athlete_links (real coach accounts)
   const linkedCoachLinks = (coachLinks || []).filter(l =>
@@ -4607,7 +4617,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{l.coachName}</div>
                           {l.coachEmail && <div style={{ fontSize: 11, color: "var(--slate)" }}>{l.coachEmail}</div>}
-                          {l.coachClub && <div style={{ fontSize: 11, color: "var(--muted)" }}>{l.coachClub}</div>}
+                          {l.coachStudio && <div style={{ fontSize: 11, color: "var(--muted)" }}>{l.coachStudio}</div>}
                         </div>
                         <button className="btn btn-danger btn-sm"
                           onClick={() => { if (window.confirm(`Remove ${l.coachName} as a coach for ${activeTwirler?.firstName}?`)) respondToCoachLink(l.id, false); }}
@@ -4720,19 +4730,23 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
             </div>
             <div className="flex gap-2" style={{ flexShrink: 0 }}>
               {g.email && (
-                <button className="btn btn-secondary btn-sm"
-                  onClick={async () => {
-                    await sendEmail("family_invite", g.email, {
-                      inviterName: familyAccount?.parentName || "Your family",
-                      guardianName: g.name,
-                      relationship: g.relationship,
-                      athleteNames: twirlers.map(t => t.firstName).join(", "),
-                    });
-                    alert(`Invite resent to ${g.email}`);
-                  }}
-                  style={{ fontSize: 11, padding: "4px 10px" }}>
-                  Resend
-                </button>
+                registeredEmails.has(g.email) ? (
+                  <span className="badge badge-green" style={{ fontSize: 10, alignSelf: "center" }}>✓ Joined</span>
+                ) : (
+                  <button className="btn btn-secondary btn-sm"
+                    onClick={async () => {
+                      await sendEmail("family_invite", g.email, {
+                        inviterName: familyAccount?.parentName || "Your family",
+                        guardianName: g.name,
+                        relationship: g.relationship,
+                        athleteNames: twirlers.map(t => t.firstName).join(", "),
+                      });
+                      alert(`Invite resent to ${g.email}`);
+                    }}
+                    style={{ fontSize: 11, padding: "4px 10px" }}>
+                    Re-invite
+                  </button>
+                )
               )}
               <button className="btn btn-danger btn-sm" onClick={() => { if (window.confirm(`Remove ${g.name} from this family account?`)) removeGuardian(g.id); }}
                 style={{ fontSize: 11, padding: "4px 10px" }}>
@@ -6134,7 +6148,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, un
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2 }}>{l.coachName || "—"}</div>
                     {l.coachEmail && <div style={{ fontSize: 13, color: "var(--slate)" }}>📧 {l.coachEmail}</div>}
-                    {l.coachClub && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {l.coachClub}</div>}
+                    {l.coachStudio && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {l.coachStudio}</div>}
                     {l.coachOrgs?.length > 0 && (
                       <div className="flex gap-1 mt-1">
                         {l.coachOrgs.map(o => (
@@ -7234,7 +7248,7 @@ function NotificationsPage({ allNotifications, pendingInvites, pendingCoachLinks
       id: l.id,
       type: 'coach_link',
       title: `${l.coachName || "A coach"} wants to link with ${twirlers.find(t => t.id === l.twirlerId)?.firstName || "your athlete"}`,
-      sub: [l.coachClub, l.coachOrgs?.join(", ")].filter(Boolean).join(" · "),
+      sub: [l.coachStudio, l.coachOrgs?.join(", ")].filter(Boolean).join(" · "),
       date: l.createdAt,
       coachEmail: l.coachEmail,
       raw: l,
@@ -7999,7 +8013,7 @@ function HistoricalDataModal({ open, onClose, activeTwirler, onSave }) {
 
 const EFFECTIVE_DATE = "April 17, 2026";
 const LEGAL_COMPANY = "TwirlPower, a dba of OAKRAA, LLC";
-const LEGAL_EMAIL = "help@twirlpower.com";
+const LEGAL_EMAIL = "support@twirlpower.com";
 
 function PrivacyPolicyPage({ onClose }) {
   return (
@@ -8156,7 +8170,7 @@ function ReportIssueButton({ page, authUser, familyAccount, coachAccount }) {
       created_at: new Date().toISOString(),
     };
     await supabase.from("bug_reports").insert(report);
-    await sendEmail("bug_report", "help@twirlpower.com", {
+    await sendEmail("bug_report", "support@twirlpower.com", {
       ...report,
       appUrl: window.location.href,
     });
@@ -8266,7 +8280,7 @@ function BetaFeedbackPopup({ authUser, familyAccount, coachAccount }) {
       created_at: new Date().toISOString(),
     };
     await supabase.from("beta_feedback").insert(feedback);
-    await sendEmail("beta_feedback", "help@twirlpower.com", feedback);
+    await sendEmail("beta_feedback", "support@twirlpower.com", feedback);
     localStorage.setItem("tp_feedback_last", Date.now().toString());
     setSent(true);
     setLoading(false);
@@ -8652,7 +8666,7 @@ function ClubPage({ coachAccount, supabase, setPage, coachClubs, setCoachClubs,
         club_id: club.id, coach_id: coachAccount.id,
         role: "owner", status: "active",
       }, { onConflict: "club_id,coach_id" });
-      await sendEmail("club_claim_request", "help@twirlpower.com", {
+      await sendEmail("club_claim_request", "support@twirlpower.com", {
         coachName: coachAccount.name, coachEmail: coachAccount.email,
         clubName: club.name, city: club.city, state: club.state,
         message: createForm.message, type: "new",
@@ -8684,7 +8698,7 @@ function ClubPage({ coachAccount, supabase, setPage, coachClubs, setCoachClubs,
       club_id: club.id, coach_id: coachAccount.id,
       message: claimMessage, document_url: docUrl, status: "pending",
     });
-    await sendEmail("club_claim_request", "help@twirlpower.com", {
+    await sendEmail("club_claim_request", "support@twirlpower.com", {
       coachName: coachAccount.name, coachEmail: coachAccount.email,
       clubName: club.name, city: club.city, state: club.state,
       message: claimMessage, type: "existing",
