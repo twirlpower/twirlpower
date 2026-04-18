@@ -2232,9 +2232,35 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
           {pendingLinks.length > 0 && (
             <div className="alert alert-info mb-4">
               <Icon name="info" size={14} color="var(--brand)" />
-              <span style={{ fontSize: 13 }}>
-                {pendingLinks.length} pending twirler link{pendingLinks.length !== 1 ? "s" : ""} — families need to accept before you can see their data.
-              </span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>
+                  {pendingLinks.length} pending twirler link{pendingLinks.length !== 1 ? "s" : ""} — families need to accept.
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {pendingLinks.map(l => (
+                    <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 6,
+                      background: "white", borderRadius: 6, padding: "4px 10px",
+                      border: "1px solid var(--border)", fontSize: 12 }}>
+                      <span>{l.twirlerName || "Twirler"}</span>
+                      {l.familyEmail && (
+                        <button className="btn btn-ghost btn-sm"
+                          onClick={async () => {
+                            await sendEmail("coach_link_request", l.familyEmail, {
+                              coachName: coachAccount.name,
+                              coachStudio: coachAccount.club,
+                              coachOrgs: coachAccount.organizations,
+                              athleteName: l.twirlerName,
+                            });
+                            alert(`Reminder sent to ${l.familyEmail}`);
+                          }}
+                          style={{ fontSize: 10, padding: "2px 6px" }}>
+                          Resend
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -4692,10 +4718,27 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
               {g.email && <div style={{ color: "var(--slate)", fontSize: 13 }}>📧 {g.email}</div>}
               {g.phone && <div style={{ color: "var(--slate)", fontSize: 13 }}>📞 {g.phone}</div>}
             </div>
-            <button className="btn btn-danger btn-sm" onClick={() => { if (window.confirm(`Remove ${g.name} from this family account?`)) removeGuardian(g.id); }}
-              style={{ fontSize: 11, padding: "4px 10px", flexShrink: 0 }}>
-              Remove
-            </button>
+            <div className="flex gap-2" style={{ flexShrink: 0 }}>
+              {g.email && (
+                <button className="btn btn-secondary btn-sm"
+                  onClick={async () => {
+                    await sendEmail("family_invite", g.email, {
+                      inviterName: familyAccount?.parentName || "Your family",
+                      guardianName: g.name,
+                      relationship: g.relationship,
+                      athleteNames: twirlers.map(t => t.firstName).join(", "),
+                    });
+                    alert(`Invite resent to ${g.email}`);
+                  }}
+                  style={{ fontSize: 11, padding: "4px 10px" }}>
+                  Resend
+                </button>
+              )}
+              <button className="btn btn-danger btn-sm" onClick={() => { if (window.confirm(`Remove ${g.name} from this family account?`)) removeGuardian(g.id); }}
+                style={{ fontSize: 11, padding: "4px 10px" }}>
+                Remove
+              </button>
+            </div>
           </div>
         ))}
 
@@ -5529,6 +5572,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: "", email: "", role: "family" });
   const [inviteSent, setInviteSent] = useState(false);
+  const [sentInvites, setSentInvites] = useState([]);
 
   useEffect(() => {
     async function load() {
@@ -5558,15 +5602,23 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
     load();
   }, []);
 
-  async function sendInvite() {
-    if (!inviteForm.email) return;
-    await sendEmail("admin_invite", inviteForm.email, {
-      name: inviteForm.name || "there",
-      role: inviteForm.role,
-    });
-    setInviteSent(true);
-    setInviteForm({ name: "", email: "", role: "family" });
-    setTimeout(() => { setInviteSent(false); setShowInvite(false); }, 2000);
+  async function sendInvite(email, name, role) {
+    const e = email || inviteForm.email;
+    const n = name || inviteForm.name || "there";
+    const r = role || inviteForm.role;
+    if (!e) return;
+    await sendEmail("admin_invite", e, { name: n, role: r });
+    if (!email) {
+      // New invite
+      setSentInvites(prev => {
+        const exists = prev.find(i => i.email === e);
+        if (exists) return prev.map(i => i.email === e ? { ...i, sentAt: new Date().toISOString() } : i);
+        return [...prev, { email: e, name: n, role: r, sentAt: new Date().toISOString() }];
+      });
+      setInviteSent(true);
+      setInviteForm({ name: "", email: "", role: "family" });
+      setTimeout(() => { setInviteSent(false); setShowInvite(false); }, 2000);
+    }
   }
 
   async function loadTwirlersForAccount(familyId) {
@@ -5701,6 +5753,32 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
             </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowInvite(false)}>Cancel</button>
           </div>
+        </div>
+      )}
+
+      {/* Previously sent invites */}
+      {sentInvites.length > 0 && (
+        <div className="mb-4">
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase",
+            letterSpacing: "0.5px", marginBottom: 8 }}>
+            Sent Invites ({sentInvites.length})
+          </div>
+          {sentInvites.map(i => (
+            <div key={i.email} className="flex items-center gap-3 mb-2"
+              style={{ padding: "8px 12px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{i.name !== "there" ? i.name : i.email}</div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                  {i.email} · {i.role} · Sent {fmtDate(i.sentAt)}
+                </div>
+              </div>
+              <button className="btn btn-secondary btn-sm"
+                onClick={() => sendInvite(i.email, i.name, i.role)}
+                style={{ fontSize: 11 }}>
+                Resend
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
