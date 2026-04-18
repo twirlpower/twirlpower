@@ -5166,6 +5166,9 @@ function ClubAdminTab({ supabase }) {
   const [clubs, setClubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState({});
+  const [confirmDelete, setConfirmDelete] = useState(null); // club object
+  const [deleteInput, setDeleteInput] = useState("");
+  const [filter, setFilter] = useState("all"); // all | pending | claimed | unclaimed | archived
 
   useEffect(() => {
     async function load() {
@@ -5184,24 +5187,16 @@ function ClubAdminTab({ supabase }) {
 
   async function approveClaim(claim) {
     setWorking(p => ({ ...p, [claim.id]: true }));
-    // Update claim status
     await supabase.from("club_claim_requests").update({ status: "approved" }).eq("id", claim.id);
-    // Update club to claimed with owner
     await supabase.from("clubs").update({
-      status: "claimed",
-      owner_coach_id: claim.coach_id,
+      status: "claimed", owner_coach_id: claim.coach_id,
     }).eq("id", claim.club_id);
-    // Insert club_coaches owner row
     await supabase.from("club_coaches").upsert({
-      club_id: claim.club_id,
-      coach_id: claim.coach_id,
-      role: "owner",
-      status: "active",
+      club_id: claim.club_id, coach_id: claim.coach_id,
+      role: "owner", status: "active",
     }, { onConflict: "club_id,coach_id" });
-    // Notify coach
     await sendEmail("club_claim_approved", claim.coach_accounts?.email, {
-      coachName: claim.coach_accounts?.name,
-      clubName: claim.clubs?.name,
+      coachName: claim.coach_accounts?.name, clubName: claim.clubs?.name,
     });
     setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: "approved" } : c));
     setClubs(prev => prev.map(s => s.id === claim.club_id ? { ...s, status: "claimed" } : s));
@@ -5213,17 +5208,50 @@ function ClubAdminTab({ supabase }) {
     setWorking(p => ({ ...p, [claim.id]: true }));
     await supabase.from("club_claim_requests").update({ status: "denied" }).eq("id", claim.id);
     await sendEmail("club_claim_denied", claim.coach_accounts?.email, {
-      coachName: claim.coach_accounts?.name,
-      clubName: claim.clubs?.name,
+      coachName: claim.coach_accounts?.name, clubName: claim.clubs?.name,
     });
     setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, status: "denied" } : c));
     setWorking(p => ({ ...p, [claim.id]: false }));
+  }
+
+  async function archiveClub(club) {
+    if (!window.confirm(`Archive "${club.name}"? It will be hidden from all users but data will be preserved.`)) return;
+    setWorking(p => ({ ...p, [club.id]: "archiving" }));
+    await supabase.from("clubs").update({ status: "archived" }).eq("id", club.id);
+    setClubs(prev => prev.map(c => c.id === club.id ? { ...c, status: "archived" } : c));
+    setWorking(p => ({ ...p, [club.id]: false }));
+  }
+
+  async function reactivateClub(club) {
+    if (!window.confirm(`Reactivate "${club.name}"? It will become visible and claimable again.`)) return;
+    setWorking(p => ({ ...p, [club.id]: "reactivating" }));
+    await supabase.from("clubs").update({ status: "claimed" }).eq("id", club.id);
+    setClubs(prev => prev.map(c => c.id === club.id ? { ...c, status: "claimed" } : c));
+    setWorking(p => ({ ...p, [club.id]: false }));
+  }
+
+  async function deleteClub() {
+    if (!confirmDelete || deleteInput !== confirmDelete.name) return;
+    setWorking(p => ({ ...p, [confirmDelete.id]: "deleting" }));
+    await supabase.from("clubs").delete().eq("id", confirmDelete.id);
+    setClubs(prev => prev.filter(c => c.id !== confirmDelete.id));
+    setConfirmDelete(null);
+    setDeleteInput("");
+    setWorking(p => ({ ...p, [confirmDelete?.id]: false }));
   }
 
   if (loading) return <div style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>Loading...</div>;
 
   const pending = claims.filter(c => c.status === "pending");
   const resolved = claims.filter(c => c.status !== "pending");
+
+  const statusColor = { claimed: "var(--green)", unclaimed: "var(--slate)", pending_claim: "var(--amber)", archived: "var(--muted)" };
+  const statusBadge = s => {
+    const colors = { claimed: "badge-green", unclaimed: "badge-gray", pending_claim: "badge-amber", archived: "badge-gray" };
+    return <span className={`badge ${colors[s] || "badge-gray"}`} style={{ fontSize: 10 }}>{s}</span>;
+  };
+
+  const filteredClubs = clubs.filter(c => filter === "all" || c.status === filter);
 
   return (
     <div>
@@ -5240,15 +5268,13 @@ function ClubAdminTab({ supabase }) {
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{c.clubs?.name}</div>
                   <div style={{ fontSize: 12, color: "var(--slate)" }}>
                     {[c.clubs?.city, c.clubs?.state].filter(Boolean).join(", ")}
-                    <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 9 }}>{c.clubs?.status}</span>
+                    <span style={{ marginLeft: 6 }}>{statusBadge(c.clubs?.status)}</span>
                   </div>
                   <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 4 }}>
                     Claimed by: <strong>{c.coach_accounts?.name}</strong> · {c.coach_accounts?.email}
                   </div>
                   {c.message && (
-                    <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>
-                      "{c.message}"
-                    </div>
+                    <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{c.message}"</div>
                   )}
                   {c.document_url && (
                     <a href={c.document_url} target="_blank" rel="noreferrer"
@@ -5272,20 +5298,69 @@ function ClubAdminTab({ supabase }) {
         </div>
       )}
 
-      {pending.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending club claims.</div>}
+      {pending.length === 0 && (
+        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending club claims.</div>
+      )}
 
-      {/* All clubs */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-        All Clubs ({clubs.length})
+      {/* All clubs with filter */}
+      <div className="flex items-center justify-between mb-3">
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          All Clubs ({clubs.length})
+        </div>
+        <div className="flex gap-2">
+          {["all", "claimed", "pending_claim", "unclaimed", "archived"].map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              style={{ padding: "3px 10px", fontSize: 11, borderRadius: 20, cursor: "pointer",
+                border: "1px solid", fontFamily: "inherit",
+                borderColor: filter === f ? "var(--brand)" : "var(--border)",
+                background: filter === f ? "var(--brand)" : "transparent",
+                color: filter === f ? "white" : "var(--slate)" }}>
+              {f === "pending_claim" ? "pending" : f}
+            </button>
+          ))}
+        </div>
       </div>
-      {clubs.map(s => (
-        <div key={s.id} className="flex items-center gap-3 mb-2" style={{ padding: "10px 12px", background: "var(--bg)", borderRadius: 8 }}>
+
+      {filteredClubs.length === 0 && (
+        <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>No clubs match this filter.</div>
+      )}
+
+      {filteredClubs.map(c => (
+        <div key={c.id} className="flex items-center gap-3 mb-2"
+          style={{ padding: "10px 14px", background: c.status === "archived" ? "#f8fafc" : "var(--bg)",
+            borderRadius: 8, opacity: c.status === "archived" ? 0.7 : 1,
+            border: "1px solid var(--border)" }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 500, fontSize: 13 }}>{s.name}</div>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>{[s.city, s.state].filter(Boolean).join(", ")}</div>
+            <div style={{ fontWeight: 500, fontSize: 13, color: c.status === "archived" ? "var(--muted)" : "var(--navy)" }}>
+              {c.name}
+              {c.status === "archived" && <span style={{ marginLeft: 6, fontSize: 10, color: "var(--muted)" }}>ARCHIVED</span>}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>{[c.city, c.state].filter(Boolean).join(", ")}</div>
           </div>
-          <span className={`badge ${s.status === "claimed" ? "badge-green" : s.status === "pending_claim" ? "badge-amber" : "badge-gray"}`}
-            style={{ fontSize: 10 }}>{s.status}</span>
+          {statusBadge(c.status)}
+          <div className="flex gap-2">
+            {c.status === "archived" ? (
+              <button className="btn btn-secondary btn-sm"
+                disabled={working[c.id] === "reactivating"}
+                onClick={() => reactivateClub(c)}
+                style={{ fontSize: 11 }}>
+                {working[c.id] === "reactivating" ? "..." : "Reactivate"}
+              </button>
+            ) : (
+              <button className="btn btn-secondary btn-sm"
+                disabled={!!working[c.id]}
+                onClick={() => archiveClub(c)}
+                style={{ fontSize: 11 }}>
+                {working[c.id] === "archiving" ? "..." : "Archive"}
+              </button>
+            )}
+            <button className="btn btn-danger btn-sm"
+              disabled={!!working[c.id]}
+              onClick={() => { setConfirmDelete(c); setDeleteInput(""); }}
+              style={{ fontSize: 11 }}>
+              Delete
+            </button>
+          </div>
         </div>
       ))}
 
@@ -5296,18 +5371,53 @@ function ClubAdminTab({ supabase }) {
             Resolved ({resolved.length})
           </div>
           {resolved.map(c => (
-            <div key={c.id} className="flex items-center gap-3 mb-2" style={{ padding: "8px 12px", background: "var(--bg)", borderRadius: 8 }}>
+            <div key={c.id} className="flex items-center gap-3 mb-2"
+              style={{ padding: "8px 12px", background: "var(--bg)", borderRadius: 8 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13 }}>{c.clubs?.name} — {c.coach_accounts?.name}</div>
               </div>
-              <span className={`badge ${c.status === "approved" ? "badge-green" : "badge-red"}`} style={{ fontSize: 10 }}>{c.status}</span>
+              <span className={`badge ${c.status === "approved" ? "badge-green" : "badge-red"}`}
+                style={{ fontSize: 10 }}>{c.status}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 600,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div className="card" style={{ maxWidth: 440, width: "100%", padding: "28px 24px" }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "var(--red)", marginBottom: 8 }}>
+              ⚠️ Delete Club
+            </div>
+            <p style={{ fontSize: 14, color: "var(--slate)", lineHeight: 1.7, marginBottom: 16 }}>
+              This will permanently delete <strong>{confirmDelete.name}</strong> and all associated membership and coach records.
+              Coach and family accounts will not be deleted.
+              <br /><br />
+              This action <strong>cannot be undone</strong>.
+            </p>
+            <div className="form-group">
+              <label className="label">Type <strong>{confirmDelete.name}</strong> to confirm</label>
+              <input className="input" value={deleteInput} onChange={e => setDeleteInput(e.target.value)}
+                placeholder={confirmDelete.name} autoFocus />
+            </div>
+            <div className="flex gap-2">
+              <button className="btn btn-danger" disabled={deleteInput !== confirmDelete.name}
+                onClick={deleteClub}>
+                Permanently Delete
+              </button>
+              <button className="btn btn-ghost" onClick={() => { setConfirmDelete(null); setDeleteInput(""); }}>
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
 
 // ─── DATA OVERVIEW TAB ───────────────────────────────────────────────────────
 
@@ -7931,6 +8041,46 @@ function BetaFeedbackPopup({ authUser, familyAccount, coachAccount }) {
 // ─── STUDIOS ─────────────────────────────────────────────────────────────────
 
 // Club search + select widget (used in twirler profile edit)
+function ArchivedClubCheck({ query, supabase, onCreate }) {
+  const [archived, setArchived] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function check() {
+      setLoading(true);
+      const { data } = await supabase.from("clubs").select("id, name, city, state")
+        .ilike("name", query).eq("status", "archived").limit(1);
+      setArchived(data?.[0] || null);
+      setLoading(false);
+    }
+    check();
+  }, [query]);
+
+  if (loading) return null;
+
+  if (archived) {
+    return (
+      <div className="alert alert-warn" style={{ marginTop: 8 }}>
+        <Icon name="alert" size={14} color="var(--amber)" />
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>"{archived.name}" exists but is archived</div>
+          <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
+            {[archived.city, archived.state].filter(Boolean).join(", ")}
+            {" · "}To use this club, contact a TwirlPower admin to request reactivation.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button className="btn btn-ghost btn-sm" style={{ marginTop: 6 }}
+      onClick={onCreate}>
+      + Add "{query}" as a new club
+    </button>
+  );
+}
+
 function ClubSelector({ value, onChange, supabase }) {
   const [query, setQuery] = useState(value || "");
   const [results, setResults] = useState([]);
@@ -7948,7 +8098,8 @@ function ClubSelector({ value, onChange, supabase }) {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
-      const { data } = await supabase.from("clubs").select("*").ilike("name", `%${query}%`).limit(8);
+      const { data } = await supabase.from("clubs").select("*")
+        .ilike("name", `%${query}%`).neq("status", "archived").limit(8);
       setResults(data || []);
       setLoading(false);
     }, 300);
@@ -8055,10 +8206,8 @@ function ClubSelector({ value, onChange, supabase }) {
 
       {/* No results — offer to create */}
       {query.length >= 2 && results.length === 0 && !loading && (
-        <button className="btn btn-ghost btn-sm" style={{ marginTop: 6 }}
-          onClick={() => { setShowCreate(true); setCreateForm(f => ({ ...f, name: query })); }}>
-          + Add "{query}" as a new club
-        </button>
+        <ArchivedClubCheck query={query} supabase={supabase}
+          onCreate={() => { setShowCreate(true); setCreateForm(f => ({ ...f, name: query })); }} />
       )}
 
       {/* Create club form */}
@@ -8226,7 +8375,8 @@ function ClubPage({ coachAccount, supabase, setPage, coachClubs, setCoachClubs,
 
   async function searchClubsToClaim() {
     if (claimSearch.length < 2) return;
-    const { data } = await supabase.from("clubs").select("*").ilike("name", `%${claimSearch}%`).limit(8);
+    const { data } = await supabase.from("clubs").select("*")
+        .ilike("name", `%${claimSearch}%`).neq("status", "archived").limit(8);
     setClaimResults(data || []);
   }
 
