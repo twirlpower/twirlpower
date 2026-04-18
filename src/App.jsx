@@ -483,7 +483,7 @@ function useLocalStorage(key, initial) {
 }
 
 function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
-function fmtDate(d) { if (!d) return "—"; const dt = new Date(d + "T00:00:00"); return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
+function fmtDate(d) { if (!d) return "—"; const dt = new Date(d.includes("T") ? d : d + "T00:00:00"); return isNaN(dt) ? "—" : dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }
 function getAge(dob) { if (!dob) return null; const b = new Date(dob); const n = new Date(); let a = n.getFullYear() - b.getFullYear(); if (n.setFullYear(1970) < b.setFullYear(1970)) a--; return a; }
 
 function getAgeDivision(dob, orgId) {
@@ -5114,7 +5114,15 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
                         )}
                         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt)}</div>
                       </div>
-                      <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
+                      <div className="flex gap-2">
+                        <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
+                        <button className="btn btn-danger btn-sm"
+                          onClick={() => {
+                            if (window.confirm(`Delete host registration for ${h.name}?`)) {
+                              supabase.from("competition_hosts").delete().eq("id", h.id);
+                            }
+                          }}>Delete</button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -5132,7 +5140,23 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
                       <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
                       <div style={{ fontSize: 11, color: "var(--muted)" }}>{[h.organization, h.email, h.state].filter(Boolean).join(" · ")}</div>
                     </div>
-                    <span className="badge badge-green" style={{ fontSize: 10 }}>Approved</span>
+                    <div className="flex gap-2 items-center">
+                      <span className="badge badge-green" style={{ fontSize: 10 }}>Approved</span>
+                      <button className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          if (window.confirm(`Revoke host access for ${h.name}?`)) {
+                            supabase.from("competition_hosts").update({ approved: false }).eq("id", h.id);
+                          }
+                        }}
+                        style={{ fontSize: 10, padding: "2px 8px" }}>Revoke</button>
+                      <button className="btn btn-danger btn-sm"
+                        onClick={() => {
+                          if (window.confirm(`Delete host registration for ${h.name}? This cannot be undone.`)) {
+                            supabase.from("competition_hosts").delete().eq("id", h.id);
+                          }
+                        }}
+                        style={{ fontSize: 10, padding: "2px 8px" }}>Delete</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -5652,6 +5676,17 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                     <span key={o} className="badge" style={{ fontSize: 9, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>
                   ))}
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(c.created_at)}</span>
+                  <button className="btn btn-danger btn-sm"
+                    onClick={() => {
+                      if (window.confirm(`Delete coach account for ${c.name || c.email}? This cannot be undone.`)) {
+                        supabase.from("coach_accounts").delete().eq("id", c.id).then(() => {
+                          setCoachAccounts(prev => prev.filter(x => x.id !== c.id));
+                        });
+                      }
+                    }}
+                    style={{ fontSize: 10, padding: "2px 8px" }}>
+                    Delete
+                  </button>
                 </div>
               </div>
             </div>
@@ -5784,6 +5819,23 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                     </button>
                   )}
                 </div>
+
+                {/* Account actions */}
+                {!isCurrent(a) && (
+                  <div style={{ paddingTop: 10, marginTop: 10, borderTop: "1px solid var(--border)", display: "flex", gap: 8 }}>
+                    <button className="btn btn-danger btn-sm"
+                      onClick={() => {
+                        if (window.confirm(`Permanently delete account for ${a.parent_name}? This will delete all their twirlers, competitions, and results. This cannot be undone.`)) {
+                          supabase.from("family_accounts").delete().eq("id", a.id).then(() => {
+                            setAccounts(prev => prev.filter(x => x.id !== a.id));
+                          });
+                        }
+                      }}
+                      style={{ fontSize: 11 }}>
+                      🗑 Delete Account
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
