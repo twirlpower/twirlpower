@@ -424,6 +424,27 @@ export default async function handler(req, res) {
     </div>${footer}</div>`;
   }
 
+  else if (type === 'admin_invite') {
+    const { name, role } = data;
+    const roleLabel = { family: "a family account", coach: "a coach account", host: "a competition host account" }[role] || "an account";
+    subject = `You're invited to join TwirlPower`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">You're invited to TwirlPower!</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        Hi ${name}, the TwirlPower admin team has invited you to create ${roleLabel} on TwirlPower.
+      </p>
+      <p style="font-size:14px;color:#475569;line-height:1.7;margin:0 0 24px;">
+        TwirlPower tracks baton twirling classifications and competition history across USTA, NBTA, TU, and DMA — all in one place.
+      </p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">
+          Join TwirlPower
+        </a>
+      </div>
+      <p style="font-size:12px;color:#94a3b8;">If you weren't expecting this, you can ignore this email.</p>
+    </div>${footer}</div>`;
+  }
+
   else {
     return res.status(400).json({ error: `Unknown email type: ${type}` });
   }

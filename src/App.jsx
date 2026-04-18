@@ -5514,30 +5514,40 @@ function DataOverviewTab({ supabase, competitionHosts, pendingHosts, setPage }) 
 // ─── ACCOUNTS TAB (ADMIN) ─────────────────────────────────────────────────────
 
 function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
-  const [accountType, setAccountType] = useState("family"); // "family" | "coach"
+  const [accountType, setAccountType] = useState("family"); // "family" | "coach" | "host"
   const [accounts, setAccounts] = useState([]);
   const [coachAccounts, setCoachAccounts] = useState([]);
-  const [admins, setAdmins] = useState([]); // user_ids that are admins
+  const [hostAccounts, setHostAccounts] = useState([]);
+  const [clubOwnerIds, setClubOwnerIds] = useState(new Set());
+  const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [accountTwirlers, setAccountTwirlers] = useState({});
   const [adminWorking, setAdminWorking] = useState({});
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ name: "", email: "", role: "family" });
+  const [inviteSent, setInviteSent] = useState(false);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const [{ data: accts, error: e1 }, { data: coaches, error: e2 }, { data: adms, error: e3 }] = await Promise.all([
+        const [{ data: accts, error: e1 }, { data: coaches }, { data: adms, error: e3 },
+               { data: hosts }, { data: owners }] = await Promise.all([
           supabase.from('family_accounts').select('*').order('created_at', { ascending: false }),
           supabase.from('coach_accounts').select('*').order('created_at', { ascending: false }),
           supabase.from('admins').select('user_id'),
+          supabase.from('competition_hosts').select('*').order('created_at', { ascending: false }),
+          supabase.from('club_coaches').select('coach_id').eq('role', 'owner').eq('status', 'active'),
         ]);
         if (e1) throw e1;
         if (e3) throw e3;
         setAccounts(accts || []);
         setCoachAccounts(coaches || []);
+        setHostAccounts(hosts || []);
+        setClubOwnerIds(new Set((owners || []).map(o => o.coach_id)));
         setAdmins((adms || []).map(a => a.user_id));
       } catch (err) {
         setError(err.message);
@@ -5547,6 +5557,17 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
     }
     load();
   }, []);
+
+  async function sendInvite() {
+    if (!inviteForm.email) return;
+    await sendEmail("admin_invite", inviteForm.email, {
+      name: inviteForm.name || "there",
+      role: inviteForm.role,
+    });
+    setInviteSent(true);
+    setInviteForm({ name: "", email: "", role: "family" });
+    setTimeout(() => { setInviteSent(false); setShowInvite(false); }, 2000);
+  }
 
   async function loadTwirlersForAccount(familyId) {
     if (accountTwirlers[familyId]) return;
@@ -5622,26 +5643,78 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
 
   return (
     <div>
-      {/* Account type switcher */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
-        {[
-          { id: "family", label: `Families (${accounts.length})` },
-          { id: "coach", label: `Coaches (${coachAccounts.length})` },
-        ].map(t => (
-          <button key={t.id} onClick={() => { setAccountType(t.id); setSearch(""); setExpandedId(null); }}
-            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
-              background: "none", fontFamily: "inherit",
-              color: accountType === t.id ? "var(--brand)" : "var(--slate)",
-              borderBottom: accountType === t.id ? "2px solid var(--brand)" : "2px solid transparent",
-              marginBottom: -1 }}>
-            {t.label}
-          </button>
-        ))}
+      {/* Account type switcher + invite */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+        borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 4 }}>
+          {[
+            { id: "family", label: `Families (${accounts.length})` },
+            { id: "coach", label: `Coaches (${coachAccounts.length})` },
+            { id: "host", label: `Hosts (${hostAccounts.length})` },
+          ].map(t => (
+            <button key={t.id} onClick={() => { setAccountType(t.id); setSearch(""); setExpandedId(null); }}
+              style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
+                background: "none", fontFamily: "inherit",
+                color: accountType === t.id ? "var(--brand)" : "var(--slate)",
+                borderBottom: accountType === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+                marginBottom: -1 }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button className="btn btn-secondary btn-sm" onClick={() => setShowInvite(v => !v)}>
+          + Invite
+        </button>
       </div>
+
+      {/* Invite form */}
+      {showInvite && (
+        <div className="card-sm mb-4" style={{ background: "var(--bg)", border: "1px solid var(--brand)" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Invite someone to TwirlPower</div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">Name (optional)</label>
+              <input className="input" value={inviteForm.name}
+                onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Their name" />
+            </div>
+            <div className="form-group">
+              <label className="label">Email *</label>
+              <input className="input" type="email" value={inviteForm.email}
+                onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="email@example.com" autoFocus />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="label">Role</label>
+            <select className="select" value={inviteForm.role}
+              onChange={e => setInviteForm(f => ({ ...f, role: e.target.value }))}>
+              <option value="family">Family</option>
+              <option value="coach">Coach</option>
+              <option value="host">Competition Host</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-primary btn-sm" disabled={!inviteForm.email || inviteSent}
+              onClick={sendInvite}>
+              {inviteSent ? "✓ Sent!" : "Send Invitation"}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowInvite(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* Coach accounts list */}
       {accountType === "coach" && (
         <div>
+          <div style={{ position: "relative", marginBottom: 12 }}>
+            <input className="input" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search name, email, club..." style={{ paddingLeft: 30, fontSize: 12 }} />
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+              style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+          </div>
           {coachAccounts.filter(c =>
             !search ||
             c.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -5662,11 +5735,17 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
               background: "var(--card)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
                 <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0,
-                  background: "#ede9fe", color: "#6d28d9" }}>
+                  background: clubOwnerIds.has(c.id) ? "#fef3c7" : "#ede9fe",
+                  color: clubOwnerIds.has(c.id) ? "#92400e" : "#6d28d9" }}>
                   {initials(c.name || c.email || "?")}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>{c.name || "—"}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", display: "flex", alignItems: "center", gap: 6 }}>
+                    {c.name || "—"}
+                    {clubOwnerIds.has(c.id) && (
+                      <span className="badge badge-amber" style={{ fontSize: 9 }}>👑 Club Owner</span>
+                    )}
+                  </div>
                   <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {c.email}{c.club ? ` · ${c.club}` : ""}
                   </div>
@@ -5687,6 +5766,88 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                     style={{ fontSize: 10, padding: "2px 8px" }}>
                     Delete
                   </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Host accounts list */}
+      {accountType === "host" && (
+        <div>
+          <div style={{ position: "relative", marginBottom: 12 }}>
+            <input className="input" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search name, email, organization..." style={{ paddingLeft: 30, fontSize: 12 }} />
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+              style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+          </div>
+          {hostAccounts.filter(h =>
+            !search ||
+            h.name?.toLowerCase().includes(search.toLowerCase()) ||
+            h.email?.toLowerCase().includes(search.toLowerCase()) ||
+            h.organization?.toLowerCase().includes(search.toLowerCase())
+          ).length === 0 ? (
+            <div className="empty-state" style={{ padding: "24px 0" }}>
+              <h3>No host accounts yet</h3>
+              <p>Host accounts appear here once someone registers.</p>
+            </div>
+          ) : hostAccounts.filter(h =>
+            !search ||
+            h.name?.toLowerCase().includes(search.toLowerCase()) ||
+            h.email?.toLowerCase().includes(search.toLowerCase()) ||
+            h.organization?.toLowerCase().includes(search.toLowerCase())
+          ).map(h => (
+            <div key={h.id} style={{ border: "1px solid var(--border)", borderRadius: 8, marginBottom: 6,
+              background: "var(--card)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+                <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0,
+                  background: h.approved ? "#dcfce7" : "#fef9c3", color: h.approved ? "#166534" : "#854d0e" }}>
+                  {initials(h.name || "?")}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", display: "flex", alignItems: "center", gap: 6 }}>
+                    {h.name || "—"}
+                    <span className={`badge ${h.approved ? "badge-green" : "badge-amber"}`} style={{ fontSize: 9 }}>
+                      {h.approved ? "Approved" : "Pending"}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {[h.email, h.organization, h.state].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(h.created_at)}</span>
+                  {h.approved ? (
+                    <button className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        if (window.confirm(`Revoke host access for ${h.name}?`)) {
+                          supabase.from("competition_hosts").update({ approved: false }).eq("id", h.id).then(() => {
+                            setHostAccounts(prev => prev.map(x => x.id === h.id ? { ...x, approved: false } : x));
+                          });
+                        }
+                      }}
+                      style={{ fontSize: 10, padding: "2px 8px" }}>Revoke</button>
+                  ) : (
+                    <button className="btn btn-primary btn-sm"
+                      onClick={() => {
+                        supabase.from("competition_hosts").update({ approved: true }).eq("id", h.id).then(() => {
+                          setHostAccounts(prev => prev.map(x => x.id === h.id ? { ...x, approved: true } : x));
+                        });
+                      }}
+                      style={{ fontSize: 10, padding: "2px 8px" }}>✓ Approve</button>
+                  )}
+                  <button className="btn btn-danger btn-sm"
+                    onClick={() => {
+                      if (window.confirm(`Delete host registration for ${h.name}? This cannot be undone.`)) {
+                        supabase.from("competition_hosts").delete().eq("id", h.id).then(() => {
+                          setHostAccounts(prev => prev.filter(x => x.id !== h.id));
+                        });
+                      }
+                    }}
+                    style={{ fontSize: 10, padding: "2px 8px" }}>Delete</button>
                 </div>
               </div>
             </div>
