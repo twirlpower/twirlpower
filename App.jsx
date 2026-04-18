@@ -889,7 +889,7 @@ export default function App() {
           // Load coach twirler link requests
           const { data: coachLinks } = await supabase
             .from('coach_athlete_links')
-            .select('*, coach_accounts(name, email, club, organizations)')
+            .select('*, coach_accounts(name, email, studio, organizations)')
             .in('twirler_id', twirlerIds);
           setCoachLinks((coachLinks || []).map(l => ({
             ...l,
@@ -898,7 +898,7 @@ export default function App() {
             familyId: l.family_id,
             coachName: l.coach_accounts?.name,
             coachEmail: l.coach_accounts?.email,
-            coachClub: l.coach_accounts?.club,
+            coachStudio: l.coach_accounts?.studio,
             coachOrgs: l.coach_accounts?.organizations || [],
             createdAt: l.created_at,
             type: 'coach_link',
@@ -2939,7 +2939,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
       // Send email notification to family
       await sendEmail('coach_link_request', family.email, {
         coachName: coachAccount.name,
-        coachClub: coachAccount.club,
+        coachStudio: coachAccount.studio,
         coachOrgs: coachAccount.organizations,
         athleteName: familyTwirlers.map(t => t.first_name).join(', '),
       });
@@ -3591,7 +3591,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                 Coach link request for {twirlers.find(t => t.id === link.twirlerId)?.firstName}
               </div>
               <div style={{ fontSize: 14, color: "var(--navy)", marginBottom: 2 }}>
-                {link.coachName || "A coach"}{link.coachClub ? ` · ${link.coachClub}` : ""}
+                {link.coachName || "A coach"}{link.coachStudio ? ` · ${link.coachStudio}` : ""}
               </div>
               {link.coachOrgs?.length > 0 && (
                 <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 8 }}>
@@ -4617,7 +4617,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 500 }}>{l.coachName}</div>
                           {l.coachEmail && <div style={{ fontSize: 11, color: "var(--slate)" }}>{l.coachEmail}</div>}
-                          {l.coachClub && <div style={{ fontSize: 11, color: "var(--muted)" }}>{l.coachClub}</div>}
+                          {l.coachStudio && <div style={{ fontSize: 11, color: "var(--muted)" }}>{l.coachStudio}</div>}
                         </div>
                         <button className="btn btn-danger btn-sm"
                           onClick={() => { if (window.confirm(`Remove ${l.coachName} as a coach for ${activeTwirler?.firstName}?`)) respondToCoachLink(l.id, false); }}
@@ -6148,7 +6148,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, un
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2 }}>{l.coachName || "—"}</div>
                     {l.coachEmail && <div style={{ fontSize: 13, color: "var(--slate)" }}>📧 {l.coachEmail}</div>}
-                    {l.coachClub && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {l.coachClub}</div>}
+                    {l.coachStudio && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {l.coachStudio}</div>}
                     {l.coachOrgs?.length > 0 && (
                       <div className="flex gap-1 mt-1">
                         {l.coachOrgs.map(o => (
@@ -7248,7 +7248,7 @@ function NotificationsPage({ allNotifications, pendingInvites, pendingCoachLinks
       id: l.id,
       type: 'coach_link',
       title: `${l.coachName || "A coach"} wants to link with ${twirlers.find(t => t.id === l.twirlerId)?.firstName || "your athlete"}`,
-      sub: [l.coachClub, l.coachOrgs?.join(", ")].filter(Boolean).join(" · "),
+      sub: [l.coachStudio, l.coachOrgs?.join(", ")].filter(Boolean).join(" · "),
       date: l.createdAt,
       coachEmail: l.coachEmail,
       raw: l,
