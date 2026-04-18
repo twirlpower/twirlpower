@@ -928,12 +928,75 @@ export default function App() {
         ...h, createdAt: h.created_at,
       })));
 
+      // If no own family account, check if this user is a guardian on another account
+      if (!fa) {
+        const { data: authUserData } = await supabase.auth.getUser();
+        const userEmail = authUserData?.user?.email;
+        if (userEmail) {
+          // Search all family accounts for this email in additional_guardians
+          const { data: allFamilies } = await supabase
+            .from('family_accounts')
+            .select('*');
+          const linkedFamily = (allFamilies || []).find(f => {
+            const guardians = f.additional_guardians || [];
+            return guardians.some(g => g.email?.toLowerCase() === userEmail.toLowerCase());
+          });
+          if (linkedFamily) {
+            const guardian = (linkedFamily.additional_guardians || [])
+              .find(g => g.email?.toLowerCase() === userEmail.toLowerCase());
+            const rel = guardian?.relationship || "Other";
+            const isCoGuardian = ["Parent", "Guardian", "Co-Guardian"].includes(rel);
+            setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
+            setFamilyAccount({ ...linkedFamily, parentName: linkedFamily.parent_name,
+              additionalGuardians: linkedFamily.additional_guardians || [] });
+
+            // Load all the family data
+            const { data: tw } = await supabase.from('twirlers').select('*').eq('family_id', linkedFamily.id);
+            const mappedTwirlers = (tw || []).map(t => ({
+              ...t, firstName: t.first_name,
+              classificationState: t.classification_state || {},
+              classificationHistory: t.classification_history || [],
+              regularEvents: t.regular_events || [],
+              organizations: t.organizations || [],
+            }));
+            setTwirlers(mappedTwirlers);
+
+            if (mappedTwirlers.length > 0) {
+              const twirlerIds = mappedTwirlers.map(t => t.id);
+              const [{ data: comps }, { data: res }, { data: coa }, { data: inv }, { data: cl }] = await Promise.all([
+                supabase.from('competitions').select('*').in('twirler_id', twirlerIds).order('date', { ascending: false }),
+                supabase.from('results').select('*').in('twirler_id', twirlerIds),
+                supabase.from('coaches').select('*').eq('family_id', linkedFamily.id),
+                supabase.from('invites').select('*').in('twirler_id', twirlerIds),
+                supabase.from('coach_athlete_links').select('*, coach_accounts(name, email, studio, organizations)')
+                  .in('twirler_id', twirlerIds),
+              ]);
+              setCompetitions((comps || []).map(c => ({ ...c, orgId: c.org_id })));
+              setResults((res || []).map(r => ({ ...r, orgId: r.org_id, twirlerId: r.twirler_id,
+                competitionId: r.competition_id, classificationLevelEntered: r.classification_level_entered,
+                protectionRule: r.protection_rule, isFinalRound: r.is_final_round,
+                isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off })));
+              setCoaches((coa || []).map(c => ({ ...c, linkedTwirlers: c.linked_twirlers || [], organizations: c.organizations || [] })));
+              setInvites((inv || []).map(i => ({ ...i, twirlerId: i.twirler_id, coachId: i.coach_id,
+                competitionId: i.competition_id, respondedAt: i.responded_at, createdAt: i.created_at })));
+              setCoachLinks((cl || []).map(l => ({ ...l, twirlerId: l.twirler_id, coachId: l.coach_id,
+                familyId: l.family_id, coachName: l.coach_accounts?.name, coachEmail: l.coach_accounts?.email,
+                coachStudio: l.coach_accounts?.studio, coachOrgs: l.coach_accounts?.organizations || [],
+                createdAt: l.created_at, type: 'coach_link' })));
+            }
+            setDataLoading(false);
+            return;
+          }
+        }
+      }
+
     } catch (err) {
       console.error('Error loading data:', err);
     }
     setDataLoading(false);
   }
 
+  const [guardianMode, setGuardianMode] = useState(null); // null | 'co-guardian' | 'viewer'
   const [activeTwirlerId, setActiveTwirlerId] = useLocalStorage("tp_active_twirler", null);
   const [page, setPage] = useState("home");
   const [modals, setModals] = useState({});
@@ -956,7 +1019,10 @@ export default function App() {
     }
   }, [resolvedActiveTwirlerId]);
 
-  const openModal = (name, data = {}) => setModals(m => ({ ...m, [name]: { open: true, ...data } }));
+  const openModal = (name, data = {}) => {
+    if (guardianMode === 'viewer' && ['addCompetition', 'addResults', 'override', 'historicalData', 'addTwirler'].includes(name)) return;
+    setModals(m => ({ ...m, [name]: { open: true, ...data } }));
+  };
   const closeModal = (name) => setModals(m => ({ ...m, [name]: { ...m[name], open: false } }));
 
   const [hostMode, setHostMode] = useState(null); // null | host object — set when logging in as host
@@ -1601,7 +1667,7 @@ export default function App() {
             email: data.email || authUser.email,
             phone: data.phone || null,
             state: data.state || null,
-            relationship: data.relationship || 'Parent',
+            relationship: data.relationship || 'Parent / Guardian',
             additional_guardians: [],
           }).select().single();
           if (error) { console.error('setup:', error); return; }
@@ -1680,7 +1746,7 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, addAttendee, removeAttendee, setFamilyAccount };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode };
 
   return (
     <>
@@ -1710,11 +1776,26 @@ export default function App() {
                 </span>
               )}
             </button>
-            <button className="mobile-menu-btn" onClick={() => openModal("addCompetition")} aria-label="Add competition">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
+            {guardianMode !== 'viewer' && (
+              <button className="mobile-menu-btn" onClick={() => openModal("addCompetition")} aria-label="Add competition">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+            )}
           </div>
         </div>
+        {/* Guardian mode banner */}
+        {guardianMode && (
+          <div style={{ background: guardianMode === 'co-guardian' ? "#e0e7ff" : "#fef3c7",
+            borderBottom: `2px solid ${guardianMode === 'co-guardian' ? "#818cf8" : "#f59e0b"}`,
+            padding: "8px 16px", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 16 }}>{guardianMode === 'co-guardian' ? "👥" : "👁"}</span>
+            <span style={{ color: guardianMode === 'co-guardian' ? "#3730a3" : "#92400e", fontWeight: 500 }}>
+              {guardianMode === 'co-guardian'
+                ? `You're viewing this family's account as a co-guardian.`
+                : `You're viewing this family's account in read-only mode.`}
+            </span>
+          </div>
+        )}
         <div className="main">
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
           {page === "history" && <HistoryPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
@@ -2936,13 +3017,20 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
       setResult('error');
     } else {
       setResult({ type: 'sent', family, twirlers: familyTwirlers });
-      // Send email notification to family
-      await sendEmail('coach_link_request', family.email, {
+      // Send email notification to primary guardian
+      const emailData = {
         coachName: coachAccount.name,
         coachStudio: coachAccount.studio,
         coachOrgs: coachAccount.organizations,
         athleteName: familyTwirlers.map(t => t.first_name).join(', '),
-      });
+      };
+      await sendEmail('coach_link_request', family.email, emailData);
+      // Also notify co-guardians (Parent/Guardian/Co-Guardian relationships)
+      const coGuardians = (family.additional_guardians || [])
+        .filter(g => ['Parent', 'Guardian', 'Co-Guardian'].includes(g.relationship) && g.email);
+      for (const g of coGuardians) {
+        await sendEmail('coach_link_request', g.email, emailData);
+      }
       await loadCoachData(coachAccount.id);
     }
     setLoading(false);
@@ -4690,7 +4778,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                   <div className="form-group"><label className="label">Name</label><input className="input" value={fForm.parentName||""} onChange={e => setFF(p => ({...p, parentName: e.target.value}))} /></div>
                   <div className="form-group"><label className="label">Relationship</label>
                     <select className="select" value={fForm.relationship||"Parent"} onChange={e => setFF(p => ({...p, relationship: e.target.value}))}>
-                      <option>Parent</option><option>Guardian</option><option>Grandparent</option><option>Other</option>
+                      <option>Parent</option><option>Guardian</option><option>Co-Guardian</option><option>Grandparent</option><option>Other</option>
                     </select>
                   </div>
                 </div>
@@ -4764,7 +4852,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
               <div className="form-group"><label className="label">Name</label><input className="input" value={guardianForm.name} onChange={e => setGF(p => ({...p, name: e.target.value}))} placeholder="Full name" /></div>
               <div className="form-group"><label className="label">Relationship</label>
                 <select className="select" value={guardianForm.relationship} onChange={e => setGF(p => ({...p, relationship: e.target.value}))}>
-                  <option>Parent</option><option>Guardian</option><option>Grandparent</option><option>Other</option>
+                  <option>Parent</option><option>Guardian</option><option>Co-Guardian</option><option>Grandparent</option><option>Other</option>
                 </select>
               </div>
             </div>
