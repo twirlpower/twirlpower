@@ -2,6 +2,8 @@
 // Called by the React app to send transactional emails via Resend
 // The API key never touches the browser
 
+const CONTACT_EMAIL = 'support@twirlpower.com';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -46,7 +48,7 @@ export default async function handler(req, res) {
   const footer = `
     <div style="background: #f8fafc; padding: 16px 32px; border-top: 1px solid #e2e8f0; text-align: center;">
       <p style="font-size: 12px; color: #94a3b8; margin: 0;">
-        Questions? Email us at <a href="mailto:hello@twirlpower.com" style="color: #0d9488;">hello@twirlpower.com</a>
+        Questions? Email us at <a href="mailto:support@twirlpower.com" style="color: #0d9488;">support@twirlpower.com</a>
       </p>
     </div>
   `;
@@ -459,7 +461,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'TwirlPower <hello@twirlpower.com>',
+        from: 'TwirlPower <support@twirlpower.com>',
         to: Array.isArray(to) ? to : [to],
         subject,
         html,

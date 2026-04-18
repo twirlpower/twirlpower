@@ -8013,7 +8013,7 @@ function HistoricalDataModal({ open, onClose, activeTwirler, onSave }) {
 
 const EFFECTIVE_DATE = "April 17, 2026";
 const LEGAL_COMPANY = "TwirlPower, a dba of OAKRAA, LLC";
-const LEGAL_EMAIL = "help@twirlpower.com";
+const LEGAL_EMAIL = "support@twirlpower.com";
 
 function PrivacyPolicyPage({ onClose }) {
   return (
@@ -8170,7 +8170,7 @@ function ReportIssueButton({ page, authUser, familyAccount, coachAccount }) {
       created_at: new Date().toISOString(),
     };
     await supabase.from("bug_reports").insert(report);
-    await sendEmail("bug_report", "help@twirlpower.com", {
+    await sendEmail("bug_report", "support@twirlpower.com", {
       ...report,
       appUrl: window.location.href,
     });
@@ -8280,7 +8280,7 @@ function BetaFeedbackPopup({ authUser, familyAccount, coachAccount }) {
       created_at: new Date().toISOString(),
     };
     await supabase.from("beta_feedback").insert(feedback);
-    await sendEmail("beta_feedback", "help@twirlpower.com", feedback);
+    await sendEmail("beta_feedback", "support@twirlpower.com", feedback);
     localStorage.setItem("tp_feedback_last", Date.now().toString());
     setSent(true);
     setLoading(false);
@@ -8666,7 +8666,7 @@ function ClubPage({ coachAccount, supabase, setPage, coachClubs, setCoachClubs,
         club_id: club.id, coach_id: coachAccount.id,
         role: "owner", status: "active",
       }, { onConflict: "club_id,coach_id" });
-      await sendEmail("club_claim_request", "help@twirlpower.com", {
+      await sendEmail("club_claim_request", "support@twirlpower.com", {
         coachName: coachAccount.name, coachEmail: coachAccount.email,
         clubName: club.name, city: club.city, state: club.state,
         message: createForm.message, type: "new",
@@ -8698,7 +8698,7 @@ function ClubPage({ coachAccount, supabase, setPage, coachClubs, setCoachClubs,
       club_id: club.id, coach_id: coachAccount.id,
       message: claimMessage, document_url: docUrl, status: "pending",
     });
-    await sendEmail("club_claim_request", "help@twirlpower.com", {
+    await sendEmail("club_claim_request", "support@twirlpower.com", {
       coachName: coachAccount.name, coachEmail: coachAccount.email,
       clubName: club.name, city: club.city, state: club.state,
       message: claimMessage, type: "existing",
