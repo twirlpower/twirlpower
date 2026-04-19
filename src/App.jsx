@@ -220,6 +220,22 @@ const ORG_INFO = {
    "Athlete may enter up to one level above their current classification",
    "School and studio awards do not count toward classification",
   ],
+  scoring: {
+   summary: "Judges score on a 100-point scale. The point total determines placement within each division; placement (1st place) determines whether a win counts toward advancement.",
+   categories: [
+    { name: "Technical Execution", points: "up to 40 pts", desc: "Baton handling, releases, catches, rolls — technical proficiency and difficulty of skills" },
+    { name: "Choreography & Routine", points: "up to 30 pts", desc: "Use of music, routine construction, transitions, use of floor space" },
+    { name: "Showmanship & Presentation", points: "up to 20 pts", desc: "Stage presence, expression, costume appropriateness, overall performance quality" },
+    { name: "Difficulty", points: "up to 10 pts", desc: "Degree of difficulty of baton skills included in the routine" },
+   ],
+   deductions: [
+    "Drops: typically 1–2 point deduction per drop depending on event",
+    "Boundary violations: deduction for stepping out of designated performance area",
+    "Time violations: penalty for routines under or over the allowed time",
+    "Illegal content: deduction for moves not permitted at the entered level",
+   ],
+   note: "Exact point breakdowns vary by event type (Solo vs. Corps vs. Strut). Always refer to the current USTA rulebook for official judging criteria.",
+  },
  },
  NBTA: {
   founded: "Early 1950s",
@@ -241,6 +257,22 @@ const ORG_INFO = {
    "Gymnastics moves are NOT permitted in NBTA competition",
    "Once at a higher level, you cannot go back down",
   ],
+  scoring: {
+   summary: "NBTA uses a point-based system with three judges scoring independently. Scores are averaged or totaled to determine placement. The point system determines who wins; wins accumulate toward level advancement.",
+   categories: [
+    { name: "Technique & Execution", points: "up to 40 pts", desc: "Baton control, catching, rolling, release mechanics — technical skill and accuracy" },
+    { name: "Presentation & Showmanship", points: "up to 30 pts", desc: "Expression, confidence, costume, overall performance quality and entertainment value" },
+    { name: "Choreography", points: "up to 20 pts", desc: "Routine construction, music interpretation, floor usage, and transitions" },
+    { name: "Difficulty", points: "up to 10 pts", desc: "Complexity and risk level of baton skills performed" },
+   ],
+   deductions: [
+    "Drops: typically 1 point per drop",
+    "Illegal moves: gymnastics-based skills result in deductions or disqualification",
+    "Time violations: penalty for routines outside the allowed window",
+    "Boundary violations: stepping outside the performance area",
+   ],
+   note: "NBTA scoring criteria may vary by event type and competition level. The protection rule allows a judge to award 1st place that does not advance the athlete — used to recognize improvement without forcing advancement. Always refer to the current NBTA rulebook.",
+  },
  },
  TU: {
   founded: "1981",
@@ -868,6 +900,8 @@ export default function App() {
             isFinalRound: r.is_final_round,
             isPageant: r.is_pageant,
             isTwirlOff: r.is_twirl_off,
+            score: r.score,
+            allCatch: r.all_catch,
           })));
 
           // Load coaches
@@ -1296,6 +1330,8 @@ export default function App() {
       is_twirl_off: !!r.isTwirlOff,
       org_id: r.orgId || null,
       notes: r.notes || null,
+      score: r.score ? parseFloat(r.score) : null,
+      all_catch: !!r.allCatch,
     }));
     const { data: inserted, error } = await supabase.from('results').insert(rows).select();
     if (error) { console.error('addResults:', error); return; }
@@ -1304,6 +1340,7 @@ export default function App() {
       classificationLevelEntered: r.classification_level_entered,
       protectionRule: r.protection_rule, isFinalRound: r.is_final_round,
       isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off,
+      score: r.score, allCatch: r.all_catch,
     }));
     setResults(prev => [...prev, ...mapped]);
   }
@@ -1328,6 +1365,8 @@ export default function App() {
     if (updates.isPageant !== undefined) dbUpdates.is_pageant = updates.isPageant;
     if (updates.isTwirlOff !== undefined) dbUpdates.is_twirl_off = updates.isTwirlOff;
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+    if (updates.score !== undefined) dbUpdates.score = updates.score ? parseFloat(updates.score) : null;
+    if (updates.allCatch !== undefined) dbUpdates.all_catch = updates.allCatch;
     await supabase.from('results').update(dbUpdates).eq('id', id);
   }
 
@@ -1657,7 +1696,8 @@ export default function App() {
   }
 
   // ── Authenticated but no family profile yet → show SetupScreen ──
-  if (!familyAccount) {
+  // Skip for co-guardians/viewers who are linked to another family account
+  if (!familyAccount && !guardianMode) {
     return (
       <SetupScreen
         onComplete={async data => {
@@ -1980,8 +2020,9 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
               <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 8 }}>Create your account</div>
               <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20 }}>What best describes you?</p>
               {[
-                { id: "family", icon: "👨‍👩‍👧", label: "Family / Athlete", desc: "Track classifications and competition history for your twirler" },
+                { id: "family", icon: "👨‍👩‍👧", label: "Family / Parent / Guardian", desc: "Track classifications and competition history for your twirler" },
                 { id: "coach", icon: "🎓", label: "Coach", desc: "Manage your twirlers, send competition invites, and track their progress" },
+                { id: "host", icon: "🏆", label: "Competition Host", desc: "Create and manage public competitions for twirlers to register for" },
               ].map(r => (
                 <div key={r.id} onClick={() => setSignupRole(r.id)}
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
@@ -2003,7 +2044,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
           )}
 
           {/* ── SIGNUP FORM (family or coach) ── */}
-          {mode === "signup" && signupRole && (
+          {mode === "signup" && signupRole && signupRole !== "host" && (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
                 <button onClick={() => setSignupRole(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--slate)", fontSize: 18, lineHeight: 1 }}>←</button>
@@ -2051,6 +2092,55 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
                 disabled={loading || !email || !password || !confirmPassword || !agreedTerms || !dob || getAge({ dob }) < 18}
                 onClick={handleSignup}>
                 {loading ? "Creating account..." : "Create Account"}
+              </button>
+            </>
+          )}
+
+          {/* ── HOST SIGNUP PATH ── */}
+          {mode === "signup" && signupRole === "host" && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+                <button onClick={() => setSignupRole(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--slate)", fontSize: 18, lineHeight: 1 }}>←</button>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)" }}>🏆 Competition Host Sign Up</div>
+              </div>
+              <div className="alert alert-info mb-4">
+                <Icon name="info" size={14} color="var(--brand)" />
+                <div style={{ fontSize: 12 }}>
+                  Host accounts require admin approval before you can create public competitions.
+                  First create a TwirlPower account, then complete your host registration.
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="label">Email</label>
+                <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@example.com" autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="label">Password</label>
+                <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="label">Confirm password</label>
+                <input className="input" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
+              </div>
+              {authError && <div className="alert alert-warn mb-3"><Icon name="alert" size={13} color="var(--red)" /><span style={{ fontSize: 12 }}>{authError}</span></div>}
+              <button className="btn btn-primary w-full"
+                disabled={loading || !email || !password || !confirmPassword || password !== confirmPassword}
+                onClick={async () => {
+                  setLoading(true); setAuthError(null);
+                  const { data, error } = await supabase.auth.signUp({
+                    email, password,
+                    options: { data: { role: 'family' } } // hosts start as family, get host via setup
+                  });
+                  if (error) { setAuthError(error.message); setLoading(false); return; }
+                  setMessage("Account created! Check your email to verify, then sign in to complete host registration.");
+                  setMode("login");
+                  setLoading(false);
+                }}>
+                {loading ? "Creating account..." : "Create Account & Register as Host"}
+              </button>
+              <button className="btn btn-ghost w-full" style={{ marginTop: 8 }} onClick={() => setSignupRole(null)}>
+                ← Back
               </button>
             </>
           )}
@@ -3804,17 +3894,21 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
               <div className="divider" />
               {lastResults.length === 0 ? <p style={{ color: "var(--muted)", fontSize: 13 }}>No results recorded</p> : (
                 <table className="table">
-                  <thead><tr><th>Event</th><th>Level</th><th>Place</th></tr></thead>
+                  <thead><tr><th>Event</th><th>Level</th><th>Place</th><th>Score</th></tr></thead>
                   <tbody>
                     {lastResults.map(r => (
                       <tr key={r.id}>
-                        <td style={{ fontSize: 13 }}>{r.event}</td>
+                        <td style={{ fontSize: 13 }}>
+                          {r.event}
+                          {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9, marginLeft: 4 }}>All Catch</span>}
+                        </td>
                         <td><span className="badge badge-gray">{r.classificationLevelEntered}</span></td>
                         <td>
                           <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)" }}>
                             {r.placement === 1 ? "🥇" : r.placement === 2 ? "🥈" : r.placement === 3 ? "🥉" : `${r.placement}th`}
                           </span>
                         </td>
+                        <td style={{ fontSize: 12, color: "var(--slate)" }}>{r.score ? r.score.toFixed(1) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -4048,7 +4142,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
             ) : (
               <>
                 <table className="table">
-                  <thead><tr><th>Event</th><th>Level</th><th>Place</th><th>Contested</th><th>Flags</th><th>Notes</th><th></th></tr></thead>
+                  <thead><tr><th>Event</th><th>Level</th><th>Place</th><th>Score</th><th>Contested</th><th>Flags</th><th>Notes</th><th></th></tr></thead>
                   <tbody>
                     {compResults.map(r => {
                       const isEditingThisResult = editingResult === r.id;
@@ -4082,16 +4176,28 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                               </div>
                               <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
                                 <label className="toggle"><Toggle on={editResultForm.contested} onChange={v => setEditResultForm(p => ({ ...p, contested: v }))} /><span style={{ fontSize: 12 }}>Contested</span></label>
+                                {!(['Strut','Super-X Strut','Fancy Strut','Basic X Strut','Box Strut','T Strut','Basic March','Military March','Parade March'].includes(editResultForm.event)) && (
+                                  <label className="toggle"><Toggle on={!!editResultForm.allCatch} onChange={v => setEditResultForm(p => ({ ...p, allCatch: v }))} /><span style={{ fontSize: 12 }}>All Catch</span></label>
+                                )}
                                 {org?.rules?.protectionRule && <label className="toggle"><Toggle on={editResultForm.protectionRule} onChange={v => setEditResultForm(p => ({ ...p, protectionRule: v }))} /><span style={{ fontSize: 12 }}>Protection rule</span></label>}
                                 {org?.rules?.finalRoundOnly && <label className="toggle"><Toggle on={editResultForm.isFinalRound !== false} onChange={v => setEditResultForm(p => ({ ...p, isFinalRound: v ? true : false }))} /><span style={{ fontSize: 12 }}>Final round</span></label>}
                                 {comp.orgId === "TU" && <label className="toggle"><Toggle on={!!editResultForm.isPageant} onChange={v => setEditResultForm(p => ({ ...p, isPageant: v }))} /><span style={{ fontSize: 12 }}>Pageant</span></label>}
                                 {comp.orgId === "TU" && <label className="toggle"><Toggle on={!!editResultForm.isTwirlOff} onChange={v => setEditResultForm(p => ({ ...p, isTwirlOff: v }))} /><span style={{ fontSize: 12 }}>Twirl-off</span></label>}
                               </div>
-                              <div className="form-group" style={{ marginBottom: 10 }}>
-                                <label className="label">Notes</label>
-                                <input className="input" value={editResultForm.notes}
-                                  onChange={e => setEditResultForm(p => ({ ...p, notes: e.target.value }))}
-                                  placeholder="Optional notes about this result..." />
+                              <div className="form-row" style={{ marginBottom: 10 }}>
+                                <div className="form-group">
+                                  <label className="label">Score (optional)</label>
+                                  <input className="input" type="number" min="0" max="100" step="0.1"
+                                    value={editResultForm.score || ""}
+                                    onChange={e => setEditResultForm(p => ({ ...p, score: e.target.value }))}
+                                    placeholder="e.g. 87.4" />
+                                </div>
+                                <div className="form-group">
+                                  <label className="label">Notes</label>
+                                  <input className="input" value={editResultForm.notes}
+                                    onChange={e => setEditResultForm(p => ({ ...p, notes: e.target.value }))}
+                                    placeholder="Optional notes..." />
+                                </div>
                               </div>
                               <div className="flex gap-2">
                                 <button className="btn btn-primary btn-sm" onClick={saveEditResult}>Save</button>
@@ -4103,13 +4209,17 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                       }
                       return (
                         <tr key={r.id}>
-                          <td style={{ fontSize: 13 }}>{r.event}</td>
+                          <td style={{ fontSize: 13 }}>
+                            {r.event}
+                            {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9, marginLeft: 4 }}>All Catch</span>}
+                          </td>
                           <td><span className="badge badge-gray">{r.classificationLevelEntered}</span></td>
                           <td>
                             <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)" }}>
                               {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
                             </span>
                           </td>
+                          <td style={{ fontSize: 12, color: "var(--slate)" }}>{r.score != null ? r.score.toFixed(1) : "—"}</td>
                           <td style={{ fontSize: 13 }}>{r.contested ? "Yes" : "No"}</td>
                           <td>{flags.map((f, i) => <span key={i} className={`badge badge-${f.color === "warn" ? "warn" : "gray"}`} style={{ marginRight: 4, fontSize: 10 }}>{f.label}</span>)}</td>
                           <td style={{ fontSize: 12, color: "var(--muted)", maxWidth: 160 }}>
@@ -4164,6 +4274,9 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
       isPageant: !!r.isPageant,
       isTwirlOff: !!r.isTwirlOff,
       notes: r.notes || "",
+      score: r.score != null ? r.score : "",
+      allCatch: !!r.allCatch,
+      event: r.event,
     });
   }
 
@@ -6684,6 +6797,7 @@ function OrgDetailPage({ orgId, onBack }) {
     { id: "classification", label: "Classification" },
     { id: "events", label: "Events" },
     { id: "rules", label: "Key Rules" },
+    ...(info.scoring ? [{ id: "scoring", label: "Scoring" }] : []),
   ];
 
   return (
@@ -6901,11 +7015,51 @@ function OrgDetailPage({ orgId, onBack }) {
           </div>
         </div>
       )}
+      {/* Scoring tab */}
+      {activeTab === "scoring" && info.scoring && (
+        <div>
+          <div className="card mb-4">
+            <div className="section-header"><span className="section-title">How {orgId} Scoring Works</span></div>
+            <p style={{ fontSize: 14, color: "var(--slate)", lineHeight: 1.7, marginBottom: 16 }}>
+              {info.scoring.summary}
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {info.scoring.categories.map((cat, i) => (
+                <div key={i} style={{ padding: "12px 14px", background: "#f8fafc",
+                  borderRadius: 8, border: "1px solid var(--border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>{cat.name}</div>
+                    <span className="badge" style={{ background: info.color + "15", color: info.color, fontSize: 11 }}>
+                      {cat.points}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--slate)", lineHeight: 1.5 }}>{cat.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card mb-4" style={{ borderLeft: "4px solid var(--red)" }}>
+            <div className="section-header"><span className="section-title">Common Deductions</span></div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {info.scoring.deductions.map((d, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, fontSize: 13, color: "var(--slate)", alignItems: "flex-start" }}>
+                  <span style={{ color: "var(--red)", fontWeight: 700, flexShrink: 0 }}>−</span>
+                  <span>{d}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="alert alert-info">
+            <Icon name="info" size={14} color="var(--brand)" />
+            <span style={{ fontSize: 13 }}>{info.scoring.note}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
-
-function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage }) {
+}{ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage }) {
   const [filterState, setFilterState] = useState(familyAccount?.state || "");
   const [filterOrg, setFilterOrg] = useState("");
   const today = new Date().toISOString().slice(0, 10);
@@ -7595,10 +7749,18 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
   const leveledEvents = selectedOrg?.leveledEvents || [];
   const categories = selectedOrg?.eventCategories || [];
 
+  // Events that are strut-type (no baton catches — All Catch doesn't apply)
+  const strutEvents = new Set([
+    "Strut", "Super-X Strut", "Fancy Strut", "Basic X Strut", "Box Strut", "T Strut",
+    "Duet Fancy Strut", "Basic March", "Military March", "Parade March", "Presentation",
+    "Strut Line", "Modeling", "Dress Model", "Costume Model",
+  ]);
+
   function addRow() {
     setEventRows(prev => [...prev, {
       event: "", classificationLevelEntered: orgLevels[0] || "Novice",
-      placement: "", contested: true, protectionRule: false, isFinalRound: null
+      placement: "", contested: true, protectionRule: false, isFinalRound: null,
+      score: "", allCatch: false,
     }]);
   }
 
@@ -7611,8 +7773,7 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
   }
 
   const needsLevel = (event) => leveledEvents.includes(event);
-
-  // TU shows extra flags for pageant and twirl-off (which don't count toward advancement)
+  const isStrut = (event) => strutEvents.has(event);
   const isTU = selectedOrg?.id === "TU";
 
   return (
@@ -7659,11 +7820,24 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
               <input className="input" type="number" min="1" max="99" value={row.placement}
                 onChange={e => updateRow(i, "placement", e.target.value)} placeholder="1, 2, 3..." />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 20 }}>
+            <div>
+              <label className="label">Score <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+              <input className="input" type="number" min="0" max="100" step="0.1"
+                value={row.score || ""} onChange={e => updateRow(i, "score", e.target.value)}
+                placeholder="e.g. 87.4" />
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
               <label className="toggle">
                 <Toggle on={row.contested} onChange={v => updateRow(i, "contested", v)} />
                 <span style={{ fontSize: 13 }}>Contested division</span>
               </label>
+              {!isStrut(row.event) && (
+                <label className="toggle">
+                  <Toggle on={!!row.allCatch} onChange={v => updateRow(i, "allCatch", v)} />
+                  <span style={{ fontSize: 13 }}>All catch <span style={{ color: "var(--muted)", fontSize: 11 }}>(no drops)</span></span>
+                </label>
+              )}
               {selectedOrg?.rules?.protectionRule && parseInt(row.placement) === 1 && (
                 <label className="toggle">
                   <Toggle on={row.protectionRule} onChange={v => updateRow(i, "protectionRule", v)} />
@@ -7688,7 +7862,6 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
                   <span style={{ fontSize: 13 }}>Twirl-off win <span style={{ color: "var(--muted)", fontSize: 11 }}>(won't count toward TU advancement)</span></span>
                 </label>
               )}
-            </div>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={() => removeRow(i)}>
             <Icon name="trash" size={13} color="var(--red)" /> Remove
