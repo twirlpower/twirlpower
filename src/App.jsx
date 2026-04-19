@@ -7059,7 +7059,9 @@ function OrgDetailPage({ orgId, onBack }) {
       )}
     </div>
   );
-}{ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage }) {
+}
+
+function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage }) {
   const [filterState, setFilterState] = useState(familyAccount?.state || "");
   const [filterOrg, setFilterOrg] = useState("");
   const today = new Date().toISOString().slice(0, 10);
