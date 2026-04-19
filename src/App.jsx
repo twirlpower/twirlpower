@@ -981,6 +981,18 @@ export default function App() {
             const rel = guardian?.relationship || "Other";
             const isCoGuardian = ["Parent", "Guardian", "Co-Guardian"].includes(rel);
             setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
+
+            // Mark this guardian as confirmed in the family account
+            if (guardian && !guardian.confirmed) {
+              const updatedGuardians = (linkedFamily.additional_guardians || []).map(g =>
+                g.email?.toLowerCase() === userEmail.toLowerCase() ? { ...g, confirmed: true } : g
+              );
+              await supabase.from('family_accounts')
+                .update({ additional_guardians: updatedGuardians })
+                .eq('id', linkedFamily.id);
+              linkedFamily.additional_guardians = updatedGuardians;
+            }
+
             setFamilyAccount({ ...linkedFamily, parentName: linkedFamily.parent_name,
               additionalGuardians: linkedFamily.additional_guardians || [] });
 
@@ -4621,19 +4633,9 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showAddGuardian, setShowAddGuardian] = useState(false);
   const [guardianForm, setGF] = useState({ name: "", email: "", phone: "", relationship: "Parent" });
-  const [registeredEmails, setRegisteredEmails] = useState(new Set());
-
+  // Remove registeredEmails — use g.confirmed flag on guardian object instead
   useEffect(() => { setTF(activeTwirler || {}); }, [activeTwirler]);
   useEffect(() => { setFF(familyAccount); }, [familyAccount]);
-
-  // Check which guardian emails have already registered
-  useEffect(() => {
-    const emails = (familyAccount?.additionalGuardians || []).map(g => g.email).filter(Boolean);
-    if (emails.length === 0) return;
-    supabase.from("family_accounts").select("email").in("email", emails).then(({ data }) => {
-      if (data) setRegisteredEmails(new Set(data.map(r => r.email)));
-    });
-  }, [familyAccount?.additionalGuardians]);
 
   // Coaches linked via new coach_athlete_links (real coach accounts)
   const linkedCoachLinks = (coachLinks || []).filter(l =>
@@ -4931,7 +4933,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
             </div>
             <div className="flex gap-2" style={{ flexShrink: 0 }}>
               {g.email && (
-                registeredEmails.has(g.email) ? (
+                g.confirmed ? (
                   <span className="badge badge-green" style={{ fontSize: 10, alignSelf: "center" }}>✓ Joined</span>
                 ) : (
                   <button className="btn btn-secondary btn-sm"
