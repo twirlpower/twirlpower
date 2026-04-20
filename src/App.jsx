@@ -1889,7 +1889,7 @@ export default function App() {
     );
   }
 
-  if (twirlers.length === 0) {
+  if (twirlers.length === 0 && !guardianMode) {
     return (
       <>
         <style>{css}</style>
