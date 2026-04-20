@@ -421,13 +421,30 @@ function shouldWinCount(result, targetOrgId, twirlerOrgs) {
 
 function calculateProgress(twirlerProfile, allResults) {
  const progress = {};
+
+ // Build set of events to track: regularEvents + any event with actual results
+ const competedEvents = new Set(
+   allResults.filter(r => r.twirlerId === twirlerProfile.id).map(r => r.event)
+ );
+ const regularEvents = new Set(twirlerProfile.regularEvents || []);
+ const relevantForOrg = (orgId, leveledEvents) =>
+   leveledEvents.filter(event =>
+     regularEvents.has(event) ||
+     competedEvents.has(event) ||
+     // Also include if there's a manual classification set above default
+     (twirlerProfile.classificationState?.[`${orgId}__${event}`]?.level &&
+      twirlerProfile.classificationState[`${orgId}__${event}`].level !== ORGS[orgId]?.levels?.[0])
+   );
+
  for (const orgId of twirlerProfile.organizations) {
   const org = ORGS[orgId];
   if (!org) continue;
   progress[orgId] = {};
 
+  const eventsToTrack = relevantForOrg(orgId, org.leveledEvents);
+
   if (org.winModel === "cumulative") {
-   for (const event of org.leveledEvents) {
+   for (const event of eventsToTrack) {
     const classKey = `${orgId}__${event}`;
     const stateEntry = twirlerProfile.classificationState?.[classKey] || {};
     const currentLevel = stateEntry.level || org.levels[0];
@@ -480,7 +497,7 @@ function calculateProgress(twirlerProfile, allResults) {
    continue;
   }
 
-  for (const event of org.leveledEvents) {
+  for (const event of eventsToTrack) {
    const classKey = `${orgId}__${event}`;
    const stateEntry = twirlerProfile.classificationState?.[classKey] || {};
    const currentLevel = stateEntry.level || org.levels[0];
@@ -3770,6 +3787,8 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
 function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode }) {
   if (!activeTwirler) return <div className="empty-state"><h3>No twirler selected</h3></div>;
 
+  const [classifOrgFilter, setClassifOrgFilter] = useState("all");
+
   const lastComp = twirlerComps.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
   const lastResults = lastComp ? twirlerResults.filter(r => r.competitionId === lastComp.id) : [];
   const totalWins = twirlerResults.filter(r => r.placement === 1).length;
@@ -3997,61 +4016,86 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
         <div className="card">
           <div className="section-header">
             <span className="section-title">Current Classifications</span>
+            {(activeTwirler.organizations || []).length > 1 && (
+              <select className="select" style={{ width: "auto", fontSize: 12, padding: "4px 8px" }}
+                value={classifOrgFilter} onChange={e => setClassifOrgFilter(e.target.value)}>
+                <option value="all">All orgs</option>
+                {(activeTwirler.organizations || []).map(o => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            )}
           </div>
-          {(activeTwirler.organizations || []).map(orgId => (
-            <div key={orgId} className="mb-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="badge" style={{ background: orgColor(orgId) + "20", color: orgColor(orgId) }}>{orgId}</span>
-              </div>
-              {(ORGS[orgId]?.leveledEvents || []).map(event => {
-                const prog = progress?.[orgId]?.[event];
-                if (!prog) return null;
-                const pct = prog.winsNeeded ? Math.min(100, Math.round((prog.winsCount / prog.winsNeeded) * 100)) : 100;
-                return (
-                  <div key={event} className="mb-3">
-                    <div className="flex justify-between items-center mb-1">
-                      <span style={{ fontSize: 13 }}>{event}</span>
-                      <span className="badge badge-gray" style={{ fontSize: 10 }}>{prog.currentLevel}</span>
+          {(() => {
+            const orgsToShow = (activeTwirler.organizations || [])
+              .filter(o => classifOrgFilter === "all" || o === classifOrgFilter);
+            const hasAnyEvents = orgsToShow.some(orgId =>
+              Object.keys(progress?.[orgId] || {}).length > 0 ||
+              (orgId === "USTA" && twirlerResults.some(r => CAS_EVENTS.has(r.event) && r.orgId === "USTA" && r.casPassed === true))
+            );
+            if (!hasAnyEvents) return (
+              <p style={{ fontSize: 13, color: "var(--muted)" }}>
+                No events tracked yet. Add regular events in your twirler's profile or log a competition to see classifications here.
+              </p>
+            );
+            return orgsToShow.map(orgId => {
+              const orgEvents = Object.keys(progress?.[orgId] || {});
+              const casResults = orgId === "USTA"
+                ? twirlerResults.filter(r => CAS_EVENTS.has(r.event) && r.orgId === "USTA" && r.casPassed === true)
+                : [];
+              const hasCas = casResults.length > 0;
+              if (orgEvents.length === 0 && !hasCas) return null;
+              return (
+                <div key={orgId} className="mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="badge" style={{ background: orgColor(orgId) + "20", color: orgColor(orgId) }}>{orgId}</span>
+                  </div>
+                  {orgEvents.map(event => {
+                    const prog = progress?.[orgId]?.[event];
+                    if (!prog) return null;
+                    const pct = prog.winsNeeded ? Math.min(100, Math.round((prog.winsCount / prog.winsNeeded) * 100)) : 100;
+                    return (
+                      <div key={event} className="mb-3">
+                        <div className="flex justify-between items-center mb-1">
+                          <span style={{ fontSize: 13 }}>{event}</span>
+                          <span className="badge badge-gray" style={{ fontSize: 10 }}>{prog.currentLevel}</span>
+                        </div>
+                        {prog.nextLevel && (
+                          <>
+                            <div className="progress-bar">
+                              <div className="progress-fill" style={{ width: pct + "%", background: prog.shouldAdvance ? "var(--green)" : "var(--brand)" }} />
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{prog.winsCount}/{prog.winsNeeded} wins toward {prog.nextLevel}</div>
+                          </>
+                        )}
+                        {!prog.nextLevel && <div style={{ fontSize: 11, color: "var(--green)" }}>Advanced level — no further advancement</div>}
+                      </div>
+                    );
+                  })}
+                  {/* CAS tracks for USTA */}
+                  {hasCas && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>CAS Progress</div>
+                      {["Compulsories", "Movement Technique"].map(track => {
+                        const passed = casResults.filter(r => r.event === track);
+                        const highestIdx = passed.reduce((max, r) => {
+                          const idx = CAS_LEVELS.indexOf(r.casLevel);
+                          return idx > max ? idx : max;
+                        }, -1);
+                        if (highestIdx < 0) return null;
+                        return (
+                          <div key={track} className="flex justify-between items-center mb-2">
+                            <span style={{ fontSize: 13 }}>{track}</span>
+                            <span className="badge badge-blue" style={{ fontSize: 10 }}>Through {CAS_LEVELS[highestIdx]}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    {prog.nextLevel && (
-                      <>
-                        <div className="progress-bar">
-                          <div className="progress-fill" style={{ width: pct + "%", background: prog.shouldAdvance ? "var(--green)" : "var(--brand)" }} />
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{prog.winsCount}/{prog.winsNeeded} wins toward {prog.nextLevel}</div>
-                      </>
-                    )}
-                    {!prog.nextLevel && <div style={{ fontSize: 11, color: "var(--green)" }}>Advanced level — no further advancement</div>}
-                  </div>
-                );
-              })}
-              {/* CAS tracks for USTA */}
-              {orgId === "USTA" && (() => {
-                const casResults = twirlerResults.filter(r => CAS_EVENTS.has(r.event) && r.orgId === "USTA");
-                if (casResults.length === 0) return null;
-                return (
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>CAS Progress</div>
-                    {["Compulsories", "Movement Technique"].map(track => {
-                      const passed = casResults.filter(r => r.event === track && r.casPassed === true);
-                      if (passed.length === 0) return null;
-                      const highestIdx = passed.reduce((max, r) => {
-                        const idx = CAS_LEVELS.indexOf(r.casLevel);
-                        return idx > max ? idx : max;
-                      }, -1);
-                      if (highestIdx < 0) return null;
-                      return (
-                        <div key={track} className="flex justify-between items-center mb-2">
-                          <span style={{ fontSize: 13 }}>{track}</span>
-                          <span className="badge badge-blue" style={{ fontSize: 10 }}>Through {CAS_LEVELS[highestIdx]}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
-          ))}
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
 
         <div className="card">
@@ -4730,7 +4774,14 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
 
       {displayOrg && (
         <div>
-          {(ORGS[displayOrg]?.leveledEvents || []).map(event => {
+          {Object.keys(progress?.[displayOrg] || {}).length === 0 ? (
+            <div className="empty-state" style={{ padding: "32px 0" }}>
+              <h3>No events tracked for {displayOrg} yet</h3>
+              <p>Add regular events to {activeTwirler.firstName}'s profile or log a competition to see progress here.</p>
+              <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => openModal("editTwirler")}>Edit Profile</button>
+            </div>
+          ) : (
+          Object.keys(progress?.[displayOrg] || {}).map(event => {
             const prog = progress?.[displayOrg]?.[event];
             if (!prog) return null;
             const pct = prog.winsNeeded ? Math.min(100, Math.round((prog.winsCount / prog.winsNeeded) * 100)) : 100;
@@ -4860,6 +4911,7 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
               </div>
             );
           })}
+          )}
         </div>
       )}
     </div>
