@@ -763,6 +763,34 @@ function ProgressRing({ pct, color = "#3b82f6", size = 56 }) {
 // ─── MAIN APP ───────────────────────────────────────────────────────────────
 
 export default function App() {
+  // ── PWA install prompt ──
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+  useEffect(() => {
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+    // Capture the install prompt event
+    const handler = e => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstallBanner(true);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  function triggerInstall() {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    installPrompt.userChoice.then(() => {
+      setInstallPrompt(null);
+      setShowInstallBanner(false);
+    });
+  }
+
   // ── Supabase auth state ──
   const [authUser, setAuthUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -1364,7 +1392,12 @@ export default function App() {
       score: r.score, allCatch: r.all_catch,
       casLevel: r.cas_level, casPassed: r.cas_passed, judgeNote: r.judge_note,
     }));
-    setResults(prev => [...prev, ...mapped]);
+    setResults(prev => {
+      const updated = [...prev, ...mapped];
+      // Boost install banner after first result logged
+      if (prev.length === 0 && mapped.length > 0) setShowInstallBanner(true);
+      return updated;
+    });
   }
 
   async function addResultsToComp(compId, newResults) {
@@ -1818,6 +1851,7 @@ export default function App() {
       <style>{css}</style>
       <ReportIssueButton page={page} authUser={authUser} familyAccount={familyAccount} coachAccount={null} />
       <BetaFeedbackPopup authUser={authUser} familyAccount={familyAccount} coachAccount={null} />
+      <InstallBanner show={showInstallBanner && !!installPrompt} onInstall={triggerInstall} onDismiss={() => setShowInstallBanner(false)} />
       <div className="app">
         <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
@@ -8638,6 +8672,50 @@ Free tier: The free tier is provided as-is with no guarantee of continued availa
             <div style={{ whiteSpace: "pre-line" }}>{body}</div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── PWA INSTALL BANNER ───────────────────────────────────────────────────────
+
+function InstallBanner({ show, onInstall, onDismiss }) {
+  if (!show) return null;
+  return (
+    <div style={{
+      position: "fixed", bottom: 16, left: 16, right: 16, zIndex: 9999,
+      background: "white", borderRadius: 14, padding: "14px 16px",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.15)", border: "1px solid var(--border)",
+      display: "flex", alignItems: "center", gap: 12,
+      maxWidth: 480, margin: "0 auto",
+    }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: 10, background: "#0d9488",
+        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+      }}>
+        <span style={{ color: "white", fontWeight: 800, fontSize: 13 }}>TP</span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--navy)", marginBottom: 2 }}>
+          Add TwirlPower to your home screen
+        </div>
+        <div style={{ fontSize: 12, color: "var(--slate)" }}>
+          Quick access at competitions — no app store needed
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+        <button onClick={onDismiss}
+          style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
+            background: "white", color: "var(--slate)", fontSize: 13, cursor: "pointer",
+            fontFamily: "inherit" }}>
+          Later
+        </button>
+        <button onClick={onInstall}
+          style={{ padding: "6px 12px", borderRadius: 8, border: "none",
+            background: "#0d9488", color: "white", fontSize: 13, fontWeight: 600,
+            cursor: "pointer", fontFamily: "inherit" }}>
+          Install
+        </button>
       </div>
     </div>
   );
