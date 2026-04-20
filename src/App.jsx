@@ -356,6 +356,9 @@ const OPEN_QUESTIONS = [
  { id: "Q12", text: "DMA wins toward NBTA: Do DMA wins count toward NBTA advancement? NBTA counts wins from all orgs generally. Defaulting to YES (counts) until confirmed." },
  { id: "Q13", text: "DMA Elite designation: Elite requires top-3 at Nationals/Mini-Nationals 4 times — not a standard win threshold. Should this be tracked differently in TwirlPower? Currently flagged as non-trackable via win count." },
  { id: "Q14", text: "DMA cumulative thresholds: The 8-win Beginner and 18-win Intermediate thresholds are sourced from third-party data (Twirlmate), not directly from the DMA rulebook. Please verify against the official DMA rulebook." },
+ { id: "Q15", text: "USTA August 2025 rule change: USTA is replacing win-count advancement with a judge recommendation model (3 recommendations = level advance). Does this apply to all events or only certain ones?" },
+ { id: "Q16", text: "USTA recommendation expiry: Do judge recommendations expire after a certain time period, or do they accumulate indefinitely?" },
+ { id: "Q17", text: "NBTA cross-org impact: Under the new USTA recommendation system, do USTA competition results still count toward NBTA win-based advancement? The old system counted USTA wins toward NBTA — this needs confirmation under the new model." },
 ];
 
 function getNextLevel(orgId, currentLevel) {
@@ -7322,6 +7325,20 @@ function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
       {/* Overview tab */}
       {activeTab === "overview" && (
         <div>
+          {orgId === "USTA" && (
+            <div className="alert alert-warn mb-4">
+              <Icon name="alert" size={15} color="var(--amber)" />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>⚡ Rule change coming August 2025</div>
+                <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  USTA is transitioning from a win-count advancement system to a <strong>judge recommendation system</strong>.
+                  Under the new model, judges will recommend advancement after an event — three recommendations
+                  moves a twirler to the next classification level. TwirlPower is monitoring this change closely
+                  and will update tracking accordingly. We'll notify you when the update is live.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="card mb-4">
             <div className="section-header"><span className="section-title">About</span></div>
             <p style={{ fontSize: 14, color: "var(--slate)", lineHeight: 1.8 }}>{info.history}</p>
@@ -7356,6 +7373,20 @@ function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
       {/* Classification tab */}
       {activeTab === "classification" && (
         <div>
+          {orgId === "USTA" && (
+            <div className="alert alert-warn mb-4">
+              <Icon name="alert" size={15} color="var(--amber)" />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>⚡ Classification system changing August 2025</div>
+                <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+                  The win-count system below is currently how USTA advancement works. Starting August 2025,
+                  USTA will switch to a <strong>judge recommendation model</strong> — judges recommend advancement
+                  after an event, and three recommendations trigger a level change. TwirlPower will update
+                  to support the new system. Win counts will remain in your history.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="card mb-4">
             <div className="section-header">
               <span className="section-title">How {orgId} classification works</span>
@@ -8068,8 +8099,10 @@ function OpenQuestionsPage() {
       <div className="flex-col gap-3">
         {OPEN_QUESTIONS.map(q => {
           const isDMA = q.id.startsWith("Q8") || ["Q9","Q10","Q11","Q12","Q13","Q14"].includes(q.id);
+          const isUSTAChange = ["Q15","Q16","Q17"].includes(q.id);
           const isTU = ["Q5","Q6"].includes(q.id);
-          const orgTag = isDMA ? "DMA" : isTU ? "TU" : q.id <= "Q4" ? null : null;
+          const orgTag = isUSTAChange ? "USTA" : isDMA ? "DMA" : isTU ? "TU" : q.id <= "Q4" ? null : null;
+          const isRuleChange = isUSTAChange;
           return (
             <div key={q.id} className="card flex gap-3">
               <div style={{ width: 32, height: 32, background: "#fff7ed", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -8080,6 +8113,9 @@ function OpenQuestionsPage() {
                   <span className="badge badge-warn" style={{ fontSize: 10 }}>{q.id}</span>
                   {orgTag && (
                     <span className="badge" style={{ fontSize: 10, background: orgColor(orgTag) + "20", color: orgColor(orgTag) }}>{orgTag}</span>
+                  )}
+                  {isRuleChange && (
+                    <span className="badge" style={{ fontSize: 10, background: "#fef3c7", color: "#92400e" }}>⚡ Rule change</span>
                   )}
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>Pending clarification</span>
                 </div>
