@@ -914,6 +914,25 @@ export default function App() {
   const [publicCompetitions, setPublicCompetitions] = useState([]);
   const [attendees, setAttendees] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
+
+  // ── Offline cache helpers ──
+  const CACHE_KEY = 'tp_offline_cache';
+  function saveOfflineCache(data) {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ...data, savedAt: Date.now() })); } catch(e) {}
+  }
+  function loadOfflineCache() {
+    try { const s = localStorage.getItem(CACHE_KEY); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+  }
+
+  // Listen for online/offline events
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline = () => setIsOffline(false);
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', goOnline);
+    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
+  }, []);
 
   // ── Load all user data from Supabase when auth user ID changes ──
   const loadedForUserRef = useRef(null);
@@ -936,6 +955,23 @@ export default function App() {
 
   async function loadAllData(userId) {
     setDataLoading(true);
+
+    // If offline, try loading from cache
+    if (!navigator.onLine) {
+      const cached = loadOfflineCache();
+      if (cached) {
+        setIsOffline(true);
+        if (cached.familyAccount) setFamilyAccount(cached.familyAccount);
+        if (cached.twirlers) setTwirlers(cached.twirlers);
+        if (cached.competitions) setCompetitions(cached.competitions);
+        if (cached.results) setResults(cached.results);
+        if (cached.coaches) setCoaches(cached.coaches);
+        if (cached.userRole) setUserRole(cached.userRole);
+        setDataLoading(false);
+        return;
+      }
+    }
+
     try {
       // Load user role — seed from auth metadata if missing
       let { data: roleData } = await supabase
@@ -1011,6 +1047,25 @@ export default function App() {
             scorecardUrl: r.scorecard_url,
             subScores: r.sub_scores || {},
           })));
+
+          // Save to offline cache after core data loaded
+          const mappedComps = (comps || []).map(c => ({ ...c, orgId: c.org_id, fromPublic: c.from_public }));
+          const mappedRes = (res || []).map(r => ({
+            ...r, orgId: r.org_id, twirlerId: r.twirler_id, competitionId: r.competition_id,
+            classificationLevelEntered: r.classification_level_entered,
+            protectionRule: r.protection_rule, isFinalRound: r.is_final_round,
+            isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off,
+            score: r.score, allCatch: r.all_catch, casLevel: r.cas_level,
+            casPassed: r.cas_passed, judgeNote: r.judge_note,
+            scorecardUrl: r.scorecard_url, subScores: r.sub_scores || {},
+          }));
+          saveOfflineCache({
+            familyAccount: { ...fa, parentName: fa.parent_name, additionalGuardians: fa.additional_guardians || [] },
+            twirlers: mappedTwirlers,
+            competitions: mappedComps,
+            results: mappedRes,
+            userRole: 'family',
+          });
 
           // Load coaches
           const { data: coa } = await supabase
@@ -1173,8 +1228,13 @@ export default function App() {
     }
   }, [resolvedActiveTwirlerId]);
 
+  const WRITE_MODALS = ['addCompetition', 'addResults', 'override', 'historicalData', 'addTwirler', 'editTwirler'];
   const openModal = (name, data = {}) => {
-    if (guardianMode === 'viewer' && ['addCompetition', 'addResults', 'override', 'historicalData', 'addTwirler'].includes(name)) return;
+    if (guardianMode === 'viewer' && WRITE_MODALS.includes(name)) return;
+    if (isOffline && WRITE_MODALS.includes(name)) {
+      alert("You're offline. Please reconnect to make changes.");
+      return;
+    }
     setModals(m => ({ ...m, [name]: { open: true, ...data } }));
   };
   const closeModal = (name) => setModals(m => ({ ...m, [name]: { ...m[name], open: false } }));
@@ -1972,6 +2032,16 @@ export default function App() {
             )}
           </div>
         </div>
+        {/* Offline banner */}
+        {isOffline && (
+          <div style={{ background: "#fef3c7", borderBottom: "2px solid #f59e0b",
+            padding: "8px 16px", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 16 }}>📴</span>
+            <span style={{ color: "#92400e", fontWeight: 500 }}>
+              You're offline — viewing cached data. Changes can't be saved until you reconnect.
+            </span>
+          </div>
+        )}
         {/* Guardian mode banner */}
         {guardianMode && (
           <div style={{ background: guardianMode === 'co-guardian' ? "#e0e7ff" : "#fef3c7",
