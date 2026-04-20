@@ -322,6 +322,9 @@ const ORG_INFO = {
  },
 };
 
+const CAS_LEVELS = ["C", "B", "BI", "BII", "A", "AA", "AAA", "Elite"];
+const CAS_EVENTS = new Set(["Compulsories", "Movement Technique"]);
+
 const OPEN_QUESTIONS = [
  { id: "Q1", text: "NBTA strut cross-org: Does NBTA exclude USTA strut wins the way USTA excludes NBTA strut wins?" },
  { id: "Q2", text: "NBTA twirl-off 'final round only': Does this apply at all competition tiers or only specific ones (local, state, regional, national)?" },
@@ -902,6 +905,9 @@ export default function App() {
             isTwirlOff: r.is_twirl_off,
             score: r.score,
             allCatch: r.all_catch,
+            casLevel: r.cas_level,
+            casPassed: r.cas_passed,
+            judgeNote: r.judge_note,
           })));
 
           // Load coaches
@@ -1344,6 +1350,9 @@ export default function App() {
       notes: r.notes || null,
       score: r.score ? parseFloat(r.score) : null,
       all_catch: !!r.allCatch,
+      cas_level: r.casLevel || null,
+      cas_passed: r.casPassed ?? null,
+      judge_note: r.judgeNote || null,
     }));
     const { data: inserted, error } = await supabase.from('results').insert(rows).select();
     if (error) { console.error('addResults:', error); return; }
@@ -1353,6 +1362,7 @@ export default function App() {
       protectionRule: r.protection_rule, isFinalRound: r.is_final_round,
       isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off,
       score: r.score, allCatch: r.all_catch,
+      casLevel: r.cas_level, casPassed: r.cas_passed, judgeNote: r.judge_note,
     }));
     setResults(prev => [...prev, ...mapped]);
   }
@@ -1379,6 +1389,9 @@ export default function App() {
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
     if (updates.score !== undefined) dbUpdates.score = updates.score ? parseFloat(updates.score) : null;
     if (updates.allCatch !== undefined) dbUpdates.all_catch = updates.allCatch;
+    if (updates.casLevel !== undefined) dbUpdates.cas_level = updates.casLevel || null;
+    if (updates.casPassed !== undefined) dbUpdates.cas_passed = updates.casPassed ?? null;
+    if (updates.judgeNote !== undefined) dbUpdates.judge_note = updates.judgeNote || null;
     await supabase.from('results').update(dbUpdates).eq('id', id);
   }
 
@@ -1859,7 +1872,7 @@ export default function App() {
           {page === "privacy" && <PrivacyPolicyPage onClose={() => setPage("home")} />}
           {page === "terms" && <TermsOfServicePage onClose={() => setPage("home")} />}
           {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} />}
-          {page === "orgs" && <OrganizationsPage />}
+          {page === "orgs" && <OrganizationsPage activeTwirler={activeTwirler} twirlerResults={twirlerResults} />}
           {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
           {page === "upcoming" && <UpcomingCompetitionsPage {...pageProps} />}
           {page === "hostdash" && <HostDashboardPage {...pageProps} />}
@@ -3916,9 +3929,18 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                         </td>
                         <td><span className="badge badge-gray">{r.classificationLevelEntered}</span></td>
                         <td>
+                          {CAS_EVENTS.has(r.event) ? (
+                            <span className="badge" style={{
+                              background: r.casPassed === true ? "#f0fdf4" : r.casPassed === false ? "#fef2f2" : "#f1f5f9",
+                              color: r.casPassed === true ? "#16a34a" : r.casPassed === false ? "#dc2626" : "var(--slate)"
+                            }}>
+                              {r.casLevel} {r.casPassed === true ? "✓" : r.casPassed === false ? "✗" : "—"}
+                            </span>
+                          ) : (
                           <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)" }}>
                             {r.placement === 1 ? "🥇" : r.placement === 2 ? "🥈" : r.placement === 3 ? "🥉" : `${r.placement}th`}
                           </span>
+                          )}
                         </td>
                         <td style={{ fontSize: 12, color: "var(--slate)" }}>{r.score ? r.score.toFixed(1) : "—"}</td>
                       </tr>
@@ -4227,9 +4249,18 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                           </td>
                           <td><span className="badge badge-gray">{r.classificationLevelEntered}</span></td>
                           <td>
+                            {CAS_EVENTS.has(r.event) ? (
+                              <span className="badge" style={{
+                                background: r.casPassed === true ? "#f0fdf4" : r.casPassed === false ? "#fef2f2" : "#f1f5f9",
+                                color: r.casPassed === true ? "#16a34a" : r.casPassed === false ? "#dc2626" : "var(--slate)"
+                              }}>
+                                {r.casLevel} {r.casPassed === true ? "✓" : r.casPassed === false ? "✗" : "—"}
+                              </span>
+                            ) : (
                             <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)" }}>
                               {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
                             </span>
+                            )}
                           </td>
                           <td style={{ fontSize: 12, color: "var(--slate)" }}>{r.score != null ? r.score.toFixed(1) : "—"}</td>
                           <td style={{ fontSize: 13 }}>{r.contested ? "Yes" : "No"}</td>
@@ -6723,12 +6754,13 @@ function CoachCreateCompModal({ open, onClose, coach, twirlers, onSave }) {
   );
 }
 
-function OrganizationsPage() {
+function OrganizationsPage({ activeTwirler, twirlerResults }) {
   const [selectedOrg, setSelectedOrg] = useState(null);
   const orgIds = Object.keys(ORG_INFO);
 
   if (selectedOrg) {
-    return <OrgDetailPage orgId={selectedOrg} onBack={() => setSelectedOrg(null)} />;
+    return <OrgDetailPage orgId={selectedOrg} onBack={() => setSelectedOrg(null)} activeTwirler={activeTwirler} twirlerResults={twirlerResults} />;
+  }
   }
 
   return (
@@ -6789,7 +6821,141 @@ function OrganizationsPage() {
   );
 }
 
-function OrgDetailPage({ orgId, onBack }) {
+function CasProgressSection({ activeTwirler, twirlerResults }) {
+  if (!activeTwirler) {
+    return (
+      <div className="card" style={{ textAlign: "center", padding: 32 }}>
+        <Icon name="user" size={28} color="var(--muted)" />
+        <p style={{ fontSize: 14, color: "var(--slate)", marginTop: 12 }}>
+          Select an athlete on the home screen to view their CAS progress.
+        </p>
+      </div>
+    );
+  }
+
+  const casResults = (twirlerResults || []).filter(r => CAS_EVENTS.has(r.event) && r.orgId === "USTA");
+
+  // Build pass map: { "Compulsories__C": { passed, date, judge, compName } }
+  const passMap = {};
+  casResults.forEach(r => {
+    if (r.casLevel && r.casPassed === true) {
+      const key = `${r.event}__${r.casLevel}`;
+      if (!passMap[key]) passMap[key] = { passed: true, judgeNote: r.judgeNote };
+    }
+  });
+
+  const tracks = ["Compulsories", "Movement Technique"];
+  const levelLabels = { C: "C", B: "B", BI: "BI", BII: "BII", A: "A", AA: "AA", AAA: "AAA", Elite: "Elite" };
+
+  return (
+    <div>
+      <div className="card mb-4" style={{ borderLeft: "4px solid #2563eb" }}>
+        <div className="section-header">
+          <span className="section-title">What is CAS?</span>
+        </div>
+        <p style={{ fontSize: 13, color: "var(--slate)", lineHeight: 1.7 }}>
+          The <strong>Competitive Achievement System (CAS)</strong> is USTA's progressive skill evaluation program —
+          separate from win-based classification. Athletes are evaluated by a certified judge at each level,
+          and passes are recorded in their Achievement Book. Passing all CAS levels is required to compete
+          in USTA PreTrials and Trials events.
+        </p>
+        <p style={{ fontSize: 13, color: "var(--slate)", lineHeight: 1.7, marginTop: 8 }}>
+          There are two tracks: <strong>Compulsories</strong> (specific baton skills at each level) and{" "}
+          <strong>Movement Technique</strong> (body/movement skills). Athletes progress through levels
+          C → B → BI → BII → A → AA → AAA → Elite on each track independently. USTA limits evaluation
+          to 2 levels per meet.
+        </p>
+      </div>
+
+      {tracks.map(track => {
+        const highestPassedIdx = CAS_LEVELS.reduce((max, lvl, idx) =>
+          passMap[`${track}__${lvl}`] ? idx : max, -1);
+        const nextLevelIdx = highestPassedIdx + 1;
+
+        return (
+          <div key={track} className="card mb-4">
+            <div className="section-header">
+              <span className="section-title">{track}</span>
+              {highestPassedIdx >= 0
+                ? <span className="badge badge-green" style={{ fontSize: 11 }}>
+                    Through {CAS_LEVELS[highestPassedIdx]}
+                  </span>
+                : <span className="badge badge-gray" style={{ fontSize: 11 }}>Not started</span>}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {CAS_LEVELS.map((level, idx) => {
+                const key = `${track}__${level}`;
+                const passed = !!passMap[key];
+                const isCurrent = idx === nextLevelIdx;
+                const isLocked = idx > nextLevelIdx;
+                const judge = passMap[key]?.judgeNote;
+
+                return (
+                  <div key={level} style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "10px 14px", borderRadius: 10, border: "1px solid",
+                    borderColor: passed ? "#bbf7d0" : isCurrent ? "#bfdbfe" : "var(--border)",
+                    background: passed ? "#f0fdf4" : isCurrent ? "#eff6ff" : isLocked ? "#f8fafc" : "white",
+                    opacity: isLocked ? 0.6 : 1,
+                  }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: passed ? "#16a34a" : isCurrent ? "#2563eb" : "#e2e8f0",
+                      color: passed || isCurrent ? "white" : "var(--slate)",
+                      fontSize: 12, fontWeight: 700,
+                    }}>
+                      {passed ? "✓" : levelLabels[level]}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>
+                        Level {level}
+                        {isCurrent && <span style={{ marginLeft: 8, fontSize: 11, color: "#2563eb", fontWeight: 500 }}>← Next</span>}
+                      </div>
+                      {passed && judge && (
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Judge: {judge}</div>
+                      )}
+                      {!passed && isCurrent && (
+                        <div style={{ fontSize: 11, color: "#2563eb", marginTop: 2 }}>
+                          Ready to evaluate — log results when adding a competition
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600,
+                      color: passed ? "#16a34a" : isCurrent ? "#2563eb" : "var(--muted)" }}>
+                      {passed ? "Passed" : isCurrent ? "In progress" : isLocked ? "Locked" : "—"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {highestPassedIdx === CAS_LEVELS.length - 1 && (
+              <div className="alert alert-info" style={{ marginTop: 12 }}>
+                <Icon name="star" size={14} color="var(--brand)" />
+                <span style={{ fontSize: 13 }}>All {track} levels completed!</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      <div className="card" style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <Icon name="info" size={15} color="#d97706" />
+          <p style={{ fontSize: 13, color: "#92400e", lineHeight: 1.6, margin: 0 }}>
+            CAS passes should always be recorded in your official USTA Achievement Book, signed by a
+            certified judge. TwirlPower tracks passes from logged competitions but is not a substitute
+            for the official Achievement Book record.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
   const info = ORG_INFO[orgId];
   const org = ORGS[orgId];
   const [activeTab, setActiveTab] = useState("overview");
@@ -6800,6 +6966,7 @@ function OrgDetailPage({ orgId, onBack }) {
     { id: "events", label: "Events" },
     { id: "rules", label: "Key Rules" },
     ...(info.scoring ? [{ id: "scoring", label: "Scoring" }] : []),
+    ...(orgId === "USTA" ? [{ id: "cas", label: "CAS Progress" }] : []),
   ];
 
   return (
@@ -7058,6 +7225,11 @@ function OrgDetailPage({ orgId, onBack }) {
             <span style={{ fontSize: 13 }}>{info.scoring.note}</span>
           </div>
         </div>
+      )}
+
+      {/* CAS Progress tab — USTA only */}
+      {activeTab === "cas" && orgId === "USTA" && (
+        <CasProgressSection activeTwirler={activeTwirler} twirlerResults={twirlerResults} />
       )}
     </div>
   );
@@ -7764,7 +7936,7 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
     setEventRows(prev => [...prev, {
       event: "", classificationLevelEntered: orgLevels[0] || "Novice",
       placement: "", contested: true, protectionRule: false, isFinalRound: null,
-      score: "", allCatch: false,
+      score: "", allCatch: false, casLevel: "C", casPassed: null, judgeNote: "",
     }]);
   }
 
@@ -7779,6 +7951,8 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
   const needsLevel = (event) => leveledEvents.includes(event);
   const isStrut = (event) => strutEvents.has(event);
   const isTU = selectedOrg?.id === "TU";
+  const isUsta = selectedOrg?.id === "USTA";
+  const isCasEvent = (event) => isUsta && CAS_EVENTS.has(event);
 
   return (
     <div>
@@ -7818,6 +7992,47 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
               </select>
             </div>
           </div>
+          {isCasEvent(row.event) ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 8 }}>
+              <div className="form-row">
+                <div style={{ flex: 1 }}>
+                  <label className="label">CAS Level</label>
+                  <select className="select" value={row.casLevel || "C"}
+                    onChange={e => updateRow(i, "casLevel", e.target.value)}>
+                    {CAS_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="label">Result</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" onClick={() => updateRow(i, "casPassed", true)}
+                    style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "2px solid",
+                      borderColor: row.casPassed === true ? "#16a34a" : "var(--border)",
+                      background: row.casPassed === true ? "#f0fdf4" : "white",
+                      color: row.casPassed === true ? "#16a34a" : "var(--slate)",
+                      fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                    ✓ Passed
+                  </button>
+                  <button type="button" onClick={() => updateRow(i, "casPassed", false)}
+                    style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "2px solid",
+                      borderColor: row.casPassed === false ? "#dc2626" : "var(--border)",
+                      background: row.casPassed === false ? "#fef2f2" : "white",
+                      color: row.casPassed === false ? "#dc2626" : "var(--slate)",
+                      fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                    ✗ Not yet
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="label">Judge name <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+                <input className="input" type="text" value={row.judgeNote || ""}
+                  onChange={e => updateRow(i, "judgeNote", e.target.value)}
+                  placeholder="For your Achievement Book records" />
+              </div>
+            </div>
+          ) : (
+          <>
           <div className="form-row" style={{ marginBottom: 8 }}>
             <div>
               <label className="label">Placement</label>
@@ -7867,6 +8082,8 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
                 </label>
               )}
           </div>
+          </>
+          )}
           <button className="btn btn-ghost btn-sm" onClick={() => removeRow(i)}>
             <Icon name="trash" size={13} color="var(--red)" /> Remove
           </button>
@@ -7903,7 +8120,10 @@ function AddCompetitionModal({ open, onClose, onSave, activeTwirler, competition
   }, [open]);
 
   const selectedOrg = ORGS[compForm.orgId];
-  const validRows = eventRows.filter(r => r.event && r.placement !== "");
+  const isCasOrg = compForm.orgId === "USTA";
+  const validRows = eventRows.filter(r => r.event && (
+    (isCasOrg && CAS_EVENTS.has(r.event)) ? r.casPassed !== null : r.placement !== ""
+  ));
 
   // Duplicate detection — same name AND same date
   const duplicateWarning = compForm.name && compForm.date
@@ -7914,7 +8134,11 @@ function AddCompetitionModal({ open, onClose, onSave, activeTwirler, competition
     : null;
 
   function saveWithResults() {
-    onSave(compForm, validRows.map(r => ({ ...r, placement: parseInt(r.placement), orgId: compForm.orgId })));
+    onSave(compForm, validRows.map(r => ({
+      ...r,
+      placement: (isCasOrg && CAS_EVENTS.has(r.event)) ? null : parseInt(r.placement),
+      orgId: compForm.orgId
+    })));
     onClose();
   }
 
@@ -8048,10 +8272,17 @@ function AddResultsModal({ open, onClose, competition, activeTwirler, onSave }) 
   }, [open]);
 
   const selectedOrg = ORGS[competition?.orgId];
-  const validRows = eventRows.filter(r => r.event && r.placement !== "");
+  const isCasOrg2 = competition?.orgId === "USTA";
+  const validRows = eventRows.filter(r => r.event && (
+    (isCasOrg2 && CAS_EVENTS.has(r.event)) ? r.casPassed !== null : r.placement !== ""
+  ));
 
   function save() {
-    onSave(competition.id, validRows.map(r => ({ ...r, placement: parseInt(r.placement), orgId: competition.orgId })));
+    onSave(competition.id, validRows.map(r => ({
+      ...r,
+      placement: (isCasOrg2 && CAS_EVENTS.has(r.event)) ? null : parseInt(r.placement),
+      orgId: competition.orgId
+    })));
     onClose();
   }
 
