@@ -1864,7 +1864,7 @@ export default function App() {
                 <BatonIcon size={28} />
                 <span style={{ fontFamily: "'DM Serif Display', serif", color: "white", fontSize: 18 }}>
                   Twirl<span style={{ color: "#e11d6a" }}>Power</span>
-                  <span style={{ color: "var(--muted)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 400, marginLeft: 10 }}>Host Dashboard</span>
+                  <span style={{ color: "var(--muted)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 400, marginLeft: 10 }}>Director Dashboard</span>
                 </span>
               </div>
               <button onClick={signOut} style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 14px", color: "var(--muted)", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
@@ -2235,8 +2235,8 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
               <div className="alert alert-info mb-4">
                 <Icon name="info" size={14} color="var(--brand)" />
                 <div style={{ fontSize: 12 }}>
-                  Host accounts require admin approval before you can create public competitions.
-                  First create a TwirlPower account, then complete your host registration.
+                  Director accounts require admin approval before you can create public competitions.
+                  First create a TwirlPower account, then complete your director registration.
                 </div>
               </div>
               <div className="form-group">
@@ -2262,7 +2262,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
                     options: { data: { role: 'family' } } // hosts start as family, get host via setup
                   });
                   if (error) { setAuthError(error.message); setLoading(false); return; }
-                  setMessage("Account created! Check your email to verify, then sign in to complete host registration.");
+                  setMessage("Account created! Check your email to verify, then sign in to complete director registration.");
                   setMode("login");
                   setLoading(false);
                 }}>
@@ -3431,7 +3431,7 @@ function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, a
           </div>
         )}
 
-        {/* Host login / access */}
+        {/* Director login / access */}
         {accountType === "host" && (
           <HostAccessPanel
             competitionHosts={competitionHosts}
@@ -3767,7 +3767,7 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
 
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
 
-function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink }) {
+function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode }) {
   if (!activeTwirler) return <div className="empty-state"><h3>No twirler selected</h3></div>;
 
   const lastComp = twirlerComps.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
@@ -3792,6 +3792,12 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
   }
 
   // Onboarding checklist — shown until all steps done
+  // Only show to primary family account or co-guardians (not viewers, not other account types)
+  const canSeeOnboarding = !guardianMode || guardianMode === 'co-guardian';
+  const mostRecentComp = twirlerComps.length > 0
+    ? [...twirlerComps].sort((a, b) => new Date(b.date) - new Date(a.date))[0]
+    : null;
+
   const onboardingSteps = [
     {
       id: "orgs",
@@ -3804,7 +3810,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     {
       id: "comp",
       label: "Add your first competition",
-      detail: "Record a competition and enter results",
+      detail: "Record a competition you've attended",
       done: twirlerComps.length > 0,
       action: () => openModal("addCompetition"),
       actionLabel: "Add competition",
@@ -3812,10 +3818,10 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     {
       id: "results",
       label: "Enter results",
-      detail: "Add event placements so wins are tracked",
+      detail: "Add event placements to your most recent competition",
       done: twirlerResults.length > 0,
-      action: () => openModal("addCompetition"),
-      actionLabel: "Add competition + results",
+      action: () => mostRecentComp ? openModal("addResults", { competition: mostRecentComp }) : openModal("addCompetition"),
+      actionLabel: mostRecentComp ? "Add results" : "Add competition first",
     },
     {
       id: "state",
@@ -3827,7 +3833,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     },
   ];
   const onboardingDone = onboardingSteps.filter(s => s.done).length;
-  const showOnboarding = onboardingDone < onboardingSteps.length;
+  const showOnboarding = canSeeOnboarding && onboardingDone < onboardingSteps.length;
 
   return (
     <div>
@@ -4019,6 +4025,31 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                   </div>
                 );
               })}
+              {/* CAS tracks for USTA */}
+              {orgId === "USTA" && (() => {
+                const casResults = twirlerResults.filter(r => CAS_EVENTS.has(r.event) && r.orgId === "USTA");
+                if (casResults.length === 0) return null;
+                return (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>CAS Progress</div>
+                    {["Compulsories", "Movement Technique"].map(track => {
+                      const passed = casResults.filter(r => r.event === track && r.casPassed === true);
+                      if (passed.length === 0) return null;
+                      const highestIdx = passed.reduce((max, r) => {
+                        const idx = CAS_LEVELS.indexOf(r.casLevel);
+                        return idx > max ? idx : max;
+                      }, -1);
+                      if (highestIdx < 0) return null;
+                      return (
+                        <div key={track} className="flex justify-between items-center mb-2">
+                          <span style={{ fontSize: 13 }}>{track}</span>
+                          <span className="badge badge-blue" style={{ fontSize: 10 }}>Through {CAS_LEVELS[highestIdx]}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -5368,6 +5399,28 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
                       </div>
                     );
                   })}
+                  {/* CAS tracks for USTA */}
+                  {orgId === "USTA" && (() => {
+                    const casResults = (results || []).filter(r => r.twirlerId === twirler.id && CAS_EVENTS.has(r.event) && r.orgId === "USTA" && r.casPassed === true);
+                    return ["Compulsories", "Movement Technique"].map(track => {
+                      const passed = casResults.filter(r => r.event === track);
+                      const highestIdx = passed.reduce((max, r) => {
+                        const idx = CAS_LEVELS.indexOf(r.casLevel);
+                        return idx > max ? idx : max;
+                      }, -1);
+                      if (highestIdx < 0) return null;
+                      return (
+                        <div key={track} style={{ padding: "6px 12px", borderRadius: 8,
+                          background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+                          <div style={{ fontSize: 12, color: "var(--slate)" }}>{track}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#1d4ed8" }}>
+                            Through {CAS_LEVELS[highestIdx]}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>CAS evaluation</div>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             ))}
@@ -5473,7 +5526,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
   const approvedHosts = (competitionHosts || []).filter(h => h.approved);
 
   const tabs = [
-    { id: "hosts", label: `Host Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
+    { id: "hosts", label: `Director Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
     { id: "clubs", label: "Clubs" },
     { id: "accounts", label: "Accounts" },
     { id: "data", label: "Data Overview" },
@@ -5557,10 +5610,10 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
           <div>
             <div className="alert alert-info mb-4">
               <Icon name="info" size={14} color="var(--brand)" />
-              <span style={{ fontSize: 12 }}>Once approved, hosts retain access permanently. Phase 2: approval notifications via email.</span>
+              <span style={{ fontSize: 12 }}>Once approved, directors retain access permanently. Phase 2: approval notifications via email.</span>
             </div>
             {pendingHosts.length === 0 && (
-              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending host approvals.</div>
+              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending director approvals.</div>
             )}
             {pendingHosts.length > 0 && (
               <div className="mb-4">
@@ -5590,7 +5643,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
                         <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
                         <button className="btn btn-danger btn-sm"
                           onClick={() => {
-                            if (window.confirm(`Delete host registration for ${h.name}?`)) {
+                            if (window.confirm(`Delete director registration for ${h.name}?`)) {
                               supabase.from("competition_hosts").delete().eq("id", h.id);
                             }
                           }}>Delete</button>
@@ -5603,7 +5656,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
             {approvedHosts.length > 0 && (
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-                  ✓ Approved Hosts ({approvedHosts.length})
+                  ✓ Approved Directors ({approvedHosts.length})
                 </div>
                 {approvedHosts.map(h => (
                   <div key={h.id} className="flex items-center gap-3 mb-2" style={{ padding: "10px 12px", background: "#f0fdf4", borderRadius: 8 }}>
@@ -5616,14 +5669,14 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
                       <span className="badge badge-green" style={{ fontSize: 10 }}>Approved</span>
                       <button className="btn btn-secondary btn-sm"
                         onClick={() => {
-                          if (window.confirm(`Revoke host access for ${h.name}?`)) {
+                          if (window.confirm(`Revoke director access for ${h.name}?`)) {
                             supabase.from("competition_hosts").update({ approved: false }).eq("id", h.id);
                           }
                         }}
                         style={{ fontSize: 10, padding: "2px 8px" }}>Revoke</button>
                       <button className="btn btn-danger btn-sm"
                         onClick={() => {
-                          if (window.confirm(`Delete host registration for ${h.name}? This cannot be undone.`)) {
+                          if (window.confirm(`Delete director registration for ${h.name}? This cannot be undone.`)) {
                             supabase.from("competition_hosts").delete().eq("id", h.id);
                           }
                         }}
@@ -6330,7 +6383,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                   {h.approved ? (
                     <button className="btn btn-secondary btn-sm"
                       onClick={() => {
-                        if (window.confirm(`Revoke host access for ${h.name}?`)) {
+                        if (window.confirm(`Revoke director access for ${h.name}?`)) {
                           supabase.from("competition_hosts").update({ approved: false }).eq("id", h.id).then(() => {
                             setHostAccounts(prev => prev.map(x => x.id === h.id ? { ...x, approved: false } : x));
                           });
@@ -6348,7 +6401,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                   )}
                   <button className="btn btn-danger btn-sm"
                     onClick={() => {
-                      if (window.confirm(`Delete host registration for ${h.name}? This cannot be undone.`)) {
+                      if (window.confirm(`Delete director registration for ${h.name}? This cannot be undone.`)) {
                         supabase.from("competition_hosts").delete().eq("id", h.id).then(() => {
                           setHostAccounts(prev => prev.filter(x => x.id !== h.id));
                         });
@@ -8577,6 +8630,20 @@ function HistoricalDataModal({ open, onClose, activeTwirler, onSave }) {
           priorWins: existing?.priorWins || 0,
         });
       }
+      // Add CAS tracks for USTA
+      if (orgId === "USTA") {
+        for (const track of ["Compulsories", "Movement Technique"]) {
+          const classKey = `${orgId}__${track}`;
+          const existing = activeTwirler.classificationState?.[classKey];
+          initial.push({
+            orgId,
+            event: track,
+            level: existing?.level || "C",
+            priorWins: 0,
+            isCas: true,
+          });
+        }
+      }
     }
     setEntries(initial);
     setMode("quick");
@@ -8651,12 +8718,18 @@ function HistoricalDataModal({ open, onClose, activeTwirler, onSave }) {
               <tbody>
                 {orgEntries.map(entry => (
                   <tr key={entry.event} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                    <td style={{ padding: "8px 8px", fontSize: 14 }}>{entry.event}</td>
+                    <td style={{ padding: "8px 8px", fontSize: 14 }}>
+                      {entry.event}
+                      {entry.isCas && <span className="badge badge-blue" style={{ fontSize: 9, marginLeft: 6 }}>CAS</span>}
+                    </td>
                     <td style={{ padding: "6px 8px" }}>
                       <select className="select" style={{ padding: "5px 8px", fontSize: 13 }}
                         value={entry.level}
                         onChange={e => updateEntry(orgId, entry.event, "level", e.target.value)}>
-                        {org.levels.map(l => <option key={l} value={l}>{l}</option>)}
+                        {entry.isCas
+                          ? CAS_LEVELS.map(l => <option key={l} value={l}>{l}</option>)
+                          : org.levels.map(l => <option key={l} value={l}>{l}</option>)
+                        }
                       </select>
                     </td>
                   </tr>
@@ -8693,6 +8766,26 @@ function HistoricalDataModal({ open, onClose, activeTwirler, onSave }) {
                 </thead>
                 <tbody>
                   {orgEntries.map(entry => {
+                    if (entry.isCas) {
+                      return (
+                        <tr key={entry.event} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "8px 8px", fontSize: 14 }}>
+                            {entry.event}
+                            <span className="badge badge-blue" style={{ fontSize: 9, marginLeft: 6 }}>CAS</span>
+                          </td>
+                          <td style={{ padding: "6px 8px" }}>
+                            <select className="select" style={{ padding: "5px 8px", fontSize: 13 }}
+                              value={entry.level}
+                              onChange={e => updateEntry(orgId, entry.event, "level", e.target.value)}>
+                              {CAS_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                            </select>
+                          </td>
+                          <td colSpan={2} style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>
+                            Pass/fail tracked via competition results
+                          </td>
+                        </tr>
+                      );
+                    }
                     const needed = getWinsNeeded(orgId, entry.level);
                     const next = getNextLevel(orgId, entry.level);
                     const remaining = needed ? Math.max(0, needed - entry.priorWins) : null;
