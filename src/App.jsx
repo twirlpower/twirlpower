@@ -2321,7 +2321,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
               <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20 }}>What best describes you?</p>
               {[
                 { id: "family", icon: "👨‍👩‍👧", label: "Family / Parent / Guardian", desc: "Track classifications and competition history for your twirler" },
-                { id: "coach", icon: "🎓", label: "Coach", desc: "Manage your twirlers, send competition invites, and track their progress" },
+                { id: "coach", icon: "🎓", label: "Coach / Club Owner", desc: "Manage your twirlers, send competition invites, track progress, and manage your studio or club" },
                 { id: "host", icon: "🏆", label: "Competition Director", desc: "Create and manage public competitions for twirlers to register for" },
               ].map(r => (
                 <div key={r.id} onClick={() => setSignupRole(r.id)}
@@ -2349,7 +2349,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
                 <button onClick={() => setSignupRole(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--slate)", fontSize: 18, lineHeight: 1 }}>←</button>
                 <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)" }}>
-                  {signupRole === "coach" ? "🎓 Create Coach Account" : "👨‍👩‍👧 Create Family Account"}
+                  {signupRole === "coach" ? "🎓 Create Coach / Club Owner Account" : "👨‍👩‍👧 Create Family Account"}
                 </div>
               </div>
               <div className="form-group">
@@ -5173,9 +5173,20 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showAddGuardian, setShowAddGuardian] = useState(false);
   const [guardianForm, setGF] = useState({ name: "", email: "", phone: "", relationship: "Parent" });
-  // Remove registeredEmails — use g.confirmed flag on guardian object instead
+  const [linkedClub, setLinkedClub] = useState(null); // club record if found in TwirlPower
+
   useEffect(() => { setTF(activeTwirler || {}); }, [activeTwirler]);
   useEffect(() => { setFF(familyAccount); }, [familyAccount]);
+
+  // Look up club in TwirlPower when twirler's club name changes
+  useEffect(() => {
+    if (!activeTwirler?.club || !supabase) { setLinkedClub(null); return; }
+    supabase.from('clubs').select('id, name, city, state, status')
+      .ilike('name', activeTwirler.club)
+      .neq('status', 'archived')
+      .limit(1)
+      .then(({ data }) => setLinkedClub(data?.[0] || null));
+  }, [activeTwirler?.club]);
 
   // Coaches linked via new coach_athlete_links (real coach accounts)
   const linkedCoachLinks = (coachLinks || []).filter(l =>
@@ -5332,7 +5343,26 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                     </div>
                   </div>
                 )}
-                <div style={{ marginBottom: 8 }}><span style={{ color: "var(--slate)" }}>Club:</span> {activeTwirler.club || <span style={{ color: "var(--muted)" }}>Not set</span>}</div>
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ color: "var(--slate)" }}>Club:</span>{" "}
+                  {activeTwirler.club ? (
+                    linkedClub ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 500, color: "var(--navy)" }}>{activeTwirler.club}</span>
+                        <span className="badge badge-green" style={{ fontSize: 9 }}>In TwirlPower</span>
+                        {linkedClub.city && (
+                          <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                            {[linkedClub.city, linkedClub.state].filter(Boolean).join(", ")}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span style={{ color: "var(--navy)" }}>{activeTwirler.club}</span>
+                    )
+                  ) : (
+                    <span style={{ color: "var(--muted)" }}>Not set</span>
+                  )}
+                </div>
                 <div style={{ marginBottom: 8 }}>
                   <span style={{ color: "var(--slate)" }}>Organizations:</span>
                   <div className="flex gap-2 mt-1">
