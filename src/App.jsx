@@ -2003,7 +2003,7 @@ export default function App() {
       <InstallBanner show={showInstallBanner && canShowInstall} onInstall={triggerInstall} onDismiss={dismissInstall} isIos={isIos} />
       <IosInstallModal show={showIosInstructions} onDone={markIosDone} onClose={() => setShowIosInstructions(false)} />
       <div className="app">
-        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} canShowInstall={canShowInstall} onInstallClick={triggerInstall} />
+        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} canShowInstall={canShowInstall} onInstallClick={triggerInstall} competitionHosts={competitionHosts} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="mobile-topbar">
@@ -2846,57 +2846,99 @@ function ClubRosterPage({ twirlers, progress, coachAccount, setPage, setActiveTw
 }
 
 function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, activeTwirler, setPage, setActiveTwirlerId }) {
+  const today = new Date().toISOString().slice(0, 10);
   const upcomingComps = (coachCompetitions || [])
-    .filter(c => c.date >= new Date().toISOString().slice(0, 10))
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(0, 3);
+    .filter(c => c.date >= today)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  const pastComps = (coachCompetitions || [])
+    .filter(c => c.date < today)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const advancingCount = twirlers.filter(t =>
+    Object.values(progress?.[t.id] || {}).some(org => Object.values(org).some(e => e.shouldAdvance))
+  ).length;
+
+  function goToTwirler(twirler) {
+    setActiveTwirlerId(twirler.id);
+    setPage("progress");
+  }
 
   return (
     <div>
-      <div className="page-header">
-        <h1 className="page-title">Coach Dashboard</h1>
-        <p className="page-sub">Welcome back, {coachAccount?.name}</p>
+      <div className="page-header flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Coach Dashboard</h1>
+          <p className="page-sub">Welcome back, {coachAccount?.name}</p>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn btn-primary btn-sm" onClick={() => setPage("create-competition")}>
+            <Icon name="plus" size={13} /> Create Competition
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => setPage("invite-athlete")}>
+            <Icon name="plus" size={13} /> Invite Twirler
+          </button>
+        </div>
       </div>
 
-      {/* Athlete snapshot */}
+      {/* Quick stats */}
+      <div className="grid-3 mb-6">
+        {[
+          { label: "Twirlers", value: twirlers.length, icon: "👤", action: () => setPage("roster") },
+          { label: "Upcoming", value: upcomingComps.length, icon: "📅", action: () => setPage("history") },
+          { label: "Ready to advance", value: advancingCount, icon: "⬆️", action: () => setPage("roster"), highlight: advancingCount > 0 },
+        ].map(s => (
+          <div key={s.label} className="stat-card" onClick={s.action}
+            style={{ cursor: "pointer", transition: "box-shadow 0.15s",
+              border: s.highlight ? "1px solid #86efac" : "1px solid var(--border)",
+              background: s.highlight ? "#f0fdf4" : "var(--card)" }}
+            onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)"}
+            onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
+            <div style={{ fontSize: 22, marginBottom: 4 }}>{s.icon}</div>
+            <div className="stat-value" style={{ color: s.highlight ? "var(--green)" : "var(--navy)" }}>{s.value}</div>
+            <div className="stat-label">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Upcoming competitions */}
       <div className="card mb-4">
         <div className="section-header">
-          <span className="section-title">My Twirlers ({twirlers.length})</span>
-          <div className="flex gap-2">
-            <button className="btn btn-primary btn-sm" onClick={() => setPage("create-competition")}>+ Create Competition</button>
-            <button className="btn btn-secondary btn-sm" onClick={() => setPage("invite-athlete")}>+ Invite Twirler</button>
-          </div>
+          <span className="section-title">Upcoming Competitions</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => setPage("history")}>View all</button>
         </div>
-        {twirlers.length === 0 ? (
-          <div className="empty-state" style={{ padding: "24px 0" }}>
-            <h3>No twirlers linked yet</h3>
-            <p>Invite athletes by email or share your coach code with families.</p>
+        {upcomingComps.length === 0 ? (
+          <div style={{ padding: "16px 0", textAlign: "center" }}>
+            <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10 }}>No upcoming competitions scheduled.</p>
+            <button className="btn btn-secondary btn-sm" onClick={() => setPage("create-competition")}>
+              + Create Competition
+            </button>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {twirlers.map(t => {
-              const tProgress = progress?.[t.id] || {};
-              const advancing = Object.values(tProgress).some(org => Object.values(org).some(e => e.shouldAdvance));
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            {upcomingComps.slice(0, 5).map((c, i) => {
+              const accepted = (c.invites || []).filter(inv => inv.status === "accepted").length;
+              const pending = (c.invites || []).filter(inv => inv.status === "pending").length;
+              const daysUntil = Math.ceil((new Date(c.date) - new Date()) / (1000 * 60 * 60 * 24));
               return (
-                <div key={t.id}
-                  onClick={() => { setActiveTwirlerId(t.id); setPage("progress"); }}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                    background: "var(--bg)", borderRadius: 8, cursor: "pointer",
-                    border: advancing ? "1px solid #86efac" : "1px solid var(--border)" }}>
-                  <div className="avatar" style={{ background: "var(--brand)", color: "white", fontSize: 13 }}>
-                    {initials(t.firstName)}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{t.firstName}</div>
-                    <div style={{ fontSize: 12, color: "var(--slate)" }}>
-                      {t.familyName || ""}
-                      {t.organizations?.length > 0 && <span style={{ marginLeft: 4 }}>{t.organizations.join(", ")}</span>}
+                <div key={c.id} style={{ padding: "12px 0",
+                  borderBottom: i < upcomingComps.slice(0, 5).length - 1 ? "1px solid var(--border)" : "none" }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 2 }}>{c.name}</div>
+                      <div style={{ fontSize: 12, color: "var(--slate)" }}>
+                        {fmtDate(c.date)}{c.location ? ` · ${c.location}` : ""}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                        {accepted} accepted · {pending} pending
+                      </div>
                     </div>
+                    <span className="badge" style={{
+                      background: daysUntil <= 7 ? "#fef3c7" : "#f1f5f9",
+                      color: daysUntil <= 7 ? "#92400e" : "var(--slate)",
+                      fontSize: 10, flexShrink: 0 }}>
+                      {daysUntil === 0 ? "Today" : daysUntil === 1 ? "Tomorrow" : `${daysUntil}d`}
+                    </span>
                   </div>
-                  {advancing && <span className="badge badge-green" style={{ fontSize: 10 }}>Ready to advance</span>}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
                 </div>
               );
             })}
@@ -2904,42 +2946,61 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
         )}
       </div>
 
-      {/* Upcoming competitions */}
-      {upcomingComps.length > 0 && (
-        <div className="card mb-4">
-          <div className="section-header">
-            <span className="section-title">Upcoming Competitions</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => setPage("history")}>View all</button>
-          </div>
-          {upcomingComps.map(c => (
-            <div key={c.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 14, fontWeight: 500, color: "var(--navy)" }}>{c.name}</div>
-              <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
-                {fmtDate(c.date)}{c.location ? ` · ${c.location}` : ""}
-                {c.org_id && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{c.org_id}</span>}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-                {(c.invites || []).length} athlete{(c.invites || []).length !== 1 ? "s" : ""} invited
-                · {(c.invites || []).filter(i => i.status === 'accepted').length} accepted
-              </div>
-            </div>
-          ))}
+      {/* Twirler roster */}
+      <div className="card">
+        <div className="section-header">
+          <span className="section-title">My Twirlers ({twirlers.length})</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => setPage("roster")}>Full roster →</button>
         </div>
-      )}
-
-      {/* Quick stats */}
-      <div className="grid-3">
-        {[
-          { label: "Twirlers", value: twirlers.length, icon: "👤" },
-          { label: "Competitions", value: (coachCompetitions || []).length, icon: "🏆" },
-          { label: "Advancing", value: twirlers.filter(t => Object.values(progress?.[t.id] || {}).some(org => Object.values(org).some(e => e.shouldAdvance))).length, icon: "⬆️" },
-        ].map(s => (
-          <div key={s.label} className="stat-card">
-            <div style={{ fontSize: 22, marginBottom: 4 }}>{s.icon}</div>
-            <div className="stat-value">{s.value}</div>
-            <div className="stat-label">{s.label}</div>
+        {twirlers.length === 0 ? (
+          <div className="empty-state" style={{ padding: "24px 0" }}>
+            <h3>No twirlers linked yet</h3>
+            <p>Invite athletes by email to link them to your coach account.</p>
+            <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => setPage("invite-athlete")}>
+              Invite Twirler
+            </button>
           </div>
-        ))}
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {twirlers.map(t => {
+              const tProgress = progress?.[t.id] || {};
+              const advancing = Object.values(tProgress).some(org => Object.values(org).some(e => e.shouldAdvance));
+              const levelCount = Object.values(tProgress).reduce((sum, org) => sum + Object.keys(org).length, 0);
+              const lastComp = (coachCompetitions || [])
+                .filter(c => (c.invites || []).some(i => i.twirler_id === t.id))
+                .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+              return (
+                <div key={t.id} onClick={() => goToTwirler(t)}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+                    background: advancing ? "#f0fdf4" : "var(--bg)", borderRadius: 8, cursor: "pointer",
+                    border: advancing ? "1px solid #86efac" : "1px solid var(--border)",
+                    transition: "box-shadow 0.15s" }}
+                  onMouseEnter={e => e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)"}
+                  onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
+                  <div className="avatar" style={{ background: advancing ? "#16a34a" : "var(--brand)", color: "white", fontSize: 13 }}>
+                    {initials(t.firstName)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{t.firstName}</div>
+                    <div style={{ fontSize: 12, color: "var(--slate)" }}>
+                      {t.organizations?.join(", ")}
+                      {lastComp && <span style={{ color: "var(--muted)", marginLeft: 8 }}>Last: {fmtDate(lastComp.date)}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {advancing && <span className="badge badge-green" style={{ fontSize: 10 }}>Ready to advance</span>}
+                    {levelCount > 0 && !advancing && (
+                      <span className="badge badge-gray" style={{ fontSize: 10 }}>{levelCount} event{levelCount !== 1 ? "s" : ""}</span>
+                    )}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3706,7 +3767,8 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications, canShowInstall, onInstallClick }) {
+function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications, canShowInstall, onInstallClick, competitionHosts }) {
+  const pendingDirectors = (competitionHosts || []).filter(h => !h.approved).length;
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "history", label: "Competition History", icon: "history" },
@@ -3799,7 +3861,17 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
             style={item.admin ? { borderLeft: page === item.id ? "3px solid #818cf8" : "3px solid transparent" } : {}}>
             <span className="nav-icon"><Icon name={item.icon} size={16} /></span>
             <span style={item.admin ? { color: page === item.id ? "#a5b4fc" : "#818cf8" } : {}}>{item.label}</span>
-            {item.admin && <span className="badge" style={{ marginLeft: "auto", fontSize: 9, background: "#312e81", color: "#a5b4fc" }}>Admin</span>}
+            {item.admin && (
+              <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+                {pendingDirectors > 0 && (
+                  <span style={{ background: "#ef4444", color: "white", borderRadius: 10,
+                    fontSize: 9, fontWeight: 700, padding: "1px 5px", minWidth: 16, textAlign: "center" }}>
+                    {pendingDirectors}
+                  </span>
+                )}
+                <span className="badge" style={{ fontSize: 9, background: "#312e81", color: "#a5b4fc" }}>Admin</span>
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -6031,6 +6103,19 @@ function ClubAdminTab({ supabase }) {
           </div>
           {statusBadge(c.status)}
           <div className="flex gap-2">
+            {c.status === "pending_claim" && (() => {
+              // Find the matching pending claim request to approve
+              const matchingClaim = claims.find(cl => cl.club_id === c.id && cl.status === "pending");
+              if (!matchingClaim) return null;
+              return (
+                <button className="btn btn-primary btn-sm"
+                  disabled={!!working[matchingClaim.id]}
+                  onClick={() => approveClaim(matchingClaim)}
+                  style={{ fontSize: 11 }}>
+                  {working[matchingClaim.id] ? "..." : "✓ Approve"}
+                </button>
+              );
+            })()}
             {c.status === "archived" ? (
               <button className="btn btn-secondary btn-sm"
                 disabled={working[c.id] === "reactivating"}
