@@ -766,29 +766,63 @@ export default function App() {
   // ── PWA install prompt ──
   const [installPrompt, setInstallPrompt] = useState(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [showIosInstructions, setShowIosInstructions] = useState(false);
+
+  const isInstalled = typeof window !== 'undefined' &&
+    window.matchMedia('(display-mode: standalone)').matches;
+  const isIos = typeof navigator !== 'undefined' &&
+    /iphone|ipad|ipod/i.test(navigator.userAgent) &&
+    !/crios|fxios/i.test(navigator.userAgent); // iOS Safari only
+  const isMobile = typeof navigator !== 'undefined' &&
+    /iphone|ipad|ipod|android/i.test(navigator.userAgent);
+  const installDismissed = typeof localStorage !== 'undefined' &&
+    localStorage.getItem('tp_install_dismissed') === 'true';
+
+  // Whether to show anything install-related at all
+  const canShowInstall = !isInstalled && isMobile && !installDismissed;
 
   useEffect(() => {
-    // Register service worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
-    // Capture the install prompt event
+    if (!canShowInstall) return;
+    // Android/Chrome: capture native prompt
     const handler = e => {
       e.preventDefault();
       setInstallPrompt(e);
       setShowInstallBanner(true);
     };
     window.addEventListener('beforeinstallprompt', handler);
+    // iOS: show banner on load (no native prompt available)
+    if (isIos) setShowInstallBanner(true);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
   function triggerInstall() {
+    if (isIos) {
+      setShowIosInstructions(true);
+      setShowInstallBanner(false);
+      return;
+    }
     if (!installPrompt) return;
     installPrompt.prompt();
-    installPrompt.userChoice.then(() => {
+    installPrompt.userChoice.then(({ outcome }) => {
       setInstallPrompt(null);
       setShowInstallBanner(false);
+      if (outcome === 'accepted') {
+        localStorage.setItem('tp_install_dismissed', 'true');
+      }
     });
+  }
+
+  function dismissInstall() {
+    setShowInstallBanner(false);
+    localStorage.setItem('tp_install_dismissed', 'true');
+  }
+
+  function markIosDone() {
+    setShowIosInstructions(false);
+    localStorage.setItem('tp_install_dismissed', 'true');
   }
 
   // ── Supabase auth state ──
@@ -1395,7 +1429,7 @@ export default function App() {
     setResults(prev => {
       const updated = [...prev, ...mapped];
       // Boost install banner after first result logged
-      if (prev.length === 0 && mapped.length > 0) setShowInstallBanner(true);
+      if (prev.length === 0 && mapped.length > 0 && canShowInstall) setShowInstallBanner(true);
       return updated;
     });
   }
@@ -1851,9 +1885,10 @@ export default function App() {
       <style>{css}</style>
       <ReportIssueButton page={page} authUser={authUser} familyAccount={familyAccount} coachAccount={null} />
       <BetaFeedbackPopup authUser={authUser} familyAccount={familyAccount} coachAccount={null} />
-      <InstallBanner show={showInstallBanner && !!installPrompt} onInstall={triggerInstall} onDismiss={() => setShowInstallBanner(false)} />
+      <InstallBanner show={showInstallBanner && canShowInstall} onInstall={triggerInstall} onDismiss={dismissInstall} isIos={isIos} />
+      <IosInstallModal show={showIosInstructions} onDone={markIosDone} onClose={() => setShowIosInstructions(false)} />
       <div className="app">
-        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} />
+        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} canShowInstall={canShowInstall} onInstallClick={triggerInstall} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="mobile-topbar">
@@ -3546,7 +3581,7 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications }) {
+function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications, canShowInstall, onInstallClick }) {
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "history", label: "Competition History", icon: "history" },
@@ -3664,6 +3699,20 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
             {darkMode ? "☀️ Light" : "🌙 Dark"}
           </button>
         </div>
+        {canShowInstall && (
+          <button onClick={onInstallClick}
+            style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
+              background: "rgba(13,148,136,0.15)", border: "1px solid rgba(13,148,136,0.3)",
+              borderRadius: 8, color: "#5eead4", fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+              transition: "all 0.15s", marginBottom: 6 }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(13,148,136,0.25)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(13,148,136,0.15)"; }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 2v13M8 11l4 4 4-4M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2"/>
+            </svg>
+            Add to home screen
+          </button>
+        )}
         <button onClick={onSignOut}
           style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
             background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
@@ -6795,7 +6844,6 @@ function OrganizationsPage({ activeTwirler, twirlerResults }) {
   if (selectedOrg) {
     return <OrgDetailPage orgId={selectedOrg} onBack={() => setSelectedOrg(null)} activeTwirler={activeTwirler} twirlerResults={twirlerResults} />;
   }
-  }
 
   return (
     <div>
@@ -8679,7 +8727,9 @@ Free tier: The free tier is provided as-is with no guarantee of continued availa
 
 // ─── PWA INSTALL BANNER ───────────────────────────────────────────────────────
 
-function InstallBanner({ show, onInstall, onDismiss }) {
+// ─── PWA INSTALL BANNER ───────────────────────────────────────────────────────
+
+function InstallBanner({ show, onInstall, onDismiss, isIos }) {
   if (!show) return null;
   return (
     <div style={{
@@ -8700,7 +8750,7 @@ function InstallBanner({ show, onInstall, onDismiss }) {
           Add TwirlPower to your home screen
         </div>
         <div style={{ fontSize: 12, color: "var(--slate)" }}>
-          Quick access at competitions — no app store needed
+          {isIos ? "Tap below for quick access at competitions" : "Quick access at competitions — no app store needed"}
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -8714,8 +8764,53 @@ function InstallBanner({ show, onInstall, onDismiss }) {
           style={{ padding: "6px 12px", borderRadius: 8, border: "none",
             background: "#0d9488", color: "white", fontSize: 13, fontWeight: 600,
             cursor: "pointer", fontFamily: "inherit" }}>
-          Install
+          {isIos ? "How?" : "Install"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function IosInstallModal({ show, onDone, onClose }) {
+  if (!show) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,0.5)",
+      display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "white", borderRadius: 16, padding: 24, width: "100%",
+        maxWidth: 440, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
+        <div style={{ fontWeight: 700, fontSize: 17, color: "var(--navy)", marginBottom: 16 }}>
+          Add TwirlPower to your home screen
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 24 }}>
+          {[
+            { step: "1", text: "Tap the Share button at the bottom of Safari", icon: "⬆️" },
+            { step: "2", text: "Scroll down and tap \"Add to Home Screen\"", icon: "➕" },
+            { step: "3", text: "Tap \"Add\" in the top right corner", icon: "✓" },
+          ].map(({ step, text, icon }) => (
+            <div key={step} style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#0d9488",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "white", fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
+                {icon}
+              </div>
+              <span style={{ fontSize: 14, color: "var(--slate)", lineHeight: 1.5 }}>{text}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={onClose}
+            style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid var(--border)",
+              background: "white", color: "var(--slate)", fontSize: 14, cursor: "pointer",
+              fontFamily: "inherit" }}>
+            Close
+          </button>
+          <button onClick={onDone}
+            style={{ flex: 1, padding: "10px", borderRadius: 10, border: "none",
+              background: "#0d9488", color: "white", fontSize: 14, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit" }}>
+            Done — I added it!
+          </button>
+        </div>
       </div>
     </div>
   );
