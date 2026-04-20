@@ -325,6 +325,22 @@ const ORG_INFO = {
 const CAS_LEVELS = ["C", "B", "BI", "BII", "A", "AA", "AAA", "Elite"];
 const CAS_EVENTS = new Set(["Compulsories", "Movement Technique"]);
 
+// Sub-score categories for each CAS event
+const CAS_SUBSCORES = {
+  "Compulsories": [
+    { key: "batonTechnique", label: "Baton Technique" },
+    { key: "difficulty", label: "Difficulty" },
+    { key: "execution", label: "Execution" },
+    { key: "timing", label: "Timing & Rhythm" },
+  ],
+  "Movement Technique": [
+    { key: "bodyTechnique", label: "Body Technique" },
+    { key: "posture", label: "Posture & Carriage" },
+    { key: "footwork", label: "Footwork" },
+    { key: "expression", label: "Expression & Performance" },
+  ],
+};
+
 const OPEN_QUESTIONS = [
  { id: "Q1", text: "NBTA strut cross-org: Does NBTA exclude USTA strut wins the way USTA excludes NBTA strut wins?" },
  { id: "Q2", text: "NBTA twirl-off 'final round only': Does this apply at all competition tiers or only specific ones (local, state, regional, national)?" },
@@ -973,6 +989,7 @@ export default function App() {
             casPassed: r.cas_passed,
             judgeNote: r.judge_note,
             scorecardUrl: r.scorecard_url,
+            subScores: r.sub_scores || {},
           })));
 
           // Load coaches
@@ -1419,6 +1436,7 @@ export default function App() {
       cas_passed: r.casPassed ?? null,
       judge_note: r.judgeNote || null,
       scorecard_url: r.scorecardUrl || null,
+      sub_scores: r.subScores && Object.keys(r.subScores).length ? r.subScores : null,
     }));
     const { data: inserted, error } = await supabase.from('results').insert(rows).select();
     if (error) { console.error('addResults:', error); return; }
@@ -1429,7 +1447,7 @@ export default function App() {
       isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off,
       score: r.score, allCatch: r.all_catch,
       casLevel: r.cas_level, casPassed: r.cas_passed, judgeNote: r.judge_note,
-      scorecardUrl: r.scorecard_url,
+      scorecardUrl: r.scorecard_url, subScores: r.sub_scores || {},
     }));
     setResults(prev => {
       const updated = [...prev, ...mapped];
@@ -1475,6 +1493,7 @@ export default function App() {
     if (updates.casPassed !== undefined) dbUpdates.cas_passed = updates.casPassed ?? null;
     if (updates.judgeNote !== undefined) dbUpdates.judge_note = updates.judgeNote || null;
     if (updates.scorecardUrl !== undefined) dbUpdates.scorecard_url = updates.scorecardUrl || null;
+    if (updates.subScores !== undefined) dbUpdates.sub_scores = updates.subScores || null;
     await supabase.from('results').update(dbUpdates).eq('id', id);
   }
 
@@ -2132,7 +2151,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
               {[
                 { id: "family", icon: "👨‍👩‍👧", label: "Family / Parent / Guardian", desc: "Track classifications and competition history for your twirler" },
                 { id: "coach", icon: "🎓", label: "Coach", desc: "Manage your twirlers, send competition invites, and track their progress" },
-                { id: "host", icon: "🏆", label: "Competition Host", desc: "Create and manage public competitions for twirlers to register for" },
+                { id: "host", icon: "🏆", label: "Competition Director", desc: "Create and manage public competitions for twirlers to register for" },
               ].map(r => (
                 <div key={r.id} onClick={() => setSignupRole(r.id)}
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px",
@@ -2211,7 +2230,7 @@ function AuthScreen({ onAuth, authError, setAuthError }) {
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
                 <button onClick={() => setSignupRole(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--slate)", fontSize: 18, lineHeight: 1 }}>←</button>
-                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)" }}>🏆 Competition Host Sign Up</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)" }}>🏆 Competition Director Sign Up</div>
               </div>
               <div className="alert alert-info mb-4">
                 <Icon name="info" size={14} color="var(--brand)" />
@@ -3359,7 +3378,7 @@ function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, a
                   transition: "all 0.15s" }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.background = "var(--brand-light)"; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "white"; }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 3 }}>🏆 Competition Host</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 3 }}>🏆 Competition Director</div>
                 <div style={{ fontSize: 13, color: "var(--slate)" }}>Post competition listings for twirlers and coaches to discover</div>
               </button>
             </div>
@@ -3428,7 +3447,7 @@ function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, a
 }
 
 // ─── HOST ACCESS PANEL ───────────────────────────────────────────────────────
-// Shown on the setup screen when user selects "Competition Host".
+// Shown on the setup screen when user selects "Competition Director".
 // Handles both returning host login (email lookup) and new host registration,
 // with no family account required.
 
@@ -3461,7 +3480,7 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>🏆</div>
           <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: "var(--navy)", marginBottom: 4 }}>
-            Competition Host Access
+            Competition Director Access
           </div>
           <p style={{ fontSize: 13, color: "var(--slate)", lineHeight: 1.6 }}>
             Return to your host dashboard, or register as a new host.
@@ -3492,7 +3511,7 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
           <div style={{ textAlign: "center", fontSize: 12, color: "var(--muted)" }}>— or —</div>
 
           <button className="btn btn-secondary w-full" onClick={() => setStep("register")}>
-            Register as a new Competition Host
+            Register as a new Competition Director
           </button>
         </div>
 
@@ -3533,7 +3552,7 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
           ← Back
         </button>
         <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: "var(--navy)", marginBottom: 4 }}>
-          Register as a Competition Host
+          Register as a Competition Director
         </div>
         <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20, lineHeight: 1.6 }}>
           No family account needed. Fill in your details and a TwirlPower admin will review and approve your account before it goes live.
@@ -4331,6 +4350,12 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                                     onChange={e => setEditResultForm(p => ({ ...p, notes: e.target.value }))}
                                     placeholder="Optional notes..." />
                                 </div>
+                                <div className="form-group">
+                                  <label className="label">Judge name <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+                                  <input className="input" type="text" value={editResultForm.judgeNote || ""}
+                                    onChange={e => setEditResultForm(p => ({ ...p, judgeNote: e.target.value }))}
+                                    placeholder="e.g. Jane Smith" />
+                                </div>
                               </div>
                               <div className="form-group" style={{ marginBottom: 10 }}>
                                 <label className="label">Scorecard photo <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
@@ -4465,6 +4490,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
       event: r.event,
       scorecardUrl: r.scorecardUrl || null,
       scorecardFile: null,
+      judgeNote: r.judgeNote || "",
     });
   }
 
@@ -5456,7 +5482,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
   const roles = [
     { id: "family", label: "👨‍👩‍👧 Family", desc: "Standard family account view" },
     { id: "coach", label: "🎓 Coach", desc: "Coach account view (Phase 2)" },
-    { id: "host", label: "📅 Host", desc: "Competition host view" },
+    { id: "host", label: "📅 Director", desc: "Competition Director view" },
   ];
 
   return (
@@ -6105,7 +6131,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
           {[
             { id: "family", label: `Families (${accounts.length})` },
             { id: "coach", label: `Coaches (${coachAccounts.length})` },
-            { id: "host", label: `Hosts (${hostAccounts.length})` },
+            { id: "host", label: `Directors (${hostAccounts.length})` },
           ].map(t => (
             <button key={t.id} onClick={() => { setAccountType(t.id); setSearch(""); setExpandedId(null); }}
               style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
@@ -6146,7 +6172,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
               onChange={e => setInviteForm(f => ({ ...f, role: e.target.value }))}>
               <option value="family">Family</option>
               <option value="coach">Coach</option>
-              <option value="host">Competition Host</option>
+              <option value="host">Competition Director</option>
             </select>
           </div>
           <div className="flex gap-2">
@@ -7423,7 +7449,7 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
           <p className="page-sub">Competitions posted by verified hosts · {upcoming.length} upcoming</p>
         </div>
         <button className="btn btn-secondary btn-sm" onClick={() => setPage("hostdash")}>
-          <Icon name="plus" size={13} /> I'm a Competition Host
+          <Icon name="plus" size={13} /> I'm a Competition Director
         </button>
       </div>
 
@@ -7556,7 +7582,7 @@ function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, tw
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">Competition Host</h1>
+        <h1 className="page-title">Competition Director</h1>
         <p className="page-sub">Create and manage public competition listings</p>
       </div>
 
@@ -7614,7 +7640,7 @@ function HostRegisterView({ onRegister }) {
         <div className="flex gap-3">
           <Icon name="info" size={18} color="var(--brand)" />
           <div>
-            <div style={{ fontWeight: 600, fontSize: 14, color: "var(--brand2)", marginBottom: 4 }}>How Competition Host accounts work</div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: "var(--brand2)", marginBottom: 4 }}>How Competition Director accounts work</div>
             <ul style={{ fontSize: 13, color: "var(--slate)", lineHeight: 1.8, paddingLeft: 16 }}>
               <li>Register below with your name, affiliation, and contact info</li>
               <li>A TwirlPower admin reviews and approves your account (one-time)</li>
@@ -7626,7 +7652,7 @@ function HostRegisterView({ onRegister }) {
         </div>
       </div>
       <div className="card">
-        <div className="section-header"><span className="section-title">Register as a Competition Host</span></div>
+        <div className="section-header"><span className="section-title">Register as a Competition Director</span></div>
         <div className="form-row">
           <div className="form-group"><label className="label">Your name</label><input className="input" value={form.name} onChange={e => f("name", e.target.value)} placeholder="Full name" /></div>
           <div className="form-group">
@@ -7677,7 +7703,7 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
     <div>
       <div className="alert alert-success mb-4">
         <Icon name="check" size={15} color="var(--green)" />
-        <span>Your Competition Host account is approved. You can create and manage competition listings below.</span>
+        <span>Your Competition Director account is approved. You can create and manage competition listings below.</span>
       </div>
 
       <div className="flex items-center justify-between mb-4">
@@ -8091,7 +8117,7 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
       event: "", classificationLevelEntered: orgLevels[0] || "Novice",
       placement: "", contested: true, protectionRule: false, isFinalRound: null,
       score: "", allCatch: false, casLevel: "C", casPassed: null, judgeNote: "",
-      scorecardFile: null, scorecardPreview: null,
+      scorecardFile: null, scorecardPreview: null, subScores: {}, showSubScores: false,
     }]);
   }
 
@@ -8185,6 +8211,32 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
                   onChange={e => updateRow(i, "judgeNote", e.target.value)}
                   placeholder="For your Achievement Book records" />
               </div>
+              {/* Optional sub-scores */}
+              {row.event && CAS_SUBSCORES[row.event] && (
+                <div>
+                  <button type="button"
+                    onClick={() => updateRow(i, "showSubScores", !row.showSubScores)}
+                    style={{ display: "flex", alignItems: "center", gap: 6, background: "none",
+                      border: "none", cursor: "pointer", fontSize: 12, color: "var(--brand)",
+                      fontWeight: 600, fontFamily: "inherit", padding: "4px 0" }}>
+                    <span style={{ fontSize: 14 }}>{row.showSubScores ? "▾" : "▸"}</span>
+                    {row.showSubScores ? "Hide" : "Add"} sub-scores (optional)
+                  </button>
+                  {row.showSubScores && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+                      {CAS_SUBSCORES[row.event].map(cat => (
+                        <div key={cat.key}>
+                          <label className="label" style={{ fontSize: 11 }}>{cat.label}</label>
+                          <input className="input" type="number" min="0" max="10" step="0.1"
+                            value={row.subScores?.[cat.key] || ""}
+                            onChange={e => updateRow(i, "subScores", { ...row.subScores, [cat.key]: e.target.value })}
+                            placeholder="0–10" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
           <>
@@ -8236,6 +8288,12 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
                   <span style={{ fontSize: 13 }}>Twirl-off win <span style={{ color: "var(--muted)", fontSize: 11 }}>(won't count toward TU advancement)</span></span>
                 </label>
               )}
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <label className="label">Judge name <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+            <input className="input" type="text" value={row.judgeNote || ""}
+              onChange={e => updateRow(i, "judgeNote", e.target.value)}
+              placeholder="e.g. Jane Smith" />
           </div>
           </>
           )}
@@ -9108,6 +9166,13 @@ function BetaFeedbackPopup({ authUser, familyAccount, coachAccount }) {
             {sent ? "✓ Thank you!" : loading ? "Sending..." : "Submit Feedback"}
           </button>
           <button className="btn btn-ghost" onClick={() => setOpen(false)}>Skip for now</button>
+          <button className="btn btn-ghost" style={{ fontSize: 11, color: "var(--muted)" }}
+            onClick={() => {
+              localStorage.setItem("tp_feedback_last", (Date.now() + 1000 * 60 * 60 * 24 * 14).toString());
+              setOpen(false);
+            }}>
+            Don't ask 2 weeks
+          </button>
         </div>
       </div>
     </div>
