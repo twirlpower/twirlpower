@@ -4092,6 +4092,26 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                       })}
                     </div>
                   )}
+                  {/* Non-leveled regular events — shown as simple list */}
+                  {(() => {
+                    const leveledSet = new Set(ORGS[orgId]?.leveledEvents || []);
+                    const nonLeveled = (activeTwirler.regularEvents || []).filter(e => {
+                      const orgEvents = (ORGS[orgId]?.eventCategories || []).flatMap(c => c.events);
+                      return orgEvents.includes(e) && !leveledSet.has(e) && !CAS_EVENTS.has(e);
+                    });
+                    if (nonLeveled.length === 0) return null;
+                    return (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Other Regular Events</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {nonLeveled.map(e => (
+                            <span key={e} className="badge badge-gray" style={{ fontSize: 11 }}>{e}</span>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>These events don't have win-based classification levels.</div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             });
