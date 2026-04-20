@@ -1003,6 +1003,78 @@ export default function App() {
       // Load family account
       const { data: fa } = await supabase
         .from('family_accounts').select('*').eq('user_id', userId).single();
+
+      // Even if user has their own family account, check if they're a guardian on another
+      // family account. If their own account has no twirlers, prefer the linked family.
+      if (fa) {
+        const { data: authUserData } = await supabase.auth.getUser();
+        const userEmail = authUserData?.user?.email;
+        if (userEmail) {
+          const { data: allFamilies } = await supabase.from('family_accounts').select('*');
+          const linkedFamily = (allFamilies || []).find(f =>
+            f.id !== fa.id &&
+            (f.additional_guardians || []).some(g => g.email?.toLowerCase() === userEmail.toLowerCase())
+          );
+          if (linkedFamily) {
+            // Check if own account is empty (no twirlers)
+            const { data: ownTwirlers } = await supabase.from('twirlers').select('id').eq('family_id', fa.id);
+            if (!ownTwirlers || ownTwirlers.length === 0) {
+              // Own account is empty — use the linked family instead
+              const guardian = (linkedFamily.additional_guardians || [])
+                .find(g => g.email?.toLowerCase() === userEmail.toLowerCase());
+              const rel = guardian?.relationship || "Other";
+              const isCoGuardian = ["Parent", "Guardian", "Co-Guardian"].includes(rel);
+              setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
+
+              // Mark confirmed
+              if (guardian && !guardian.confirmed) {
+                const updatedGuardians = (linkedFamily.additional_guardians || []).map(g =>
+                  g.email?.toLowerCase() === userEmail.toLowerCase() ? { ...g, confirmed: true } : g
+                );
+                await supabase.from('family_accounts')
+                  .update({ additional_guardians: updatedGuardians })
+                  .eq('id', linkedFamily.id);
+                linkedFamily.additional_guardians = updatedGuardians;
+              }
+
+              setFamilyAccount({ ...linkedFamily, parentName: linkedFamily.parent_name,
+                additionalGuardians: linkedFamily.additional_guardians || [] });
+
+              // Load linked family's data
+              const { data: tw } = await supabase.from('twirlers').select('*').eq('family_id', linkedFamily.id);
+              const mappedTwirlers = (tw || []).map(t => ({
+                ...t, firstName: t.first_name,
+                classificationState: t.classification_state || {},
+                classificationHistory: t.classification_history || [],
+                regularEvents: t.regular_events || [],
+                organizations: t.organizations || [],
+              }));
+              setTwirlers(mappedTwirlers);
+
+              if (mappedTwirlers.length > 0) {
+                const twirlerIds = mappedTwirlers.map(t => t.id);
+                const [{ data: comps }, { data: res }] = await Promise.all([
+                  supabase.from('competitions').select('*').in('twirler_id', twirlerIds).order('date', { ascending: false }),
+                  supabase.from('results').select('*').in('twirler_id', twirlerIds),
+                ]);
+                setCompetitions((comps || []).map(c => ({ ...c, orgId: c.org_id, fromPublic: c.from_public })));
+                setResults((res || []).map(r => ({
+                  ...r, orgId: r.org_id, twirlerId: r.twirler_id, competitionId: r.competition_id,
+                  classificationLevelEntered: r.classification_level_entered,
+                  protectionRule: r.protection_rule, isFinalRound: r.is_final_round,
+                  isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off,
+                  score: r.score, allCatch: r.all_catch, casLevel: r.cas_level,
+                  casPassed: r.cas_passed, judgeNote: r.judge_note,
+                  scorecardUrl: r.scorecard_url, subScores: r.sub_scores || {},
+                })));
+              }
+              setDataLoading(false);
+              return;
+            }
+          }
+        }
+      }
+
       if (fa) {
         setFamilyAccount({ ...fa, parentName: fa.parent_name, additionalGuardians: fa.additional_guardians || [] });
 
