@@ -7639,7 +7639,8 @@ function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
   );
 }
 
-function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage }) {
+function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage, registerHost }) {
+  const [directorModal, setDirectorModal] = useState(null); // null | 'confirm' | 'form' | 'done'
   const [filterState, setFilterState] = useState(familyAccount?.state || "");
   const [filterOrg, setFilterOrg] = useState("");
   const today = new Date().toISOString().slice(0, 10);
@@ -7672,7 +7673,7 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
           <h1 className="page-title">Upcoming Competitions</h1>
           <p className="page-sub">Competitions posted by verified hosts · {upcoming.length} upcoming</p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => setPage("hostdash")}>
+        <button className="btn btn-secondary btn-sm" onClick={() => setDirectorModal('confirm')}>
           <Icon name="plus" size={13} /> I'm a Competition Director
         </button>
       </div>
@@ -7790,8 +7791,186 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
           </div>
         </div>
       )}
+
+      {/* Competition Director modals */}
+      {directorModal && (
+        <DirectorRequestModal
+          step={directorModal}
+          setStep={setDirectorModal}
+          familyAccount={familyAccount}
+          registerHost={registerHost}
+        />
+      )}
     </div>
   );
+}
+
+// ─── COMPETITION DIRECTOR REQUEST MODAL ──────────────────────────────────────
+
+function DirectorRequestModal({ step, setStep, familyAccount, registerHost }) {
+  const [form, setForm] = useState({
+    name: familyAccount?.parentName || "",
+    email: familyAccount?.email || "",
+    phone: familyAccount?.phone || "",
+    organization: "",
+    state: familyAccount?.state || "",
+    notes: "",
+    file: null,
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    await registerHost({ ...form });
+    setStep('done');
+    setSubmitting(false);
+  }
+
+  // Confirmation step
+  if (step === 'confirm') {
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
+        <div className="card" style={{ maxWidth: 480, width: "100%", padding: "32px 28px" }}>
+          <div style={{ textAlign: "center", marginBottom: 20 }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>🏆</div>
+            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: "var(--navy)", marginBottom: 8 }}>
+              Become a Competition Director
+            </h2>
+            <p style={{ fontSize: 14, color: "var(--slate)", lineHeight: 1.7 }}>
+              Competition Director accounts allow you to post public competitions that families can register for through TwirlPower.
+            </p>
+          </div>
+          <div className="alert alert-info mb-4">
+            <Icon name="info" size={15} color="var(--brand)" />
+            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+              <strong>What happens next:</strong>
+              <ul style={{ marginTop: 6, paddingLeft: 16 }}>
+                <li>You'll submit documentation confirming your role as a competition director</li>
+                <li>A TwirlPower admin will review your request</li>
+                <li>Once approved, you can post and manage public competitions</li>
+                <li>Your family account remains active — director access is added to it</li>
+              </ul>
+            </div>
+          </div>
+          <div className="alert alert-warn mb-4">
+            <Icon name="alert" size={14} color="var(--amber)" />
+            <span style={{ fontSize: 13 }}>You will be required to submit documentation showing you are the director of a competition (e.g. event flyer, organizational credentials, or letter of authorization).</span>
+          </div>
+          <div className="flex gap-3">
+            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setStep(null)}>Cancel</button>
+            <button className="btn btn-primary" style={{ flex: 2 }} onClick={() => setStep('form')}>
+              Proceed with request →
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Registration form step
+  if (step === 'form') {
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20, overflowY: "auto" }}>
+        <div className="card" style={{ maxWidth: 520, width: "100%", padding: "28px" }}>
+          <button className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }} onClick={() => setStep('confirm')}>← Back</button>
+          <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: "var(--navy)", marginBottom: 4 }}>
+            Competition Director Request
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20, lineHeight: 1.6 }}>
+            Fill in your details below. A TwirlPower admin will review your request and reach out if additional information is needed.
+          </p>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">Your name</label>
+              <input className="input" value={form.name} onChange={e => f("name", e.target.value)} placeholder="Full name" />
+            </div>
+            <div className="form-group">
+              <label className="label">State</label>
+              <select className="select" value={form.state} onChange={e => f("state", e.target.value)}>
+                <option value="">Select state</option>
+                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="label">Email</label>
+              <input className="input" type="email" value={form.email} onChange={e => f("email", e.target.value)} placeholder="your@email.com" />
+            </div>
+            <div className="form-group">
+              <label className="label">Phone</label>
+              <input className="input" type="tel" value={form.phone} onChange={e => f("phone", e.target.value)} placeholder="(555) 555-5555" />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="label">Organization / affiliation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+            <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)}
+              placeholder="e.g. USTA Ohio Regional Council, ABC Twirling Club" />
+          </div>
+          <div className="form-group">
+            <label className="label">Supporting documentation <span style={{ color: "var(--red)" }}>*</span></label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px",
+              border: `1px dashed ${form.file ? "var(--brand)" : "var(--border)"}`,
+              borderRadius: 8, cursor: "pointer", fontSize: 13,
+              color: form.file ? "var(--brand)" : "var(--slate)", background: "#f8fafc" }}>
+              <Icon name="upload" size={14} color={form.file ? "var(--brand)" : "var(--slate)"} />
+              {form.file ? form.file.name : "Upload documentation (PDF, JPG, PNG)"}
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{ display: "none" }}
+                onChange={e => f("file", e.target.files?.[0])} />
+            </label>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+              Event flyer, organizational credentials, letter of authorization, or other supporting documentation showing your director role
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="label">Additional notes <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+            <textarea className="textarea" rows={2} value={form.notes} onChange={e => f("notes", e.target.value)}
+              placeholder="Any additional context about your role or competitions you direct..." />
+          </div>
+
+          <div className="alert alert-info mb-4">
+            <Icon name="info" size={14} color="var(--brand)" />
+            <span style={{ fontSize: 12 }}>Your family account stays active. Director access will be added once approved — no need to create a separate account.</span>
+          </div>
+
+          <button className="btn btn-primary w-full"
+            disabled={!form.name || !form.email || submitting}
+            onClick={handleSubmit}>
+            {submitting ? "Submitting..." : "Submit Director Request"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Success step
+  if (step === 'done') {
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }}>
+        <div className="card" style={{ maxWidth: 440, width: "100%", padding: "40px 32px", textAlign: "center" }}>
+          <div style={{ fontSize: 52, marginBottom: 16 }}>✅</div>
+          <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: "var(--navy)", marginBottom: 8 }}>
+            Request submitted!
+          </h2>
+          <p style={{ fontSize: 14, color: "var(--slate)", lineHeight: 1.7, marginBottom: 20 }}>
+            Your Competition Director request has been sent to TwirlPower for review. A team member will be in touch once your account is approved.
+          </p>
+          <div className="alert alert-info" style={{ textAlign: "left", marginBottom: 20 }}>
+            <Icon name="info" size={14} color="var(--brand)" />
+            <span style={{ fontSize: 13 }}>You'll be notified at <strong>{form.email}</strong> when your account is approved. Your family account continues to work normally in the meantime.</span>
+          </div>
+          <button className="btn btn-primary w-full" onClick={() => setStep(null)}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // ─── HOST DASHBOARD PAGE ──────────────────────────────────────────────────────
