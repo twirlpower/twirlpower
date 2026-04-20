@@ -4255,7 +4255,16 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
   // Competitor's Edge — detect today's competition
   const today = new Date().toISOString().slice(0, 10);
   const todayComp = twirlerComps.find(c => c.date === today);
-  const [edgeView, setEdgeView] = useState(!!todayComp); // default to edge on competition day
+  const [edgeView, setEdgeView] = useState(false);
+  const [edgeAutoSet, setEdgeAutoSet] = useState(false);
+
+  // Switch to edge view once data loads and a today comp is found (only auto-set once)
+  useEffect(() => {
+    if (todayComp && !edgeAutoSet) {
+      setEdgeView(true);
+      setEdgeAutoSet(true);
+    }
+  }, [todayComp?.id]);
 
   const lastComp = twirlerComps.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
   const lastResults = lastComp ? twirlerResults.filter(r => r.competitionId === lastComp.id) : [];
