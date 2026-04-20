@@ -4255,16 +4255,28 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
   // Competitor's Edge — detect today's competition
   const today = new Date().toISOString().slice(0, 10);
   const todayComp = twirlerComps.find(c => c.date === today);
-  const [edgeView, setEdgeView] = useState(false);
-  const [edgeAutoSet, setEdgeAutoSet] = useState(false);
 
-  // Switch to edge view once data loads and a today comp is found (only auto-set once)
+  // Persist edge view preference per competition so nav doesn't reset it
+  const edgeKey = todayComp ? `tp_edge_view_${todayComp.id}` : null;
+  const [edgeView, setEdgeView] = useState(() => {
+    if (!edgeKey) return false;
+    const stored = localStorage.getItem(edgeKey);
+    return stored === null ? true : stored === 'true'; // default true on first visit
+  });
+
+  // When todayComp first appears (async load), set edge view from stored pref
   useEffect(() => {
-    if (todayComp && !edgeAutoSet) {
-      setEdgeView(true);
-      setEdgeAutoSet(true);
-    }
+    if (!todayComp || !edgeKey) return;
+    const stored = localStorage.getItem(edgeKey);
+    setEdgeView(stored === null ? true : stored === 'true');
   }, [todayComp?.id]);
+
+  // Persist toggle choice
+  function toggleEdgeView() {
+    const next = !edgeView;
+    setEdgeView(next);
+    if (edgeKey) localStorage.setItem(edgeKey, String(next));
+  }
 
   const lastComp = twirlerComps.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
   const lastResults = lastComp ? twirlerResults.filter(r => r.competitionId === lastComp.id) : [];
@@ -4344,7 +4356,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
               background: edgeView ? "var(--brand)" : "var(--bg)",
               border: `1px solid ${edgeView ? "var(--brand)" : "var(--border)"}`,
               borderRadius: 20, cursor: "pointer", transition: "all 0.2s" }}
-              onClick={() => setEdgeView(v => !v)}>
+              onClick={() => toggleEdgeView()}>
               <span style={{ fontSize: 12, fontWeight: 600, color: edgeView ? "white" : "var(--slate)" }}>
                 {edgeView ? "⚡ Competitor's Edge" : "My Dashboard"}
               </span>
