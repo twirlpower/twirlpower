@@ -652,6 +652,8 @@ const Icon = ({ name, size = 18, color = "currentColor" }) => {
     link: "M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71 M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71",
     info: "M12 2a10 10 0 100 20A10 10 0 0012 2z M12 8v4 M12 16h.01",
     star: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+    upload: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4 M17 8l-5-5-5 5 M12 3v12",
+    image: "M21 19V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2z M8.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3z M21 15l-5-5L5 21",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -970,6 +972,7 @@ export default function App() {
             casLevel: r.cas_level,
             casPassed: r.cas_passed,
             judgeNote: r.judge_note,
+            scorecardUrl: r.scorecard_url,
           })));
 
           // Load coaches
@@ -1415,6 +1418,7 @@ export default function App() {
       cas_level: r.casLevel || null,
       cas_passed: r.casPassed ?? null,
       judge_note: r.judgeNote || null,
+      scorecard_url: r.scorecardUrl || null,
     }));
     const { data: inserted, error } = await supabase.from('results').insert(rows).select();
     if (error) { console.error('addResults:', error); return; }
@@ -1425,6 +1429,7 @@ export default function App() {
       isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off,
       score: r.score, allCatch: r.all_catch,
       casLevel: r.cas_level, casPassed: r.cas_passed, judgeNote: r.judge_note,
+      scorecardUrl: r.scorecard_url,
     }));
     setResults(prev => {
       const updated = [...prev, ...mapped];
@@ -1435,7 +1440,17 @@ export default function App() {
   }
 
   async function addResultsToComp(compId, newResults) {
-    await addResults(compId, newResults);
+    // Upload any scorecard files first, replace file object with URL
+    const withUrls = await Promise.all(newResults.map(async r => {
+      if (!r.scorecardFile) return r;
+      const ext = r.scorecardFile.name.split('.').pop();
+      const path = `scorecards/${resolvedActiveTwirlerId}/${compId}_${r.event.replace(/\s+/g,'_')}_${Date.now()}.${ext}`;
+      const { data: up } = await supabase.storage.from('documents').upload(path, r.scorecardFile, { upsert: true });
+      if (!up) return r;
+      const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(path);
+      return { ...r, scorecardUrl: publicUrl, scorecardFile: null };
+    }));
+    await addResults(compId, withUrls);
   }
 
   async function deleteResult(id) {
@@ -1459,6 +1474,7 @@ export default function App() {
     if (updates.casLevel !== undefined) dbUpdates.cas_level = updates.casLevel || null;
     if (updates.casPassed !== undefined) dbUpdates.cas_passed = updates.casPassed ?? null;
     if (updates.judgeNote !== undefined) dbUpdates.judge_note = updates.judgeNote || null;
+    if (updates.scorecardUrl !== undefined) dbUpdates.scorecard_url = updates.scorecardUrl || null;
     await supabase.from('results').update(dbUpdates).eq('id', id);
   }
 
@@ -4316,6 +4332,43 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                                     placeholder="Optional notes..." />
                                 </div>
                               </div>
+                              <div className="form-group" style={{ marginBottom: 10 }}>
+                                <label className="label">Scorecard photo <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+                                {editResultForm.scorecardUrl && !editResultForm.scorecardFile ? (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <img src={editResultForm.scorecardUrl} alt="Scorecard"
+                                      style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)" }} />
+                                    <a href={editResultForm.scorecardUrl} target="_blank" rel="noopener noreferrer"
+                                      style={{ fontSize: 12, color: "var(--brand)", fontWeight: 600 }}>View full size ↗</a>
+                                    <button type="button" className="btn btn-ghost btn-sm"
+                                      onClick={() => setEditResultForm(p => ({ ...p, scorecardUrl: null }))}>
+                                      <Icon name="trash" size={12} color="var(--red)" /> Remove
+                                    </button>
+                                  </div>
+                                ) : editResultForm.scorecardFile ? (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <img src={URL.createObjectURL(editResultForm.scorecardFile)} alt="New scorecard"
+                                      style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)" }} />
+                                    <span style={{ fontSize: 12, color: "var(--slate)" }}>{editResultForm.scorecardFile.name}</span>
+                                    <button type="button" className="btn btn-ghost btn-sm"
+                                      onClick={() => setEditResultForm(p => ({ ...p, scorecardFile: null }))}>
+                                      <Icon name="trash" size={12} color="var(--red)" /> Remove
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px",
+                                    border: "1px dashed var(--border)", borderRadius: 8, cursor: "pointer",
+                                    fontSize: 13, color: "var(--slate)", background: "#f8fafc", width: "fit-content" }}>
+                                    <Icon name="image" size={14} color="var(--slate)" />
+                                    Add scorecard photo
+                                    <input type="file" accept="image/jpeg,image/png" style={{ display: "none" }}
+                                      onChange={e => {
+                                        const file = e.target.files?.[0];
+                                        if (file) setEditResultForm(p => ({ ...p, scorecardFile: file }));
+                                      }} />
+                                  </label>
+                                )}
+                              </div>
                               <div className="flex gap-2">
                                 <button className="btn btn-primary btn-sm" onClick={saveEditResult}>Save</button>
                                 <button className="btn btn-secondary btn-sm" onClick={() => setEditingResult(null)}>Cancel</button>
@@ -4350,6 +4403,13 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                           <td>{flags.map((f, i) => <span key={i} className={`badge badge-${f.color === "warn" ? "warn" : "gray"}`} style={{ marginRight: 4, fontSize: 10 }}>{f.label}</span>)}</td>
                           <td style={{ fontSize: 12, color: "var(--muted)", maxWidth: 160 }}>
                             {r.notes ? <span title={r.notes}>📝 {r.notes.length > 30 ? r.notes.slice(0, 30) + "…" : r.notes}</span> : null}
+                            {r.scorecardUrl && (
+                              <a href={r.scorecardUrl} target="_blank" rel="noopener noreferrer"
+                                style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: r.notes ? 4 : 0,
+                                  fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none" }}>
+                                <Icon name="image" size={11} color="var(--brand)" /> Scorecard
+                              </a>
+                            )}
                           </td>
                           <td>
                             <div className="flex gap-1">
@@ -4403,11 +4463,23 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
       score: r.score != null ? r.score : "",
       allCatch: !!r.allCatch,
       event: r.event,
+      scorecardUrl: r.scorecardUrl || null,
+      scorecardFile: null,
     });
   }
 
-  function saveEditResult() {
-    updateResult(editingResult, { ...editResultForm, placement: parseInt(editResultForm.placement) });
+  async function saveEditResult() {
+    let scorecardUrl = editResultForm.scorecardUrl;
+    if (editResultForm.scorecardFile) {
+      const file = editResultForm.scorecardFile;
+      const ext = file.name.split('.').pop();
+      const path = `scorecards/${activeTwirler.id}/${editingResult}_${Date.now()}.${ext}`;
+      const { data: up } = await supabase.storage.from('documents').upload(path, file, { upsert: true });
+      if (up) {
+        scorecardUrl = supabase.storage.from('documents').getPublicUrl(path).data.publicUrl;
+      }
+    }
+    updateResult(editingResult, { ...editResultForm, placement: parseInt(editResultForm.placement), scorecardUrl });
     setEditingResult(null);
   }
 
@@ -8019,6 +8091,7 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
       event: "", classificationLevelEntered: orgLevels[0] || "Novice",
       placement: "", contested: true, protectionRule: false, isFinalRound: null,
       score: "", allCatch: false, casLevel: "C", casPassed: null, judgeNote: "",
+      scorecardFile: null, scorecardPreview: null,
     }]);
   }
 
@@ -8166,6 +8239,35 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
           </div>
           </>
           )}
+          <div style={{ marginBottom: 8 }}>
+            <label className="label">Scorecard photo <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+            {row.scorecardPreview ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <img src={row.scorecardPreview} alt="Scorecard preview"
+                  style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)" }} />
+                <div style={{ flex: 1, fontSize: 12, color: "var(--slate)" }}>{row.scorecardFile?.name}</div>
+                <button type="button" className="btn btn-ghost btn-sm"
+                  onClick={() => { updateRow(i, "scorecardFile", null); updateRow(i, "scorecardPreview", null); }}>
+                  <Icon name="trash" size={12} color="var(--red)" /> Remove
+                </button>
+              </div>
+            ) : (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px",
+                border: "1px dashed var(--border)", borderRadius: 8, cursor: "pointer",
+                fontSize: 13, color: "var(--slate)", background: "#f8fafc" }}>
+                <Icon name="upload" size={14} color="var(--slate)" />
+                Tap to add scorecard photo
+                <input type="file" accept="image/jpeg,image/png" style={{ display: "none" }}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const preview = URL.createObjectURL(file);
+                    updateRow(i, "scorecardFile", file);
+                    updateRow(i, "scorecardPreview", preview);
+                  }} />
+              </label>
+            )}
+          </div>
           <button className="btn btn-ghost btn-sm" onClick={() => removeRow(i)}>
             <Icon name="trash" size={13} color="var(--red)" /> Remove
           </button>
