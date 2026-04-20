@@ -6104,15 +6104,29 @@ function ClubAdminTab({ supabase }) {
           {statusBadge(c.status)}
           <div className="flex gap-2">
             {c.status === "pending_claim" && (() => {
-              // Find the matching pending claim request to approve
               const matchingClaim = claims.find(cl => cl.club_id === c.id && cl.status === "pending");
-              if (!matchingClaim) return null;
+              if (matchingClaim) {
+                return (
+                  <button className="btn btn-primary btn-sm"
+                    disabled={!!working[matchingClaim.id]}
+                    onClick={() => approveClaim(matchingClaim)}
+                    style={{ fontSize: 11 }}>
+                    {working[matchingClaim.id] ? "..." : "✓ Approve"}
+                  </button>
+                );
+              }
+              // Fallback: approve directly on the club row (no claim request found)
               return (
                 <button className="btn btn-primary btn-sm"
-                  disabled={!!working[matchingClaim.id]}
-                  onClick={() => approveClaim(matchingClaim)}
+                  disabled={working[c.id] === "approving"}
+                  onClick={async () => {
+                    setWorking(p => ({ ...p, [c.id]: "approving" }));
+                    await supabase.from("clubs").update({ status: "claimed" }).eq("id", c.id);
+                    setClubs(prev => prev.map(cl => cl.id === c.id ? { ...cl, status: "claimed" } : cl));
+                    setWorking(p => ({ ...p, [c.id]: false }));
+                  }}
                   style={{ fontSize: 11 }}>
-                  {working[matchingClaim.id] ? "..." : "✓ Approve"}
+                  {working[c.id] === "approving" ? "..." : "✓ Approve"}
                 </button>
               );
             })()}
@@ -6743,6 +6757,28 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                   )
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>Loading twirlers...</div>
+                )}
+
+                {/* Co-guardians */}
+                {(a.additional_guardians || []).length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 6 }}>
+                      Co-Guardians ({a.additional_guardians.length})
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {a.additional_guardians.map((g, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                          <span style={{ color: "var(--navy)", fontWeight: 500 }}>{g.name || g.email}</span>
+                          <span style={{ color: "var(--muted)", fontSize: 11 }}>{g.email}</span>
+                          <span className="badge badge-gray" style={{ fontSize: 9 }}>{g.relationship}</span>
+                          {g.confirmed && <span className="badge badge-green" style={{ fontSize: 9 }}>confirmed</span>}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>
+                      Co-guardians log in with their own email but access this family's twirlers. They don't have separate twirler records.
+                    </div>
+                  </div>
                 )}
 
                 {/* Admin access control */}
