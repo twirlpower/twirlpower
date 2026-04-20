@@ -907,6 +907,7 @@ export default function App() {
   const [coaches, setCoaches] = useState([]);
   const [coachCompetitions, setCoachCompetitions] = useState([]);
   const [coachClubs, setCoachClubs] = useState([]);
+  const [pendingClubMembers, setPendingClubMembers] = useState([]);
   const [coachClubClaims, setCoachClubClaims] = useState([]);
   const [invites, setInvites] = useState([]);
   const [coachLinks, setCoachLinks] = useState([]);
@@ -1399,6 +1400,21 @@ export default function App() {
       .eq('coach_id', coachId)
       .eq('status', 'pending');
     setCoachClubClaims(claimReqs || []);
+
+    // Load pending club member requests for clubs this coach owns
+    const ownedClubIds = (coachClubs || [])
+      .filter(c => c.coachRole === 'owner')
+      .map(c => c.id);
+    if (ownedClubIds.length > 0) {
+      const { data: pendingMembers } = await supabase
+        .from('club_members')
+        .select('*, twirlers(first_name, organizations), clubs(name)')
+        .in('club_id', ownedClubIds)
+        .eq('status', 'pending');
+      setPendingClubMembers(pendingMembers || []);
+    } else {
+      setPendingClubMembers([]);
+    }
   }
 
   async function signOut() {
@@ -1965,6 +1981,8 @@ export default function App() {
         setCoachClubs={setCoachClubs}
         coachClubClaims={coachClubClaims}
         setCoachClubClaims={setCoachClubClaims}
+        pendingClubMembers={pendingClubMembers}
+        setPendingClubMembers={setPendingClubMembers}
         invites={invites}
         progress={progress}
         darkMode={darkMode}
@@ -2559,6 +2577,7 @@ function CoachSetupScreen({ authUser, onComplete }) {
 
 function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirlers, coachCompetitions,
   coachClubs, setCoachClubs, coachClubClaims, setCoachClubClaims,
+  pendingClubMembers, setPendingClubMembers,
   invites, progress, darkMode, setDarkMode, isAdmin, onSignOut, supabase, loadCoachData,
   page, setPage, openModal, closeModal, modals, coachCreateCompetition }) {
 
@@ -2585,7 +2604,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "roster", label: "Club Roster", icon: "users" },
-    { id: "club", label: `My Clubs${coachClubs.length > 0 ? ` (${coachClubs.length})` : ""}`, icon: "star" },
+    { id: "club", label: `My Clubs${coachClubs.length > 0 ? ` (${coachClubs.length})` : ""}`, icon: "star", pending: pendingClubMembers.length },
     { id: "history", label: "Competition History", icon: "history" },
     { id: "progress", label: "Progress Tracker", icon: "progress" },
     { id: "upcoming", label: "Upcoming Competitions", icon: "trophy" },
@@ -2604,6 +2623,36 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
           <h1 className="serif">Twirl<span>Power</span></h1>
           <p>COACH</p>
         </div>
+
+        {/* Pending club member requests notification */}
+        {pendingClubMembers.length > 0 && (
+          <div style={{ margin: "8px 12px 0", padding: "10px 12px", background: "rgba(239,68,68,0.12)",
+            border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#fca5a5", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              🔔 Pending Club Requests ({pendingClubMembers.length})
+            </div>
+            {pendingClubMembers.map(m => (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "white" }}>{m.twirlers?.first_name}</div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)" }}>{m.clubs?.name}</div>
+                </div>
+                <button className="btn btn-primary btn-sm" style={{ fontSize: 10, padding: "3px 8px" }}
+                  onClick={async () => {
+                    await supabase.from("club_members").update({ status: "active" }).eq("id", m.id);
+                    setPendingClubMembers(prev => prev.filter(x => x.id !== m.id));
+                  }}>
+                  ✓ Approve
+                </button>
+              </div>
+            ))}
+            <button className="btn btn-ghost btn-sm w-full" style={{ marginTop: 8, fontSize: 11, color: "rgba(255,255,255,0.6)" }}
+              onClick={() => { setPage("club"); setSidebarOpen(false); }}>
+              Manage in My Clubs →
+            </button>
+          </div>
+        )}
 
         {/* Athletes */}
         <div className="sidebar-section">
@@ -2636,6 +2685,13 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
             <div key={item.id} className={`nav-item ${page === item.id ? "active" : ""}`} onClick={() => { setPage(item.id); setSidebarOpen(false); }}>
               <span className="nav-icon"><Icon name={item.icon} size={16} /></span>
               <span>{item.label}</span>
+              {item.pending > 0 && (
+                <span style={{ marginLeft: "auto", background: "#ef4444", color: "white",
+                  borderRadius: 10, fontSize: 9, fontWeight: 700, padding: "1px 5px",
+                  minWidth: 16, textAlign: "center" }}>
+                  {item.pending}
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -2741,7 +2797,8 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
           {page === "club" && <ClubPage coachAccount={coachAccount} supabase={supabase}
             setPage={setPage} coachClubs={coachClubs} setCoachClubs={setCoachClubs}
             coachClubClaims={coachClubClaims} setCoachClubClaims={setCoachClubClaims}
-            loadCoachData={loadCoachData} twirlers={twirlers} />}
+            loadCoachData={loadCoachData} twirlers={twirlers}
+            pendingClubMembers={pendingClubMembers} setPendingClubMembers={setPendingClubMembers} />}
           {page === "history" && <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
           {page === "upcoming" && <UpcomingCompetitionsPage publicCompetitions={[]} familyAccount={null} addAttendee={() => {}} attendees={[]} twirlers={twirlers} activeTwirler={activeTwirler} addCompetition={() => {}} />}
@@ -10087,7 +10144,8 @@ function ClubSelector({ value, onChange, supabase }) {
 
 // Club page — coach manages their claimed club
 function ClubPage({ coachAccount, supabase, setPage, coachClubs, setCoachClubs,
-  coachClubClaims, setCoachClubClaims, loadCoachData, twirlers }) {
+  coachClubClaims, setCoachClubClaims, loadCoachData, twirlers,
+  pendingClubMembers, setPendingClubMembers }) {
 
   const [selectedClubId, setSelectedClubId] = useState(coachClubs[0]?.id || null);
   const [tab, setTab] = useState("profile");
@@ -10230,6 +10288,10 @@ function ClubPage({ coachAccount, supabase, setPage, coachClubs, setCoachClubs,
   async function approveMember(memberId) {
     await supabase.from("club_members").update({ status: "active" }).eq("id", memberId);
     setMembers(prev => prev.map(m => m.id === memberId ? { ...m, status: "active" } : m));
+    // Also clear from sidebar pending list
+    if (setPendingClubMembers) {
+      setPendingClubMembers(prev => prev.filter(m => m.id !== memberId));
+    }
   }
 
   async function removeMember(memberId) {
