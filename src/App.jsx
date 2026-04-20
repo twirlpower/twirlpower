@@ -2176,7 +2176,7 @@ export default function App() {
       <AddTwirlerModal open={modals.addTwirler?.open} onClose={() => closeModal("addTwirler")} onSave={addTwirler} onOpenHistorical={twirler => openModal("historicalData", { twirler })} />
       <AddCompetitionModal open={modals.addCompetition?.open} onClose={() => closeModal("addCompetition")} onSave={(compData, resultData) => { const id = addCompetition(compData); addResults(id, resultData); }} activeTwirler={activeTwirler} competitions={competitions} />
       <OverrideModal open={modals.override?.open} onClose={() => closeModal("override")} data={modals.override} onSave={overrideClassification} />
-      <AddResultsModal open={modals.addResults?.open} onClose={() => closeModal("addResults")} competition={modals.addResults?.competition} activeTwirler={activeTwirler} onSave={addResultsToComp} />
+      <AddResultsModal open={modals.addResults?.open} onClose={() => closeModal("addResults")} competition={modals.addResults?.competition} activeTwirler={activeTwirler} onSave={addResultsToComp} competitions={competitions} prefillCompetitionId={modals.addResults?.competitionId} prefillEvent={modals.addResults?.prefillEvent} prefillLevel={modals.addResults?.prefillLevel} />
       <HistoricalDataModal open={modals.historicalData?.open} onClose={() => closeModal("historicalData")} activeTwirler={modals.historicalData?.twirler || activeTwirler} onSave={applyHistoricalData} />
     </>
   );
@@ -3477,128 +3477,307 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
 }
 
 function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null); // null | 'sent' | 'not_found' | 'error'
+  const [tab, setTab] = useState('existing'); // 'existing' | 'new'
+  // Existing users tab
+  const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]); // [{family, twirlers}]
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState([]); // array of {family, twirler}
+  const [sending, setSending] = useState(false);
+  const [sentCount, setSentCount] = useState(null);
+  // New families tab
+  const [emailInput, setEmailInput] = useState('');
+  const [newEmails, setNewEmails] = useState([]); // array of email strings
+  const [sendingNew, setSendingNew] = useState(false);
+  const [sentNew, setSentNew] = useState(false);
 
-  async function handleInvite() {
-    if (!email) return;
-    setLoading(true);
-    setResult(null);
-
-    // Look up family by email
-    const { data: family } = await supabase
+  async function doSearch() {
+    if (search.length < 2) return;
+    setSearching(true);
+    const { data: families } = await supabase
       .from('family_accounts')
-      .select('id, parent_name, email')
-      .eq('email', email.toLowerCase().trim())
-      .single();
-
-    if (!family) {
-      setResult('not_found');
-      setLoading(false);
-      return;
-    }
-
-    // Get their twirlers
-    const { data: familyTwirlers } = await supabase
+      .select('id, parent_name, email, state')
+      .or(`email.ilike.%${search}%,parent_name.ilike.%${search}%`)
+      .limit(10);
+    if (!families?.length) { setSearchResults([]); setSearching(false); return; }
+    const { data: twirlers } = await supabase
       .from('twirlers')
-      .select('id, first_name')
-      .eq('family_id', family.id);
+      .select('id, first_name, organizations')
+      .in('family_id', families.map(f => f.id));
+    setSearchResults(families.map(f => ({
+      family: f,
+      twirlers: (twirlers || []).filter(t => t.family_id === f.id),
+    })).filter(r => r.twirlers.length > 0));
+    setSearching(false);
+  }
 
-    if (!familyTwirlers || familyTwirlers.length === 0) {
-      setResult('no_twirlers');
-      setLoading(false);
-      return;
+  function toggleTwirler(family, twirler) {
+    const key = twirler.id;
+    if (selected.find(s => s.twirler.id === key)) {
+      setSelected(prev => prev.filter(s => s.twirler.id !== key));
+    } else {
+      setSelected(prev => [...prev, { family, twirler }]);
     }
+  }
 
-    // Insert pending links for all their twirlers
-    const links = familyTwirlers.map(t => ({
+  function selectAllFromFamily(family, twirlers) {
+    const alreadyAll = twirlers.every(t => selected.find(s => s.twirler.id === t.id));
+    if (alreadyAll) {
+      setSelected(prev => prev.filter(s => !twirlers.find(t => t.id === s.twirler.id)));
+    } else {
+      const toAdd = twirlers.filter(t => !selected.find(s => s.twirler.id === t.id))
+        .map(t => ({ family, twirler: t }));
+      setSelected(prev => [...prev, ...toAdd]);
+    }
+  }
+
+  async function sendInvites() {
+    if (!selected.length) return;
+    setSending(true);
+    const links = selected.map(({ family, twirler }) => ({
       coach_id: coachAccount.id,
-      twirler_id: t.id,
+      twirler_id: twirler.id,
       family_id: family.id,
       status: 'pending',
       invited_by: 'coach',
     }));
-
-    const { error } = await supabase.from('coach_athlete_links').insert(links);
-    if (error) {
-      setResult('error');
-    } else {
-      setResult({ type: 'sent', family, twirlers: familyTwirlers });
-      // Send email notification to primary guardian
-      const emailData = {
-        coachName: coachAccount.name,
-        coachStudio: coachAccount.studio,
-        coachOrgs: coachAccount.organizations,
-        athleteName: familyTwirlers.map(t => t.first_name).join(', '),
-      };
-      await sendEmail('coach_link_request', family.email, emailData);
-      // Also notify co-guardians (Parent/Guardian/Co-Guardian relationships)
-      const coGuardians = (family.additional_guardians || [])
-        .filter(g => ['Parent', 'Guardian', 'Co-Guardian'].includes(g.relationship) && g.email);
-      for (const g of coGuardians) {
-        await sendEmail('coach_link_request', g.email, emailData);
-      }
-      await loadCoachData(coachAccount.id);
+    await supabase.from('coach_athlete_links').upsert(links, { onConflict: 'coach_id,twirler_id', ignoreDuplicates: true });
+    // Send emails grouped by family
+    const byFamily = {};
+    for (const { family, twirler } of selected) {
+      if (!byFamily[family.id]) byFamily[family.id] = { family, twirlers: [] };
+      byFamily[family.id].twirlers.push(twirler);
     }
-    setLoading(false);
+    for (const { family, twirlers } of Object.values(byFamily)) {
+      await sendEmail('coach_link_request', family.email, {
+        coachName: coachAccount.name, coachStudio: coachAccount.studio,
+        coachOrgs: coachAccount.organizations,
+        athleteName: twirlers.map(t => t.first_name).join(', '),
+      });
+    }
+    await loadCoachData(coachAccount.id);
+    setSentCount(selected.length);
+    setSelected([]);
+    setSearchResults([]);
+    setSearch('');
+    setSending(false);
+  }
+
+  function addEmailFromInput() {
+    const emails = emailInput.split(/[\s,;]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@'));
+    const unique = emails.filter(e => !newEmails.includes(e));
+    if (unique.length) setNewEmails(prev => [...prev, ...unique]);
+    setEmailInput('');
+  }
+
+  async function sendNewInvites() {
+    if (!newEmails.length) return;
+    setSendingNew(true);
+    for (const email of newEmails) {
+      await sendEmail('coach_invite_new_family', email, {
+        coachName: coachAccount.name, coachStudio: coachAccount.studio,
+        coachOrgs: coachAccount.organizations,
+      });
+    }
+    setSentNew(true);
+    setSendingNew(false);
   }
 
   return (
     <div>
-      <div className="page-header">
-        <h1 className="page-title">Invite Twirler</h1>
-        <p className="page-sub">Send a link request to a family by their email address</p>
+      <div className="page-header flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Invite Twirlers</h1>
+          <p className="page-sub">Add existing TwirlPower families or invite new ones by email</p>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setPage('home')}>← Back</button>
       </div>
 
-      <div className="card" style={{ maxWidth: 480 }}>
-        <div className="form-group">
-          <label className="label">Family email address</label>
-          <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)}
-            placeholder="family@example.com" autoFocus
-            onKeyDown={e => e.key === "Enter" && handleInvite()} />
-          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-            The family must already have a TwirlPower account. Once they accept, you'll be able to see their twirlers' classifications and send competition invites.
-          </div>
-        </div>
+      {/* Tab switcher */}
+      <div className="flex gap-2 mb-6">
+        {[{ id: 'existing', label: '🔍 Find Existing Users' }, { id: 'new', label: '✉️ Invite New Families' }].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`btn ${tab === t.id ? 'btn-primary' : 'btn-secondary'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        <button className="btn btn-primary" disabled={loading || !email} onClick={handleInvite}>
-          {loading ? "Looking up..." : "Send Invite Request"}
-        </button>
-        <button className="btn btn-ghost" style={{ marginLeft: 8 }} onClick={() => setPage("home")}>
-          Cancel
-        </button>
+      {/* ── EXISTING USERS ── */}
+      {tab === 'existing' && (
+        <div>
+          {sentCount !== null && (
+            <div className="alert alert-success mb-4">
+              <Icon name="check" size={14} color="var(--green)" />
+              <span>✓ Sent {sentCount} invite{sentCount !== 1 ? 's' : ''}! Families will see a pending request in their notifications.</span>
+            </div>
+          )}
 
-        {result === 'not_found' && (
-          <div className="alert alert-warn" style={{ marginTop: 16 }}>
-            <Icon name="alert" size={14} color="var(--amber)" />
-            <span style={{ fontSize: 13 }}>No TwirlPower account found with that email. The family needs to sign up first.</span>
-          </div>
-        )}
-        {result === 'no_twirlers' && (
-          <div className="alert alert-warn" style={{ marginTop: 16 }}>
-            <Icon name="alert" size={14} color="var(--amber)" />
-            <span style={{ fontSize: 13 }}>That family account has no athletes yet. Ask them to add their twirler profile first.</span>
-          </div>
-        )}
-        {result === 'error' && (
-          <div className="alert alert-warn" style={{ marginTop: 16 }}>
-            <Icon name="alert" size={14} color="var(--amber)" />
-            <span style={{ fontSize: 13 }}>Something went wrong. The invite may already exist, or there was a database error.</span>
-          </div>
-        )}
-        {result?.type === 'sent' && (
-          <div className="alert alert-success" style={{ marginTop: 16 }}>
-            <Icon name="check" size={14} color="var(--green)" />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Invite sent to {result.family.parent_name || result.family.email}</div>
-              <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
-                {result.twirlers.map(t => t.first_name).join(", ")} — pending family acceptance
+          <div className="card mb-4">
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="label">Search by name or email</label>
+              <div className="flex gap-2">
+                <input className="input" value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="e.g. Smith or family@email.com" autoFocus
+                  onKeyDown={e => e.key === 'Enter' && doSearch()} />
+                <button className="btn btn-primary btn-sm" disabled={search.length < 2 || searching} onClick={doSearch}>
+                  {searching ? '...' : 'Search'}
+                </button>
               </div>
             </div>
           </div>
-        )}
-      </div>
+
+          {searchResults.length > 0 && (
+            <div className="card mb-4">
+              <div className="section-header">
+                <span className="section-title">Results</span>
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{selected.length} selected</span>
+              </div>
+              {searchResults.map(({ family, twirlers }) => (
+                <div key={family.id} style={{ paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>{family.parent_name || family.email}</span>
+                      <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 8 }}>{family.email}</span>
+                      {family.state && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{family.state}</span>}
+                    </div>
+                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
+                      onClick={() => selectAllFromFamily(family, twirlers)}>
+                      {twirlers.every(t => selected.find(s => s.twirler.id === t.id)) ? 'Deselect all' : 'Select all'}
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {twirlers.map(t => {
+                      const isSelected = !!selected.find(s => s.twirler.id === t.id);
+                      return (
+                        <div key={t.id} onClick={() => toggleTwirler(family, t)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                            borderRadius: 8, cursor: 'pointer', border: `2px solid ${isSelected ? 'var(--brand)' : 'var(--border)'}`,
+                            background: isSelected ? 'var(--brand-light)' : 'var(--bg)', transition: 'all 0.1s' }}>
+                          <div className="avatar" style={{ width: 28, height: 28, fontSize: 11,
+                            background: isSelected ? 'var(--brand)' : 'var(--slate)', color: 'white' }}>
+                            {initials(t.first_name)}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{t.first_name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{(t.organizations || []).join(', ')}</div>
+                          </div>
+                          {isSelected && <span style={{ fontSize: 16, color: 'var(--brand)', marginLeft: 4 }}>✓</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {searchResults.length === 0 && search.length >= 2 && !searching && (
+            <div className="card mb-4">
+              <p style={{ fontSize: 13, color: 'var(--muted)' }}>No families found matching "{search}". Try their email address, or use the "Invite New Families" tab to send them an email invite.</p>
+            </div>
+          )}
+
+          {selected.length > 0 && (
+            <div className="card" style={{ background: 'var(--brand-light)', border: '1px solid var(--brand)' }}>
+              <div className="section-header">
+                <span className="section-title" style={{ color: 'var(--brand)' }}>Selected ({selected.length})</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                {selected.map(({ family, twirler }) => (
+                  <span key={twirler.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '4px 10px', background: 'white', borderRadius: 20,
+                    border: '1px solid var(--brand)', fontSize: 12 }}>
+                    {twirler.first_name}
+                    <span style={{ color: 'var(--muted)', fontSize: 11 }}>({family.parent_name || family.email})</span>
+                    <button onClick={() => toggleTwirler(family, twirler)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)',
+                        fontSize: 14, lineHeight: 1, padding: '0 0 0 4px' }}>×</button>
+                  </span>
+                ))}
+              </div>
+              <button className="btn btn-primary" disabled={sending} onClick={sendInvites}>
+                {sending ? 'Sending...' : `Send ${selected.length} Invite Request${selected.length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── NEW FAMILIES ── */}
+      {tab === 'new' && (
+        <div>
+          {sentNew ? (
+            <div className="card" style={{ textAlign: 'center', padding: '40px 32px' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+              <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: 'var(--navy)', marginBottom: 8 }}>
+                Invites sent!
+              </h2>
+              <p style={{ fontSize: 14, color: 'var(--slate)', marginBottom: 20 }}>
+                {newEmails.length} email{newEmails.length !== 1 ? 's' : ''} sent. Once families create an account, invite them again from the "Find Existing Users" tab.
+              </p>
+              <button className="btn btn-primary" onClick={() => { setSentNew(false); setNewEmails([]); }}>
+                Invite More
+              </button>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="section-header">
+                <span className="section-title">Email Addresses</span>
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 16, lineHeight: 1.6 }}>
+                Enter one or more email addresses. Each family will receive an email inviting them to create a TwirlPower account and connect with you.
+              </p>
+
+              <div className="form-group">
+                <label className="label">Add emails (press Enter or comma to add)</label>
+                <div className="flex gap-2">
+                  <input className="input" value={emailInput} onChange={e => setEmailInput(e.target.value)}
+                    placeholder="parent@email.com"
+                    onKeyDown={e => (e.key === 'Enter' || e.key === ',') && (e.preventDefault(), addEmailFromInput())} />
+                  <button className="btn btn-secondary btn-sm" onClick={addEmailFromInput} disabled={!emailInput.trim()}>
+                    Add
+                  </button>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                  You can also paste a comma-separated list of emails and click Add
+                </div>
+              </div>
+
+              {newEmails.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--slate)', marginBottom: 8 }}>
+                    {newEmails.length} email{newEmails.length !== 1 ? 's' : ''} queued:
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {newEmails.map(e => (
+                      <span key={e} style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '4px 10px', background: 'var(--bg)', borderRadius: 20,
+                        border: '1px solid var(--border)', fontSize: 12 }}>
+                        {e}
+                        <button onClick={() => setNewEmails(prev => prev.filter(x => x !== e))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--muted)', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="alert alert-info mb-4">
+                <Icon name="info" size={14} color="var(--brand)" />
+                <span style={{ fontSize: 12 }}>
+                  After they sign up, find them using "Find Existing Users" and send a formal link request.
+                </span>
+              </div>
+
+              <button className="btn btn-primary" disabled={!newEmails.length || sendingNew} onClick={sendNewInvites}>
+                {sendingNew ? 'Sending...' : `Send ${newEmails.length || ''} Invite Email${newEmails.length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -4073,6 +4252,11 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
 
   const [classifOrgFilter, setClassifOrgFilter] = useState("all");
 
+  // Competitor's Edge — detect today's competition
+  const today = new Date().toISOString().slice(0, 10);
+  const todayComp = twirlerComps.find(c => c.date === today);
+  const [edgeView, setEdgeView] = useState(!!todayComp); // default to edge on competition day
+
   const lastComp = twirlerComps.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
   const lastResults = lastComp ? twirlerResults.filter(r => r.competitionId === lastComp.id) : [];
   const totalWins = twirlerResults.filter(r => r.placement === 1).length;
@@ -4142,13 +4326,144 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     <div>
       <div className="page-header flex items-center justify-between">
         <div>
-          <h1 className="page-title"><span style={{ color: "var(--brand)" }}>{activeTwirler.firstName}</span>'s Dashboard</h1>
+          <h1 className="page-title"><span style={{ color: "var(--brand)" }}>{activeTwirler.firstName}</span>'s {edgeView ? "Competitor's Edge" : "Dashboard"}</h1>
           <p className="page-sub">Age {getAge(activeTwirler.dob)} · {activeTwirler.organizations?.join(", ")} · {activeTwirler.club || "No club listed"}</p>
         </div>
-        <button className="btn btn-primary" onClick={() => openModal("addCompetition")}>
-          <Icon name="plus" size={15} /> Add Competition
-        </button>
+        <div className="flex items-center gap-3">
+          {todayComp && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px",
+              background: edgeView ? "var(--brand)" : "var(--bg)",
+              border: `1px solid ${edgeView ? "var(--brand)" : "var(--border)"}`,
+              borderRadius: 20, cursor: "pointer", transition: "all 0.2s" }}
+              onClick={() => setEdgeView(v => !v)}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: edgeView ? "white" : "var(--slate)" }}>
+                {edgeView ? "⚡ Competitor's Edge" : "My Dashboard"}
+              </span>
+              <div style={{ width: 32, height: 18, background: edgeView ? "rgba(255,255,255,0.3)" : "var(--border)",
+                borderRadius: 999, position: "relative", transition: "background 0.2s" }}>
+                <div style={{ width: 14, height: 14, background: "white", borderRadius: "50%",
+                  position: "absolute", top: 2, left: edgeView ? 16 : 2, transition: "left 0.2s",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+              </div>
+            </div>
+          )}
+          <button className="btn btn-primary" onClick={() => openModal("addCompetition")}>
+            <Icon name="plus" size={15} /> Add Competition
+          </button>
+        </div>
       </div>
+
+      {/* ── COMPETITOR'S EDGE VIEW ── */}
+      {edgeView && todayComp && (() => {
+        const org = ORGS[todayComp.orgId];
+        const compResults = twirlerResults.filter(r => r.competitionId === todayComp.id);
+        const regularEvents = new Set(activeTwirler.regularEvents || []);
+        const leveledEvents = org?.leveledEvents || [];
+        const allOrgEvents = (org?.eventCategories || []).flatMap(c => c.events);
+
+        // Events to show: regular events for this org + any other org events in profile
+        const eventsToShow = [
+          ...leveledEvents.filter(e => regularEvents.has(e)),
+          ...allOrgEvents.filter(e => !leveledEvents.includes(e) && regularEvents.has(e)),
+        ];
+
+        // Partition into done / pending
+        const doneEvents = eventsToShow.filter(e => compResults.some(r => r.event === e));
+        const pendingEvents = eventsToShow.filter(e => !compResults.some(r => r.event === e));
+        const orderedEvents = [...pendingEvents, ...doneEvents];
+
+        return (
+          <div>
+            {/* Competition header */}
+            <div className="card mb-4" style={{ background: "linear-gradient(135deg, var(--navy) 0%, var(--navy2) 100%)", border: "none" }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>⚡ Competition Day</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "white" }}>{todayComp.name}</div>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>
+                    {fmtDate(todayComp.date)}{todayComp.location ? ` · ${todayComp.location}` : ""}
+                    <span className="badge" style={{ marginLeft: 8, background: "rgba(255,255,255,0.15)", color: "white", fontSize: 10 }}>{todayComp.orgId}</span>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: doneEvents.length === eventsToShow.length ? "var(--brand)" : "white" }}>
+                    {doneEvents.length}/{eventsToShow.length}
+                  </div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>events logged</div>
+                </div>
+              </div>
+              {eventsToShow.length > 0 && (
+                <div style={{ marginTop: 12, height: 6, background: "rgba(255,255,255,0.15)", borderRadius: 999 }}>
+                  <div style={{ height: "100%", borderRadius: 999, background: "var(--brand)",
+                    width: `${Math.round((doneEvents.length / eventsToShow.length) * 100)}%`,
+                    transition: "width 0.4s" }} />
+                </div>
+              )}
+            </div>
+
+            {/* Event cards */}
+            {orderedEvents.length === 0 ? (
+              <div className="card mb-4">
+                <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", padding: "16px 0" }}>
+                  No regular events set for {todayComp.orgId}. Add events to your profile or use the button below.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                {orderedEvents.map(event => {
+                  const isDone = compResults.some(r => r.event === event);
+                  const result = compResults.find(r => r.event === event);
+                  const prog = progress?.[todayComp.orgId]?.[event];
+                  const level = prog?.currentLevel || (activeTwirler.classificationState?.[`${todayComp.orgId}__${event}`]?.level) || "Novice";
+
+                  return (
+                    <div key={event} onClick={() => !isDone && openModal("addResults", { competitionId: todayComp.id, prefillEvent: event, prefillLevel: level })}
+                      style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px",
+                        background: isDone ? "#f0fdf4" : "var(--card)",
+                        border: `1px solid ${isDone ? "#86efac" : "var(--border)"}`,
+                        borderRadius: 10, cursor: isDone ? "default" : "pointer",
+                        opacity: isDone ? 0.85 : 1, transition: "all 0.15s" }}
+                      onMouseEnter={e => { if (!isDone) e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; }}>
+                      <div style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
+                        background: isDone ? "#dcfce7" : "var(--brand-light)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: isDone ? 20 : 14, fontWeight: 700,
+                        color: isDone ? "#16a34a" : "var(--brand)" }}>
+                        {isDone ? "✓" : event.slice(0, 2)}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: isDone ? "#166534" : "var(--navy)" }}>{event}</div>
+                        <div style={{ fontSize: 12, color: isDone ? "#16a34a" : "var(--slate)", marginTop: 2 }}>
+                          {isDone
+                            ? `${result.placement ? `${result.placement}${["st","nd","rd"][result.placement-1]||"th"} place` : "Logged"} · ${level}`
+                            : `${level} · tap to log result`}
+                        </div>
+                      </div>
+                      {!isDone && (
+                        <div style={{ width: 32, height: 32, borderRadius: "50%",
+                          background: "var(--brand)", display: "flex", alignItems: "center",
+                          justifyContent: "center", flexShrink: 0 }}>
+                          <Icon name="plus" size={14} color="white" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Add extra event */}
+            <button className="btn btn-secondary w-full mb-6"
+              onClick={() => openModal("addResults", { competitionId: todayComp.id })}>
+              <Icon name="plus" size={13} /> Add Another Event
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* ── STANDARD DASHBOARD (hidden on competition day when in edge view) ── */}
+      {!edgeView && <div>
 
       {/* ── ONBOARDING CHECKLIST ── */}
       {showOnboarding && (
@@ -4537,6 +4852,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
           </div>
         </div>
       )}
+      </div>} {/* end !edgeView */}
     </div>
   );
 }
@@ -9204,12 +9520,34 @@ function AddCompetitionModal({ open, onClose, onSave, activeTwirler, competition
 
 // ─── ADD RESULTS MODAL (for adding results to an existing competition) ─────────
 
-function AddResultsModal({ open, onClose, competition, activeTwirler, onSave }) {
+function AddResultsModal({ open, onClose, competition: competitionProp, activeTwirler, onSave, competitions, prefillCompetitionId, prefillEvent, prefillLevel }) {
   const [eventRows, setEventRows] = useState([]);
+  const [selectedCompId, setSelectedCompId] = useState(null);
+
+  // Resolve which competition to use
+  const competition = competitionProp || (competitions || []).find(c => c.id === (selectedCompId || prefillCompetitionId));
 
   useEffect(() => {
-    if (open) setEventRows([]);
-  }, [open]);
+    if (open) {
+      // If prefill data, start with that event row pre-populated
+      if (prefillEvent) {
+        setEventRows([{
+          id: uid(), event: prefillEvent,
+          classificationLevelEntered: prefillLevel || "",
+          placement: "", contested: true, protectionRule: false,
+          isFinalRound: false, isPageant: false, isTwirlOff: false,
+          score: "", allCatch: false, judgeNote: "",
+          casPassed: null, casLevel: "", subScores: {},
+        }]);
+      } else {
+        setEventRows([]);
+      }
+      // Set competition from prefill
+      if (prefillCompetitionId && !competitionProp) {
+        setSelectedCompId(prefillCompetitionId);
+      }
+    }
+  }, [open, prefillEvent, prefillCompetitionId]);
 
   const selectedOrg = ORGS[competition?.orgId];
   const isCasOrg2 = competition?.orgId === "USTA";
