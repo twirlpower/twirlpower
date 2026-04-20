@@ -911,6 +911,7 @@ export default function App() {
   const [invites, setInvites] = useState([]);
   const [coachLinks, setCoachLinks] = useState([]);
   const [competitionHosts, setCompetitionHosts] = useState([]);
+  const [pendingClubClaims, setPendingClubClaims] = useState(0);
   const [publicCompetitions, setPublicCompetitions] = useState([]);
   const [attendees, setAttendees] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -1196,6 +1197,14 @@ export default function App() {
       setCompetitionHosts((hosts || []).map(h => ({
         ...h, createdAt: h.created_at,
       })));
+
+      // Load pending club claims count for admin badge (only if admin)
+      if (isAdmin) {
+        const { count } = await supabase
+          .from('clubs').select('id', { count: 'exact', head: true })
+          .eq('status', 'pending_claim');
+        setPendingClubClaims(count || 0);
+      }
 
       // If no own family account, check if this user is a guardian on another account
       if (!fa) {
@@ -2075,7 +2084,7 @@ export default function App() {
       <InstallBanner show={showInstallBanner && canShowInstall} onInstall={triggerInstall} onDismiss={dismissInstall} isIos={isIos} />
       <IosInstallModal show={showIosInstructions} onDone={markIosDone} onClose={() => setShowIosInstructions(false)} />
       <div className="app">
-        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} canShowInstall={canShowInstall} onInstallClick={triggerInstall} competitionHosts={competitionHosts} />
+        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} canShowInstall={canShowInstall} onInstallClick={triggerInstall} competitionHosts={competitionHosts} pendingClubClaims={pendingClubClaims} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="mobile-topbar">
@@ -3839,8 +3848,9 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications, canShowInstall, onInstallClick, competitionHosts }) {
+function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications, canShowInstall, onInstallClick, competitionHosts, pendingClubClaims }) {
   const pendingDirectors = (competitionHosts || []).filter(h => !h.approved).length;
+  const adminTaskCount = pendingDirectors + (pendingClubClaims || 0);
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "history", label: "Competition History", icon: "history" },
@@ -3935,10 +3945,10 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
             <span style={item.admin ? { color: page === item.id ? "#a5b4fc" : "#818cf8" } : {}}>{item.label}</span>
             {item.admin && (
               <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
-                {pendingDirectors > 0 && (
+                {adminTaskCount > 0 && (
                   <span style={{ background: "#ef4444", color: "white", borderRadius: 10,
                     fontSize: 9, fontWeight: 700, padding: "1px 5px", minWidth: 16, textAlign: "center" }}>
-                    {pendingDirectors}
+                    {adminTaskCount}
                   </span>
                 )}
                 <span className="badge" style={{ fontSize: 9, background: "#312e81", color: "#a5b4fc" }}>Admin</span>
@@ -6134,7 +6144,7 @@ function ClubAdminTab({ supabase }) {
         </div>
       )}
 
-      {pending.length === 0 && (
+      {pending.length === 0 && clubs.filter(c => c.status === "pending_claim").length === 0 && (
         <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending club claims.</div>
       )}
 
