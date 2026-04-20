@@ -4780,8 +4780,7 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
               <p>Add regular events to {activeTwirler.firstName}'s profile or log a competition to see progress here.</p>
               <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => openModal("editTwirler")}>Edit Profile</button>
             </div>
-          ) : (
-          Object.keys(progress?.[displayOrg] || {}).map(event => {
+          ) : Object.keys(progress?.[displayOrg] || {}).map(event => {
             const prog = progress?.[displayOrg]?.[event];
             if (!prog) return null;
             const pct = prog.winsNeeded ? Math.min(100, Math.round((prog.winsCount / prog.winsNeeded) * 100)) : 100;
@@ -4911,7 +4910,6 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
               </div>
             );
           })}
-          )}
         </div>
       )}
     </div>
