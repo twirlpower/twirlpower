@@ -2399,6 +2399,8 @@ export default function App() {
                 createPublicCompetition={createPublicCompetition}
                 deletePublicCompetition={deletePublicCompetition}
                 updatePublicCompetition={updatePublicCompetition}
+                supabase={supabase}
+                setCompetitionHosts={setCompetitionHosts}
               />
             </div>
           </div>
@@ -7009,11 +7011,11 @@ function ClubAdminTab({ supabase }) {
       )}
 
       {/* All clubs with filter */}
-      <div className="flex items-center justify-between mb-3">
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
           All Clubs ({clubs.length})
         </div>
-        <div className="flex gap-2">
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {["all", "claimed", "pending_claim", "unclaimed", "archived"].map(f => (
             <button key={f} onClick={() => setFilter(f)}
               style={{ padding: "3px 10px", fontSize: 11, borderRadius: 20, cursor: "pointer",
@@ -7369,28 +7371,28 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
   return (
     <div>
       {/* Account type switcher + invite */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-        borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 4 }}>
-          {[
-            { id: "family", label: `Families (${familyOnlyAccounts.length})` },
-            { id: "coach", label: `Coaches (${coachAccounts.length})` },
-            { id: "host", label: `Directors (${hostAccounts.length})` },
-            { id: "twirlers", label: `Twirlers (${allTwirlers.length})` },
-          ].map(t => (
-            <button key={t.id} onClick={() => { setAccountType(t.id); setSearch(""); setExpandedId(null); }}
-              style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
-                background: "none", fontFamily: "inherit",
-                color: accountType === t.id ? "var(--brand)" : "var(--slate)",
-                borderBottom: accountType === t.id ? "2px solid var(--brand)" : "2px solid transparent",
-                marginBottom: -1 }}>
-              {t.label}
-            </button>
-          ))}
+      <div style={{ borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: -1 }}>
+          <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+            {[
+              { id: "family", label: `Families (${familyOnlyAccounts.length})` },
+              { id: "coach", label: `Coaches (${coachAccounts.length})` },
+              { id: "host", label: `Directors (${hostAccounts.length})` },
+              { id: "twirlers", label: `Twirlers (${allTwirlers.length})` },
+            ].map(t => (
+              <button key={t.id} onClick={() => { setAccountType(t.id); setSearch(""); setExpandedId(null); }}
+                style={{ padding: "6px 10px", fontSize: 11, fontWeight: 500, cursor: "pointer", border: "none",
+                  background: "none", fontFamily: "inherit",
+                  color: accountType === t.id ? "var(--brand)" : "var(--slate)",
+                  borderBottom: accountType === t.id ? "2px solid var(--brand)" : "2px solid transparent" }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowInvite(v => !v)} style={{ fontSize: 11 }}>
+            + Invite
+          </button>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => setShowInvite(v => !v)}>
-          + Invite
-        </button>
       </div>
 
       {/* Invite form */}
@@ -9156,9 +9158,10 @@ function DirectorRequestModal({ step, setStep, familyAccount, registerHost }) {
 
 // ─── HOST DASHBOARD PAGE ──────────────────────────────────────────────────────
 
-function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, twirlers, familyAccount, registerHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition }) {
+function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, twirlers, familyAccount, registerHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, supabase, setCompetitionHosts }) {
   const [view, setView] = useState("find"); // "find" | "register" | "dashboard"
   const [hostId, setHostId] = useState(null);
+  const [tab, setTab] = useState("competitions"); // "competitions" | "profile"
 
   const myHost = competitionHosts.find(h => h.id === hostId) ||
     competitionHosts.find(h => h.email && h.email === familyAccount?.email);
@@ -9202,15 +9205,34 @@ function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, tw
       )}
 
       {myHost && myHost.approved && (
-        <HostManageView
-          host={myHost}
-          publicCompetitions={publicCompetitions.filter(c => c.hostId === myHost.id)}
-          attendees={attendees}
-          twirlers={twirlers}
-          onCreateComp={(data) => createPublicCompetition(myHost.id, data)}
-          onDeleteComp={deletePublicCompetition}
-          onEditComp={updatePublicCompetition}
-        />
+        <>
+          <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 20 }}>
+            {[{ id: "competitions", label: "🏆 Competitions" }, { id: "profile", label: "👤 My Profile" }].map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                style={{ padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", border: "none",
+                  background: "none", fontFamily: "inherit",
+                  color: tab === t.id ? "var(--brand)" : "var(--slate)",
+                  borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+                  marginBottom: -1 }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {tab === "competitions" && (
+            <HostManageView
+              host={myHost}
+              publicCompetitions={publicCompetitions.filter(c => c.hostId === myHost.id)}
+              attendees={attendees}
+              twirlers={twirlers}
+              onCreateComp={(data) => createPublicCompetition(myHost.id, data)}
+              onDeleteComp={deletePublicCompetition}
+              onEditComp={updatePublicCompetition}
+            />
+          )}
+          {tab === "profile" && (
+            <HostProfileView host={myHost} supabase={supabase} setCompetitionHosts={setCompetitionHosts} />
+          )}
+        </>
       )}
     </div>
   );
@@ -9524,6 +9546,89 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── HOST PROFILE VIEW ────────────────────────────────────────────────────────
+
+function HostProfileView({ host, supabase, setCompetitionHosts }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    name: host.name || "", email: host.email || "", phone: host.phone || "",
+    organization: host.organization || "", state: host.state || "",
+  });
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    await supabase.from('competition_hosts').update({
+      name: form.name, email: form.email, phone: form.phone,
+      organization: form.organization, state: form.state,
+    }).eq('id', host.id);
+    setCompetitionHosts(prev => prev.map(h => h.id === host.id ? { ...h, ...form } : h));
+    setSaving(false);
+    setEditing(false);
+  }
+
+  return (
+    <div>
+      <div className="card">
+        <div className="section-header" style={{ marginBottom: 16 }}>
+          <span className="section-title">Director Profile</span>
+          {!editing && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}>
+              <Icon name="edit" size={13} /> Edit
+            </button>
+          )}
+        </div>
+
+        {editing ? (
+          <div>
+            <div className="form-row">
+              <div className="form-group"><label className="label">Name</label><input className="input" value={form.name} onChange={e => f("name", e.target.value)} /></div>
+              <div className="form-group"><label className="label">Email</label><input className="input" type="email" value={form.email} onChange={e => f("email", e.target.value)} /></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label className="label">Phone</label><input className="input" type="tel" value={form.phone} onChange={e => f("phone", e.target.value)} /></div>
+              <div className="form-group">
+                <label className="label">State</label>
+                <select className="select" value={form.state} onChange={e => f("state", e.target.value)}>
+                  <option value="">Select state</option>
+                  {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="label">Organization / affiliation</label>
+              <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)} />
+            </div>
+            <div className="flex gap-2">
+              <button className="btn btn-primary btn-sm" disabled={saving || !form.name} onClick={save}>
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setEditing(false); setForm({ name: host.name || "", email: host.email || "", phone: host.phone || "", organization: host.organization || "", state: host.state || "" }); }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Name:</span>{host.name}</div>
+            <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Email:</span>{host.email || "—"}</div>
+            <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Phone:</span>{host.phone || "—"}</div>
+            <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>State:</span>{host.state || "—"}</div>
+            <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Organization:</span>{host.organization || "—"}</div>
+            {host.document_url && (
+              <div style={{ fontSize: 14 }}>
+                <span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Document:</span>
+                <a href={host.document_url} target="_blank" rel="noreferrer" style={{ color: "var(--brand)" }}>📎 View uploaded document</a>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
