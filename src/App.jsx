@@ -879,6 +879,20 @@ export default function App() {
     }
     return token || sessionStorage.getItem('tp_invite_token') || null;
   });
+  const [inviteEmail, setInviteEmail] = useState(sessionStorage.getItem('tp_invite_email') || '');
+
+  // Look up invite email from token (unauthenticated, uses public RLS policy)
+  useEffect(() => {
+    if (pendingInviteToken && !inviteEmail) {
+      supabase.from('family_invites').select('guardian_email').eq('token', pendingInviteToken).single()
+        .then(({ data }) => {
+          if (data?.guardian_email) {
+            setInviteEmail(data.guardian_email);
+            sessionStorage.setItem('tp_invite_email', data.guardian_email);
+          }
+        });
+    }
+  }, [pendingInviteToken]);
   const [userRole, setUserRole] = useState(null); // 'family' | 'coach' | 'host' | null
   const [coachAccount, setCoachAccount] = useState(null);
   const [showPasswordReset, setShowPasswordReset] = useState(false);
@@ -1029,6 +1043,7 @@ export default function App() {
             .update({ accepted_at: new Date().toISOString(), accepted_by_user_id: userId })
             .eq('token', inviteToken);
           sessionStorage.removeItem('tp_invite_token');
+          sessionStorage.removeItem('tp_invite_email');
           setPendingInviteToken(null);
           // Fall through to normal family flow
         }
@@ -1070,6 +1085,7 @@ export default function App() {
             .update({ accepted_at: new Date().toISOString(), accepted_by_user_id: userId })
             .eq('token', inviteToken);
           sessionStorage.removeItem('tp_invite_token');
+          sessionStorage.removeItem('tp_invite_email');
           setPendingInviteToken(null);
 
           const rel = invite.relationship || 'Parent';
@@ -1109,6 +1125,7 @@ export default function App() {
           return;
         } else if (!invite) {
           sessionStorage.removeItem('tp_invite_token');
+          sessionStorage.removeItem('tp_invite_email');
           setPendingInviteToken(null);
         }
       }
@@ -2163,6 +2180,7 @@ export default function App() {
         authError={authError}
         setAuthError={setAuthError}
         hasInvite={!!pendingInviteToken}
+        inviteEmail={inviteEmail}
       />
     );
   }
@@ -2485,10 +2503,10 @@ function PasswordResetForm({ supabase, onDone }) {
   );
 }
 
-function AuthScreen({ onAuth, authError, setAuthError, hasInvite }) {
+function AuthScreen({ onAuth, authError, setAuthError, hasInvite, inviteEmail }) {
   const [mode, setMode] = useState(hasInvite ? "signup" : "login"); // "login" | "signup" | "coach-signup" | "reset"
   const [signupRole, setSignupRole] = useState(hasInvite ? "family" : null); // null | "family" | "coach"
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(inviteEmail || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [dob, setDob] = useState("");
@@ -2496,6 +2514,9 @@ function AuthScreen({ onAuth, authError, setAuthError, hasInvite }) {
   const [showLegal, setShowLegal] = useState(null); // null | "privacy" | "terms"
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
+
+  // Update email if inviteEmail loads asynchronously
+  useEffect(() => { if (inviteEmail && !email) setEmail(inviteEmail); }, [inviteEmail]);
 
   async function handleLogin(e) {
     e?.preventDefault();
