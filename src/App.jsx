@@ -9758,33 +9758,42 @@ function GroupedEventPicker({ orgIds, selected, onToggle }) {
 
 function AddTwirlerModal({ open, onClose, onSave, onOpenHistorical }) {
   const [form, setForm] = useState({ firstName: "", dob: "", club: "", organizations: [], regularEvents: [] });
+  const [attempted, setAttempted] = useState(false);
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const toggleOrg = (orgId) => setForm(p => ({ ...p, organizations: p.organizations.includes(orgId) ? p.organizations.filter(o => o !== orgId) : [...p.organizations, orgId] }));
 
+  const isValid = form.firstName && form.dob && form.organizations.length > 0;
+  const missing = [];
+  if (!form.firstName) missing.push("first name");
+  if (!form.dob) missing.push("date of birth");
+  if (form.organizations.length === 0) missing.push("at least one organization");
+
   function handleSave(withHistory) {
+    if (!isValid) { setAttempted(true); return; }
     const newTwirler = onSave(form);
     setForm({ firstName: "", dob: "", club: "", organizations: [], regularEvents: [] });
+    setAttempted(false);
     onClose();
     if (withHistory && newTwirler) {
-      // slight delay so the modal closes first
       setTimeout(() => onOpenHistorical(newTwirler), 100);
     }
   }
 
+  const reqStar = <span style={{ color: "var(--red)", marginLeft: 2 }}>*</span>;
+  const fieldErr = (condition) => attempted && condition ? { borderColor: "var(--red)", boxShadow: "0 0 0 3px rgba(239,68,68,0.12)" } : {};
+
   return (
-    <Modal open={open} onClose={onClose} title="Add Twirler Profile"
+    <Modal open={open} onClose={() => { setAttempted(false); onClose(); }} title="Add Twirler Profile"
       footer={
         <div style={{ display: "flex", gap: 8, width: "100%", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-secondary" onClick={() => { setAttempted(false); onClose(); }}>Cancel</button>
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-ghost btn-sm"
-              disabled={!form.firstName || !form.dob || form.organizations.length === 0}
               onClick={() => handleSave(false)}
               title="Add profile and set classifications later">
               Add — set classifications later
             </button>
             <button className="btn btn-primary"
-              disabled={!form.firstName || !form.dob || form.organizations.length === 0}
               onClick={() => handleSave(true)}>
               Add & set starting classifications →
             </button>
@@ -9795,14 +9804,19 @@ function AddTwirlerModal({ open, onClose, onSave, onOpenHistorical }) {
         <Icon name="info" size={15} color="var(--blue)" />
         <span>Only the athlete{"'s"} first name is stored to protect minor privacy.</span>
       </div>
+      {attempted && !isValid && (
+        <div className="alert alert-warn mb-3">
+          <span>Please fill in the required fields: {missing.join(", ")}.</span>
+        </div>
+      )}
       <div className="form-row">
-        <div className="form-group"><label className="label">First name only</label><input className="input" value={form.firstName} onChange={e => f("firstName", e.target.value)} placeholder="e.g. Emma" /></div>
-        <div className="form-group"><label className="label">Date of birth</label><input className="input" type="date" value={form.dob} onChange={e => f("dob", e.target.value)} /></div>
+        <div className="form-group"><label className="label">First name only {reqStar}</label><input className="input" value={form.firstName} onChange={e => f("firstName", e.target.value)} placeholder="e.g. Emma" style={fieldErr(!form.firstName)} /></div>
+        <div className="form-group"><label className="label">Date of birth {reqStar}</label><input className="input" type="date" value={form.dob} onChange={e => f("dob", e.target.value)} style={fieldErr(!form.dob)} /></div>
       </div>
       <div className="form-group"><label className="label">Club</label><input className="input" value={form.club} onChange={e => f("club", e.target.value)} placeholder="Club name" /></div>
       <div className="form-group">
-        <label className="label">Organizations</label>
-        <div className="chip-group">
+        <label className="label">Organizations {reqStar}</label>
+        <div className="chip-group" style={attempted && form.organizations.length === 0 ? { padding: 4, borderRadius: 8, border: "1px solid var(--red)", background: "rgba(239,68,68,0.04)" } : {}}>
           {Object.keys(ORGS).map(orgId => (
             <div key={orgId} className={`chip ${form.organizations.includes(orgId) ? "selected" : ""}`} onClick={() => toggleOrg(orgId)}>{orgId}</div>
           ))}
