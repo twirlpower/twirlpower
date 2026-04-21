@@ -5161,7 +5161,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
           <div className="stat-value">{totalWins}</div>
           <div className="stat-sub">across all events</div>
         </div>
-        <div className="stat-card" style={{ cursor: "pointer" }} onClick={() => setPage("orgs")}>
+        <div className="stat-card">
           <div className="stat-label">Active Organizations</div>
           <div className="stat-value">{activeTwirler.organizations?.length || 0}</div>
           <div className="stat-sub">{activeTwirler.organizations?.join(", ")}</div>
