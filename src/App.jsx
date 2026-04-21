@@ -2171,6 +2171,7 @@ export default function App() {
         closeModal={closeModal}
         modals={modals}
         coachCreateCompetition={coachCreateCompetition}
+        publicCompetitions={publicCompetitions}
       />
     );
   }
@@ -2836,7 +2837,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
   coachClubs, setCoachClubs, coachClubClaims, setCoachClubClaims,
   pendingClubMembers, setPendingClubMembers,
   invites, progress, darkMode, setDarkMode, isAdmin, onSignOut, supabase, loadCoachData,
-  page, setPage, openModal, closeModal, modals, coachCreateCompetition }) {
+  page, setPage, openModal, closeModal, modals, coachCreateCompetition, publicCompetitions }) {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTwirlerId, setActiveTwirlerId] = useState(twirlers[0]?.id || null);
@@ -2862,9 +2863,8 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "roster", label: "Club Roster", icon: "users" },
     { id: "club", label: `My Clubs${coachClubs.length > 0 ? ` (${coachClubs.length})` : ""}`, icon: "star", pending: pendingClubMembers.length },
-    { id: "history", label: "Competition History", icon: "history" },
+    { id: "competitions", label: "Competitions", icon: "trophy" },
     { id: "progress", label: "Progress Tracker", icon: "progress" },
-    { id: "upcoming", label: "Upcoming Competitions", icon: "trophy" },
   ];
 
   const accountItems = [
@@ -3056,9 +3056,10 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
             coachClubClaims={coachClubClaims} setCoachClubClaims={setCoachClubClaims}
             loadCoachData={loadCoachData} twirlers={twirlers}
             pendingClubMembers={pendingClubMembers} setPendingClubMembers={setPendingClubMembers} />}
-          {page === "history" && <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />}
+          {page === "competitions" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
+          {page === "history" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
-          {page === "upcoming" && <UpcomingCompetitionsPage publicCompetitions={[]} familyAccount={null} addAttendee={() => {}} attendees={[]} twirlers={twirlers} activeTwirler={activeTwirler} addCompetition={() => {}} />}
+          {page === "upcoming" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} initialTab="upcoming" />}
           {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} coachClubs={coachClubs} />}
           {page === "invite-athlete" && <InviteAthletePage coachAccount={coachAccount} supabase={supabase} setPage={setPage} loadCoachData={loadCoachData} />}
           {page === "create-competition" && <CreateCompetitionPage coachAccount={coachAccount} twirlers={twirlers} supabase={supabase} setPage={setPage} coachCreateCompetition={coachCreateCompetition} />}
@@ -3402,6 +3403,36 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
 }
 
 // ─── COACH HISTORY PAGE ───────────────────────────────────────────────────────
+
+function CoachCompetitionsPage({ coachCompetitions, twirlers, activeTwirler, setPage, publicCompetitions, familyAccount, addAttendee, attendees, registerHost, initialTab }) {
+  const [tab, setTab] = useState(initialTab || 'history');
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 0, marginBottom: 24, borderBottom: "2px solid var(--border)" }}>
+        {[
+          { id: 'history', label: '📋 My Competitions' },
+          { id: 'upcoming', label: '📅 Upcoming' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+              border: "none", background: "none", fontFamily: "inherit",
+              color: tab === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -2 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'history' && (
+        <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />
+      )}
+      {tab === 'upcoming' && (
+        <UpcomingCompetitionsPage publicCompetitions={publicCompetitions || []} familyAccount={familyAccount} addAttendee={addAttendee} attendees={attendees || []} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} registerHost={registerHost} addCompetition={() => {}} />
+      )}
+    </div>
+  );
+}
 
 function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler, setPage }) {
   const [filterTwirler, setFilterTwirler] = useState("");
