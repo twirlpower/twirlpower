@@ -1011,13 +1011,15 @@ export default function App() {
       // ── Process pending invite token ──
       const inviteToken = pendingInviteToken || sessionStorage.getItem('tp_invite_token');
       if (inviteToken && role === 'family') {
-        const { data: invite } = await supabase
+        const { data: inviteRows } = await supabase
           .from('family_invites')
           .select('*, family_accounts(*)')
           .eq('token', inviteToken)
           .is('accepted_at', null)
           .gt('expires_at', new Date().toISOString())
-          .single();
+          .limit(1);
+
+        const invite = inviteRows?.[0] || null;
 
         if (invite && invite.family_accounts) {
           const linkedFamily = invite.family_accounts;
