@@ -4630,10 +4630,10 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
     { id: "progress", label: "Progress Tracker", icon: "progress" },
     { id: "timeline", label: "Classification Timeline", icon: "history" },
     { id: "orgs", label: "Organizations", icon: "star" },
+    { id: "coaches", label: "Coaches", icon: "users" },
   ];
   const accountItems = [
     { id: "profile", label: "Family Profile", icon: "user" },
-    { id: "coaches", label: "Coaches", icon: "users" },
     ...(isAdmin ? [{ id: "admin", label: "Admin", icon: "settings", admin: true }] : []),
   ];
   const legalItems = [
