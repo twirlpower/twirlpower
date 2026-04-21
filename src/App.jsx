@@ -8180,7 +8180,6 @@ function CoachCreateCompModal({ open, onClose, coach, twirlers, onSave }) {
         <label className="label">Address <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
         <input className="input" value={compForm.location} onChange={e => cf("location", e.target.value)} placeholder="Street address" />
       </div>
-      </div>
       <div className="form-group">
         <label className="label">Sanctioned status</label>
         <div style={{ display: "flex", gap: 8 }}>
