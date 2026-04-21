@@ -3832,15 +3832,13 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
     setPendingLinks(links || []);
 
     // Also load family_invites for new families not yet on TwirlPower
-    const { data: famInvites, error: famErr } = await supabase
+    const { data: famInvites } = await supabase
       .from('family_invites')
       .select('*')
       .eq('coach_id', coachAccount.id)
       .eq('invite_type', 'coach')
       .is('accepted_at', null)
       .order('created_at', { ascending: false });
-    console.log('[DEBUG loadPending] coachAccount.id:', coachAccount.id);
-    console.log('[DEBUG loadPending] famInvites:', famInvites, 'error:', famErr);
     setPendingFamilyInvites(famInvites || []);
     setLoadingPending(false);
   }
@@ -4081,12 +4079,12 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
         ) : (
           <div className="flex-col gap-2">
             {pendingFamilyInvites.map(invite => (
-              <div key={`fi-${invite.id}`} className="card-sm" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div key={`fi-${invite.id}`} className="card-sm" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div className="avatar" style={{ background: 'var(--amber-light, #fef3c7)', color: 'var(--amber, #d97706)', flexShrink: 0 }}>
                   ✉️
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {invite.guardian_email}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--amber, #d97706)' }}>
@@ -4096,7 +4094,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
                     Invited {fmtDate(invite.created_at)}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2" style={{ flexShrink: 0 }}>
                   <button className="btn btn-secondary btn-sm"
                     disabled={resending[`fi-${invite.id}`]}
                     onClick={() => resendFamilyInvite(invite)}
