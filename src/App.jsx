@@ -4567,7 +4567,7 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
           ← Back
         </button>
         <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: "var(--navy)", marginBottom: 4 }}>
-          Register as a Competition Director
+          Create Your Director Profile
         </div>
         <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20, lineHeight: 1.6 }}>
           No family account needed. Fill in your details and a TwirlPower admin will review and approve your account before it goes live.
@@ -4620,7 +4620,7 @@ function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack })
         <button className="btn btn-primary w-full"
           disabled={!form.name || !form.email}
           onClick={submitRegistration}>
-          Submit Registration
+          Create Profile
         </button>
       </div>
     );
@@ -9369,6 +9369,7 @@ function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, tw
 
       {!myHost && (
         <HostRegisterView
+          familyAccount={familyAccount}
           onRegister={(data) => {
             const h = registerHost(data);
             setHostId(h.id);
@@ -9411,8 +9412,15 @@ function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, tw
   );
 }
 
-function HostRegisterView({ onRegister }) {
-  const [form, setForm] = useState({ name: "", organization: "", email: "", phone: "", state: "", notes: "" });
+function HostRegisterView({ onRegister, familyAccount }) {
+  const [form, setForm] = useState({
+    name: familyAccount?.parentName || familyAccount?.parent_name || "",
+    organization: "",
+    email: familyAccount?.email || "",
+    phone: familyAccount?.phone || "",
+    state: familyAccount?.state || "",
+    notes: ""
+  });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   return (
@@ -9421,9 +9429,9 @@ function HostRegisterView({ onRegister }) {
         <div className="flex gap-3">
           <Icon name="info" size={18} color="var(--brand)" />
           <div>
-            <div style={{ fontWeight: 600, fontSize: 14, color: "var(--brand2)", marginBottom: 4 }}>How Competition Director accounts work</div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: "var(--brand2)", marginBottom: 4 }}>What happens next</div>
             <ul style={{ fontSize: 13, color: "var(--slate)", lineHeight: 1.8, paddingLeft: 16 }}>
-              <li>Register below with your name, affiliation, and contact info</li>
+              <li>Complete your director profile below</li>
               <li>A TwirlPower admin reviews and approves your account (one-time)</li>
               <li>Once approved, you can post unlimited competition listings</li>
               <li>Twirlers and coaches can see your listings and add them to their schedules</li>
@@ -9433,7 +9441,7 @@ function HostRegisterView({ onRegister }) {
         </div>
       </div>
       <div className="card">
-        <div className="section-header"><span className="section-title">Register as a Competition Director</span></div>
+        <div className="section-header"><span className="section-title">Create Your Director Profile</span></div>
         <div className="form-row">
           <div className="form-group"><label className="label">Your name</label><input className="input" value={form.name} onChange={e => f("name", e.target.value)} placeholder="Full name" /></div>
           <div className="form-group">
@@ -9461,7 +9469,7 @@ function HostRegisterView({ onRegister }) {
           <span style={{ fontSize: 13 }}>Your registration will be reviewed by a TwirlPower admin before your account is activated. This helps ensure competition listings are from verified organizers.</span>
         </div>
         <button className="btn btn-primary" disabled={!form.name || !form.email} onClick={() => onRegister(form)}>
-          Submit Registration
+          Create Profile
         </button>
       </div>
     </div>
