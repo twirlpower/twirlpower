@@ -1021,12 +1021,23 @@ export default function App() {
 
         const invite = inviteRows?.[0] || null;
 
-        if (invite && invite.family_accounts) {
+        // ── Coach invite: store pending coach_id, let family flow continue normally ──
+        if (invite && invite.invite_type === 'coach' && invite.coach_id) {
+          sessionStorage.setItem('tp_pending_coach_id', invite.coach_id);
+          await supabase.from('family_invites')
+            .update({ accepted_at: new Date().toISOString(), accepted_by_user_id: userId })
+            .eq('token', inviteToken);
+          sessionStorage.removeItem('tp_invite_token');
+          setPendingInviteToken(null);
+          // Fall through to normal family flow
+        }
+
+        // ── Guardian invite: redirect to linked family ──
+        else if (invite && invite.family_accounts) {
           const linkedFamily = invite.family_accounts;
           const userAuthData = await supabase.auth.getUser();
           const userEmail = userAuthData.data?.user?.email;
 
-          // Add this user to the family's additional_guardians if not already there
           const existingGuardians = linkedFamily.additional_guardians || [];
           const alreadyLinked = existingGuardians.some(g =>
             g.email?.toLowerCase() === userEmail?.toLowerCase()
@@ -1045,27 +1056,21 @@ export default function App() {
               .update({ additional_guardians: [...existingGuardians, newGuardian] })
               .eq('id', linkedFamily.id);
           } else {
-            // Mark existing guardian as confirmed
             const updatedGuardians = existingGuardians.map(g =>
               g.email?.toLowerCase() === userEmail?.toLowerCase()
-                ? { ...g, confirmed: true }
-                : g
+                ? { ...g, confirmed: true } : g
             );
             await supabase.from('family_accounts')
               .update({ additional_guardians: updatedGuardians })
               .eq('id', linkedFamily.id);
           }
 
-          // Mark invite as accepted
           await supabase.from('family_invites')
             .update({ accepted_at: new Date().toISOString(), accepted_by_user_id: userId })
             .eq('token', inviteToken);
-
-          // Clear token
           sessionStorage.removeItem('tp_invite_token');
           setPendingInviteToken(null);
 
-          // Set guardian mode and load linked family data
           const rel = invite.relationship || 'Parent';
           const isCoGuardian = ['Parent', 'Guardian', 'Co-Guardian'].includes(rel);
           setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
@@ -1101,8 +1106,7 @@ export default function App() {
           }
           setDataLoading(false);
           return;
-        } else {
-          // Invalid or expired token — clear it
+        } else if (!invite) {
           sessionStorage.removeItem('tp_invite_token');
           setPendingInviteToken(null);
         }
@@ -1647,6 +1651,20 @@ export default function App() {
     const t = { ...inserted, firstName: inserted.first_name, classificationState: {}, classificationHistory: [], regularEvents: inserted.regular_events || [], organizations: inserted.organizations || [] };
     setTwirlers(prev => [...prev, t]);
     setActiveTwirlerId(t.id);
+
+    // If there's a pending coach invite, auto-create the coach link
+    const pendingCoachId = sessionStorage.getItem('tp_pending_coach_id');
+    if (pendingCoachId) {
+      await supabase.from('coach_athlete_links').insert({
+        coach_id: pendingCoachId,
+        twirler_id: inserted.id,
+        family_id: fa.id,
+        status: 'accepted',
+        invited_by: 'coach',
+      });
+      sessionStorage.removeItem('tp_pending_coach_id');
+    }
+
     return t;
   }
 
@@ -3888,9 +3906,23 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
     if (!newEmails.length) return;
     setSendingNew(true);
     for (const email of newEmails) {
+      // Create a family_invites token that also carries the coach link
+      const { data: invite } = await supabase.from('family_invites').insert({
+        guardian_email: email,
+        coach_id: coachAccount.id,
+        invite_type: 'coach',
+        relationship: 'Parent',
+      }).select('token').single();
+
+      const inviteUrl = invite?.token
+        ? `https://app.twirlpower.com?invite=${invite.token}`
+        : 'https://app.twirlpower.com';
+
       await sendEmail('coach_invite_new_family', email, {
-        coachName: coachAccount.name, coachStudio: coachAccount.studio,
+        coachName: coachAccount.name,
+        coachStudio: coachAccount.studio,
         coachOrgs: coachAccount.organizations,
+        inviteUrl,
       });
     }
     setSentNew(true);
@@ -4028,7 +4060,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
                 Invites sent!
               </h2>
               <p style={{ fontSize: 14, color: 'var(--slate)', marginBottom: 20 }}>
-                {newEmails.length} email{newEmails.length !== 1 ? 's' : ''} sent. Once families create an account, invite them again from the "Find Existing Users" tab.
+                {newEmails.length} email{newEmails.length !== 1 ? 's' : ''} sent. Once they create an account and add their twirler, they'll appear in your roster automatically.
               </p>
               <button className="btn btn-primary" onClick={() => { setSentNew(false); setNewEmails([]); }}>
                 Invite More
@@ -4081,7 +4113,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
               <div className="alert alert-info mb-4">
                 <Icon name="info" size={14} color="var(--brand)" />
                 <span style={{ fontSize: 12 }}>
-                  After they sign up, find them using "Find Existing Users" and send a formal link request.
+                  The invite link is personal to each family. Once they sign up and add their twirler, they'll appear in your roster automatically — no second step needed.
                 </span>
               </div>
 

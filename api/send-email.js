@@ -193,37 +193,70 @@ export default async function handler(req, res) {
   }
 
   else if (type === 'coach_invite_new_family') {
-    // Family invited a coach who isn't on TwirlPower yet
-    const { coachName, familyName, athleteName } = data;
-    subject = `${familyName} wants to connect with you on TwirlPower`;
-    html = `
-      <div style="${baseStyle}">
-        ${header}
-        <div style="padding: 32px;">
-          <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 12px;">
-            A family wants to connect with you
-          </h2>
-          <p style="font-size: 15px; color: #475569; line-height: 1.7; margin: 0 0 20px;">
-            <strong>${familyName}</strong> is looking for a coach${athleteName ? ` for <strong>${athleteName}</strong>` : ''} and would like to connect with you on TwirlPower.
-          </p>
-          <p style="font-size: 14px; color: #475569; line-height: 1.7; margin: 0 0 24px;">
-            TwirlPower is a platform for competitive baton twirling — coaches can manage their studio roster, send competition invites, track classification progress across USTA, NBTA, TU, and DMA, and more.
-          </p>
-          <div style="background: #f1f5f9; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; font-size: 14px; color: #475569; line-height: 1.6;">
-            Create a free Coach account, then use "Find a Coach" to connect with ${familyName}.
+    const { coachName, familyName, athleteName, inviteUrl, coachStudio, coachOrgs } = data;
+    const linkUrl = inviteUrl || appUrl;
+
+    // Two sub-types: coach inviting a family, or family inviting a coach
+    if (coachName && !familyName) {
+      // Coach invited a new family
+      subject = `${coachName} invited you to TwirlPower`;
+      html = `
+        <div style="${baseStyle}">
+          ${header}
+          <div style="padding: 32px;">
+            <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 12px;">
+              You've been invited to TwirlPower!
+            </h2>
+            <p style="font-size: 15px; color: #475569; line-height: 1.7; margin: 0 0 20px;">
+              <strong>${coachName}</strong>${coachStudio ? ` from <strong>${coachStudio}</strong>` : ''} has invited you to connect on TwirlPower — a platform for tracking baton twirling classifications and competition history.
+            </p>
+            <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; font-size: 14px; color: #0f172a; line-height: 1.6;">
+              <strong>Click the button below</strong> to create your free account. Once you add your twirler, you'll be automatically connected to ${coachName}.
+            </div>
+            <div style="text-align: center; margin: 28px 0;">
+              <a href="${linkUrl}" style="display: inline-block; background: #0d9488; color: white; font-size: 15px; font-weight: 600; padding: 14px 32px; border-radius: 8px; text-decoration: none;">
+                Accept Invitation →
+              </a>
+            </div>
+            <p style="font-size: 12px; color: #94a3b8; margin: 0; text-align: center;">
+              If you weren't expecting this, you can safely ignore this email.
+            </p>
           </div>
-          <div style="text-align: center; margin: 28px 0;">
-            <a href="${appUrl}" style="display: inline-block; background: #0d9488; color: white; font-size: 15px; font-weight: 600; padding: 14px 32px; border-radius: 8px; text-decoration: none;">
-              Join TwirlPower Free →
-            </a>
-          </div>
-          <p style="font-size: 12px; color: #94a3b8; margin: 0; text-align: center;">
-            If you weren't expecting this, you can safely ignore this email.
-          </p>
+          ${footer}
         </div>
-        ${footer}
-      </div>
-    `;
+      `;
+    } else {
+      // Family invited a coach
+      subject = `${familyName} wants to connect with you on TwirlPower`;
+      html = `
+        <div style="${baseStyle}">
+          ${header}
+          <div style="padding: 32px;">
+            <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 12px;">
+              A family wants to connect with you
+            </h2>
+            <p style="font-size: 15px; color: #475569; line-height: 1.7; margin: 0 0 20px;">
+              <strong>${familyName}</strong> is looking for a coach${athleteName ? ` for <strong>${athleteName}</strong>` : ''} and would like to connect with you on TwirlPower.
+            </p>
+            <p style="font-size: 14px; color: #475569; line-height: 1.7; margin: 0 0 24px;">
+              TwirlPower is a platform for competitive baton twirling — coaches can manage their studio roster, send competition invites, track classification progress across USTA, NBTA, TU, and DMA, and more.
+            </p>
+            <div style="background: #f1f5f9; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; font-size: 14px; color: #475569; line-height: 1.6;">
+              Create a free Coach account, then use "Find a Coach" to connect with ${familyName}.
+            </div>
+            <div style="text-align: center; margin: 28px 0;">
+              <a href="${appUrl}" style="display: inline-block; background: #0d9488; color: white; font-size: 15px; font-weight: 600; padding: 14px 32px; border-radius: 8px; text-decoration: none;">
+                Join TwirlPower Free →
+              </a>
+            </div>
+            <p style="font-size: 12px; color: #94a3b8; margin: 0; text-align: center;">
+              If you weren't expecting this, you can safely ignore this email.
+            </p>
+          </div>
+          ${footer}
+        </div>
+      `;
+    }
   }
 
   else if (type === 'bug_report') {
