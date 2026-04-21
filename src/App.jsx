@@ -2013,7 +2013,8 @@ export default function App() {
 
   async function approveHost(hostId) {
     setCompetitionHosts(prev => prev.map(h => h.id === hostId ? { ...h, approved: true } : h));
-    await supabase.from('competition_hosts').update({ approved: true }).eq('id', hostId);
+    const { error } = await supabase.from('competition_hosts').update({ approved: true }).eq('id', hostId);
+    if (error) console.error('approveHost error:', error);
   }
 
   async function createPublicCompetition(hostId, data) {
@@ -6794,28 +6795,32 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
                   ✓ Approved Directors ({approvedHosts.length})
                 </div>
                 {approvedHosts.map(h => (
-                  <div key={h.id} className="flex items-center gap-3 mb-2" style={{ padding: "10px 12px", background: "#f0fdf4", borderRadius: 8 }}>
-                    <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#bbf7d0", color: "#166534" }}>{initials(h.name)}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
-                      <div style={{ fontSize: 11, color: "var(--muted)" }}>{[h.organization, h.email, h.state].filter(Boolean).join(" · ")}</div>
+                  <div key={h.id} className="card-sm mb-2" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                    <div className="flex items-center gap-3">
+                      <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#bbf7d0", color: "#166534" }}>{initials(h.name)}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[h.organization, h.email, h.state].filter(Boolean).join(" · ")}</div>
+                      </div>
+                      <span className="badge badge-green" style={{ fontSize: 10, flexShrink: 0 }}>Approved</span>
                     </div>
-                    <div className="flex gap-2 items-center">
-                      <span className="badge badge-green" style={{ fontSize: 10 }}>Approved</span>
+                    <div className="flex gap-2" style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #bbf7d0" }}>
                       <button className="btn btn-secondary btn-sm"
                         onClick={() => {
                           if (window.confirm(`Revoke director access for ${h.name}?`)) {
                             supabase.from("competition_hosts").update({ approved: false }).eq("id", h.id);
+                            setCompetitionHosts(prev => prev.map(x => x.id === h.id ? { ...x, approved: false } : x));
                           }
                         }}
-                        style={{ fontSize: 10, padding: "2px 8px" }}>Revoke</button>
+                        style={{ fontSize: 10, padding: "4px 10px" }}>Revoke</button>
                       <button className="btn btn-danger btn-sm"
                         onClick={() => {
                           if (window.confirm(`Delete director registration for ${h.name}? This cannot be undone.`)) {
                             supabase.from("competition_hosts").delete().eq("id", h.id);
+                            setCompetitionHosts(prev => prev.filter(x => x.id !== h.id));
                           }
                         }}
-                        style={{ fontSize: 10, padding: "2px 8px" }}>Delete</button>
+                        style={{ fontSize: 10, padding: "4px 10px" }}>Delete</button>
                     </div>
                   </div>
                 ))}
