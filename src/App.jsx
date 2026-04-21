@@ -3814,6 +3814,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState(null); // { sent: [], existing: [], failed: [] }
   const [pendingLinks, setPendingLinks] = useState([]);
+  const [pendingFamilyInvites, setPendingFamilyInvites] = useState([]);
   const [loadingPending, setLoadingPending] = useState(true);
   const [resending, setResending] = useState({});
 
@@ -3829,6 +3830,16 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
       .eq('invited_by', 'coach')
       .order('created_at', { ascending: false });
     setPendingLinks(links || []);
+
+    // Also load family_invites for new families not yet on TwirlPower
+    const { data: famInvites } = await supabase
+      .from('family_invites')
+      .select('*')
+      .eq('coach_id', coachAccount.id)
+      .eq('invite_type', 'coach')
+      .is('accepted_at', null)
+      .order('created_at', { ascending: false });
+    setPendingFamilyInvites(famInvites || []);
     setLoadingPending(false);
   }
 
@@ -3940,6 +3951,21 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
     setPendingLinks(prev => prev.filter(l => l.id !== linkId));
   }
 
+  async function resendFamilyInvite(invite) {
+    setResending(p => ({ ...p, [`fi-${invite.id}`]: true }));
+    const inviteUrl = invite.token ? `https://app.twirlpower.com?invite=${invite.token}` : 'https://app.twirlpower.com';
+    await sendEmail('coach_invite_new_family', invite.guardian_email, {
+      coachName: coachAccount.name, coachStudio: coachAccount.studio,
+      coachOrgs: coachAccount.organizations, inviteUrl,
+    });
+    setResending(p => ({ ...p, [`fi-${invite.id}`]: false }));
+  }
+
+  async function cancelFamilyInvite(inviteId) {
+    await supabase.from('family_invites').delete().eq('id', inviteId);
+    setPendingFamilyInvites(prev => prev.filter(i => i.id !== inviteId));
+  }
+
   return (
     <div>
       <div className="page-header flex items-center justify-between">
@@ -4042,16 +4068,47 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
       <div>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--slate)', textTransform: 'uppercase',
           letterSpacing: '0.5px', marginBottom: 12 }}>
-          Pending Invites {!loadingPending && pendingLinks.length > 0 && `(${pendingLinks.length})`}
+          Pending Invites {!loadingPending && (pendingLinks.length + pendingFamilyInvites.length) > 0 && `(${pendingLinks.length + pendingFamilyInvites.length})`}
         </div>
         {loadingPending ? (
           <div style={{ fontSize: 13, color: 'var(--muted)' }}>Loading...</div>
-        ) : pendingLinks.length === 0 ? (
+        ) : (pendingLinks.length + pendingFamilyInvites.length) === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--muted)', fontStyle: 'italic' }}>
             No pending invites. Families you've invited will appear here until they accept.
           </div>
         ) : (
           <div className="flex-col gap-2">
+            {pendingFamilyInvites.map(invite => (
+              <div key={`fi-${invite.id}`} className="card-sm" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div className="avatar" style={{ background: 'var(--amber-light, #fef3c7)', color: 'var(--amber, #d97706)', flexShrink: 0 }}>
+                  ✉️
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>
+                    {invite.guardian_email}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--amber, #d97706)' }}>
+                    Awaiting signup
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                    Invited {fmtDate(invite.created_at)}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn btn-secondary btn-sm"
+                    disabled={resending[`fi-${invite.id}`]}
+                    onClick={() => resendFamilyInvite(invite)}
+                    style={{ fontSize: 11 }}>
+                    {resending[`fi-${invite.id}`] ? '...' : 'Resend'}
+                  </button>
+                  <button className="btn btn-danger btn-sm"
+                    onClick={() => { if (window.confirm('Cancel this invite?')) cancelFamilyInvite(invite.id); }}
+                    style={{ fontSize: 11 }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ))}
             {pendingLinks.map(link => {
               const family = link.family_accounts;
               const twirler = link.twirlers;
