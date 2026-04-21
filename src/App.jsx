@@ -3903,6 +3903,15 @@ function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, a
                 <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 3 }}>👨‍👩‍👧 Family / Athlete</div>
                 <div style={{ fontSize: 13, color: "var(--slate)" }}>Track competitions, results, and classification progress for your twirler</div>
               </button>
+              <button onClick={() => setAccountType("coach")}
+                style={{ padding: "16px 20px", border: "2px solid var(--border)", borderRadius: 12,
+                  background: "white", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+                  transition: "all 0.15s" }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.background = "var(--brand-light)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "white"; }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 3 }}>🎓 Coach / Club Owner</div>
+                <div style={{ fontSize: 13, color: "var(--slate)" }}>Manage your twirlers, send competition invites, and manage your studio or club</div>
+              </button>
               <button onClick={() => setAccountType("host")}
                 style={{ padding: "16px 20px", border: "2px solid var(--border)", borderRadius: 12,
                   background: "white", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
@@ -3913,6 +3922,18 @@ function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, a
                 <div style={{ fontSize: 13, color: "var(--slate)" }}>Post competition listings for twirlers and coaches to discover</div>
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Coach setup — redirect to coach signup flow */}
+        {accountType === "coach" && (
+          <div className="card" style={{ maxWidth: 440, width: "100%", padding: "40px 36px", textAlign: "center" }}>
+            <Logo />
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 8 }}>🎓 Coach / Club Owner Account</div>
+            <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 24, lineHeight: 1.6 }}>
+              Coach accounts are set up through the main sign-in screen. Please sign out and sign back in, then choose "Coach / Club Owner" during account creation.
+            </p>
+            <button className="btn btn-ghost w-full" onClick={() => setAccountType(null)}>← Back</button>
           </div>
         )}
 
