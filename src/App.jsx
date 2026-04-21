@@ -2047,6 +2047,15 @@ export default function App() {
     return (
       <SetupScreen
         onComplete={async data => {
+          // Check if they already have a family account (e.g. co-guardian who signed up before being linked)
+          const { data: existing } = await supabase.from('family_accounts')
+            .select('*').eq('user_id', authUser.id).single();
+          if (existing) {
+            // Already have an account — just load it and move on
+            setFamilyAccount({ ...existing, parentName: existing.parent_name, additionalGuardians: existing.additional_guardians || [] });
+            await loadAllData(authUser.id);
+            return;
+          }
           const { data: inserted, error } = await supabase.from('family_accounts').insert({
             user_id: authUser.id,
             parent_name: data.parentName,
@@ -2056,9 +2065,12 @@ export default function App() {
             relationship: data.relationship || 'Parent / Guardian',
             additional_guardians: [],
           }).select().single();
-          if (error) { console.error('setup:', error); return; }
+          if (error) {
+            // Likely a duplicate — reload data which will trigger co-guardian check
+            await loadAllData(authUser.id);
+            return;
+          }
           setFamilyAccount({ ...inserted, parentName: inserted.parent_name, additionalGuardians: [] });
-          // Seed user_roles as family
           await supabase.from('user_roles').upsert({ user_id: authUser.id, role: 'family' });
           setUserRole('family');
           setPage("home");
