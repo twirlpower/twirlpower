@@ -5248,6 +5248,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                   {Object.values(ORGS).map(o => <option key={o.id} value={o.id}>{o.id} — {o.name}</option>)}
                 </select>
               </div>
+            </div>
             <div className="form-row" style={{ marginBottom: 8 }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="label">Notes</label>
