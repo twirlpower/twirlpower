@@ -2108,7 +2108,7 @@ export default function App() {
     );
   }
 
-  if (twirlers.length === 0 && !guardianMode) {
+  if (twirlers.length === 0 && !guardianMode && !dataLoading) {
     return (
       <>
         <style>{css}</style>
@@ -2124,6 +2124,9 @@ export default function App() {
             <p style={{ color: "var(--slate)", fontSize: 14, marginBottom: 24 }}>Set up a profile for each athlete in your family.</p>
             <button className="btn btn-primary w-full" onClick={() => openModal("addTwirler")}>
               <Icon name="plus" size={16} /> Add Twirler Profile
+            </button>
+            <button className="btn btn-ghost w-full" style={{ marginTop: 10, fontSize: 13 }} onClick={signOut}>
+              Sign out
             </button>
           </div>
           <AddTwirlerModal open={modals.addTwirler?.open} onClose={() => closeModal("addTwirler")} onSave={addTwirler} onOpenHistorical={twirler => openModal("historicalData", { twirler })} />
