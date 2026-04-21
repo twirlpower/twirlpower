@@ -5269,7 +5269,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                                     fontSize: 13, color: "var(--slate)", background: "#f8fafc", width: "fit-content" }}>
                                     <Icon name="image" size={14} color="var(--slate)" />
                                     Add scorecard photo
-                                    <input type="file" accept="image/jpeg,image/png" style={{ display: "none" }}
+                                    <input type="file" accept="image/*" style={{ display: "none" }}
                                       onChange={e => {
                                         const file = e.target.files?.[0];
                                         if (file) setEditResultForm(p => ({ ...p, scorecardFile: file }));
@@ -9618,7 +9618,7 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
                 fontSize: 13, color: "var(--slate)", background: "#f8fafc" }}>
                 <Icon name="upload" size={14} color="var(--slate)" />
                 Tap to add scorecard photo
-                <input type="file" accept="image/jpeg,image/png" style={{ display: "none" }}
+                <input type="file" accept="image/*" style={{ display: "none" }}
                   onChange={e => {
                     const file = e.target.files?.[0];
                     if (!file) return;
