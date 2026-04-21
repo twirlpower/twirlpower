@@ -7556,7 +7556,11 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
     }
   }
 
-  const filtered = accounts.filter(a =>
+  // Exclude users who are registered as directors from the family list
+  const hostUserIds = new Set((hostAccounts || []).map(h => h.user_id).filter(Boolean));
+  const familyOnlyAccounts = accounts.filter(a => !hostUserIds.has(a.user_id));
+
+  const filtered = familyOnlyAccounts.filter(a =>
     !search ||
     a.parent_name?.toLowerCase().includes(search.toLowerCase()) ||
     a.email?.toLowerCase().includes(search.toLowerCase()) ||
@@ -7581,7 +7585,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
         borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 4 }}>
           {[
-            { id: "family", label: `Families (${accounts.length})` },
+            { id: "family", label: `Families (${familyOnlyAccounts.length})` },
             { id: "coach", label: `Coaches (${coachAccounts.length})` },
             { id: "host", label: `Directors (${hostAccounts.length})` },
             { id: "twirlers", label: `Twirlers (${allTwirlers.length})` },
@@ -7878,7 +7882,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
       {accountType === "family" && <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <span style={{ fontSize: 13, color: "var(--slate)" }}>
-          {accounts.length} account{accounts.length !== 1 ? "s" : ""}
+          {familyOnlyAccounts.length} account{familyOnlyAccounts.length !== 1 ? "s" : ""}
           {admins.length > 0 && <span style={{ marginLeft: 8, color: "var(--muted)" }}>· {admins.length} admin{admins.length !== 1 ? "s" : ""}</span>}
         </span>
         <div style={{ position: "relative" }}>
