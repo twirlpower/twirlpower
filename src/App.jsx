@@ -1710,7 +1710,9 @@ export default function App() {
       name: data.name,
       date: data.date || null,
       location: data.location || null,
+      venue: data.venue || null,
       state: data.state || null,
+      start_time: data.startTime || null,
       org_id: data.orgId || null,
       sanctioned: data.sanctioned !== false,
       notes: data.notes || null,
@@ -1809,7 +1811,9 @@ export default function App() {
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.date !== undefined) dbUpdates.date = updates.date;
     if (updates.location !== undefined) dbUpdates.location = updates.location;
+    if (updates.venue !== undefined) dbUpdates.venue = updates.venue;
     if (updates.state !== undefined) dbUpdates.state = updates.state;
+    if (updates.startTime !== undefined) dbUpdates.start_time = updates.startTime;
     if (updates.orgId !== undefined) dbUpdates.org_id = updates.orgId;
     if (updates.sanctioned !== undefined) dbUpdates.sanctioned = updates.sanctioned;
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
@@ -1947,7 +1951,9 @@ export default function App() {
         name: compData.name,
         date: compData.date || null,
         location: compData.location || null,
+        venue: compData.venue || null,
         state: compData.state || null,
+        start_time: compData.startTime || null,
         org_id: compData.orgId || null,
         notes: compData.notes || null,
       })
@@ -3315,7 +3321,7 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 2 }}>{c.name}</div>
                       <div style={{ fontSize: 12, color: "var(--slate)" }}>
-                        {fmtDate(c.date)}{c.state ? ` · ${c.state}` : ""}{c.location ? ` · ${c.location}` : ""}
+                        {fmtDate(c.date)}{c.start_time ? ` · ${c.start_time}` : ""}{c.state ? ` · ${c.state}` : ""}{c.venue ? ` · ${c.venue}` : ""}{c.location ? ` · ${c.location}` : ""}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
                         {accepted} accepted · {pending} pending
@@ -3434,7 +3440,7 @@ function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler, setPage 
             <div>
               <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{c.name}</div>
               <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>
-                {fmtDate(c.date)}{c.state ? ` · ${c.state}` : ""}{c.location ? ` · ${c.location}` : ""}
+                {fmtDate(c.date)}{c.start_time ? ` · ${c.start_time}` : ""}{c.state ? ` · ${c.state}` : ""}{c.venue ? ` · ${c.venue}` : ""}{c.location ? ` · ${c.location}` : ""}
                 {c.org_id && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{c.org_id}</span>}
               </div>
             </div>
@@ -3613,7 +3619,7 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
 
 function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coachCreateCompetition }) {
   const [form, setForm] = useState({
-    name: "", date: "", location: "", state: "", orgId: "", notes: ""
+    name: "", date: "", location: "", venue: "", state: "", startTime: "", orgId: "", notes: ""
   });
   const [selectedTwirlers, setSelectedTwirlers] = useState(twirlers.map(t => t.id));
   const [loading, setLoading] = useState(false);
@@ -3668,6 +3674,16 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
             </select>
           </div>
         </div>
+        <div className="form-group">
+          <label className="label">Venue name <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+          <input className="input" value={form.venue} onChange={e => f("venue", e.target.value)}
+            placeholder="e.g. Denver Coliseum" />
+        </div>
+        <div className="form-group">
+          <label className="label">Address <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+          <input className="input" value={form.location} onChange={e => f("location", e.target.value)}
+            placeholder="Street address" />
+        </div>
         <div className="form-row">
           <div className="form-group">
             <label className="label">State</label>
@@ -3677,9 +3693,8 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
             </select>
           </div>
           <div className="form-group">
-            <label className="label">Address <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-            <input className="input" value={form.location} onChange={e => f("location", e.target.value)}
-              placeholder="Venue name or full address" />
+            <label className="label">Start time <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+            <input className="input" type="time" value={form.startTime} onChange={e => f("startTime", e.target.value)} />
           </div>
         </div>
         <div className="form-group">
@@ -5245,9 +5260,17 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                 </select>
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="label">Address</label>
-                <input className="input" value={editCompForm.location} onChange={e => setEditCompForm(p => ({ ...p, location: e.target.value }))} placeholder="Venue or full address" />
+                <label className="label">Start time</label>
+                <input className="input" type="time" value={editCompForm.startTime || ""} onChange={e => setEditCompForm(p => ({ ...p, startTime: e.target.value }))} />
               </div>
+            </div>
+            <div className="form-group" style={{ marginBottom: 8 }}>
+              <label className="label">Venue name</label>
+              <input className="input" value={editCompForm.venue || ""} onChange={e => setEditCompForm(p => ({ ...p, venue: e.target.value }))} placeholder="e.g. Denver Coliseum" />
+            </div>
+            <div className="form-group" style={{ marginBottom: 8 }}>
+              <label className="label">Address</label>
+              <input className="input" value={editCompForm.location} onChange={e => setEditCompForm(p => ({ ...p, location: e.target.value }))} placeholder="Street address" />
             </div>
             <div className="form-row" style={{ marginBottom: 8 }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
@@ -5280,7 +5303,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
               <div>
                 <div style={{ fontWeight: 600, fontSize: 15 }}>{comp.name}</div>
                 <div style={{ color: "var(--slate)", fontSize: 13 }}>
-                  {fmtDate(comp.date)}{comp.state ? ` · ${comp.state}` : ""}{comp.location ? ` · ${comp.location}` : ""}
+                  {fmtDate(comp.date)}{comp.start_time ? ` · ${comp.start_time}` : ""}{comp.state ? ` · ${comp.state}` : ""}{comp.venue ? ` · ${comp.venue}` : ""}{comp.location ? ` · ${comp.location}` : ""}
                   {comp.notes && <span style={{ color: "var(--muted)", marginLeft: 8 }}>📝 {comp.notes}</span>}
                 </div>
               </div>
@@ -5497,7 +5520,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
 
   function startEditComp(comp) {
     setEditingComp(comp.id);
-    setEditCompForm({ name: comp.name, date: comp.date, location: comp.location || "", state: comp.state || "", orgId: comp.orgId, sanctioned: comp.sanctioned !== false, notes: comp.notes || "" });
+    setEditCompForm({ name: comp.name, date: comp.date, location: comp.location || "", venue: comp.venue || "", state: comp.state || "", startTime: comp.start_time || "", orgId: comp.orgId, sanctioned: comp.sanctioned !== false, notes: comp.notes || "" });
   }
 
   function saveEditComp() {
@@ -8085,13 +8108,13 @@ function CoachesPage({ coaches, twirlers, activeTwirler, familyAccount, coachLin
 }
 
 function CoachCreateCompModal({ open, onClose, coach, twirlers, onSave }) {
-  const [compForm, setComp] = useState({ name: "", date: "", location: "", state: "", orgId: "" });
+  const [compForm, setComp] = useState({ name: "", date: "", location: "", venue: "", state: "", startTime: "", orgId: "" });
   const [invitedIds, setInvitedIds] = useState([]);
   const cf = (k, v) => setComp(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
     if (open) {
-      setComp({ name: "", date: "", location: "", state: "", orgId: "", sanctioned: true });
+      setComp({ name: "", date: "", location: "", venue: "", state: "", startTime: "", orgId: "", sanctioned: true });
       setInvitedIds(twirlers.map(t => t.id));
     }
   }, [open]);
@@ -8145,9 +8168,18 @@ function CoachCreateCompModal({ open, onClose, coach, twirlers, onSave }) {
           </select>
         </div>
         <div className="form-group">
-          <label className="label">Address <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-          <input className="input" value={compForm.location} onChange={e => cf("location", e.target.value)} placeholder="Venue name or full address" />
+          <label className="label">Start time <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+          <input className="input" type="time" value={compForm.startTime || ""} onChange={e => cf("startTime", e.target.value)} />
         </div>
+      </div>
+      <div className="form-group">
+        <label className="label">Venue name <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+        <input className="input" value={compForm.venue || ""} onChange={e => cf("venue", e.target.value)} placeholder="e.g. Denver Coliseum" />
+      </div>
+      <div className="form-group">
+        <label className="label">Address <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+        <input className="input" value={compForm.location} onChange={e => cf("location", e.target.value)} placeholder="Street address" />
+      </div>
       </div>
       <div className="form-group">
         <label className="label">Sanctioned status</label>
@@ -9827,7 +9859,7 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
 
 function AddCompetitionModal({ open, onClose, onSave, activeTwirler, competitions = [] }) {
   const [step, setStep] = useState(1);
-  const [compForm, setComp] = useState({ name: "", date: "", location: "", state: "", orgId: "", sanctioned: true });
+  const [compForm, setComp] = useState({ name: "", date: "", location: "", venue: "", state: "", startTime: "", orgId: "", sanctioned: true });
   const [eventRows, setEventRows] = useState([]);
   const cf = (k, v) => setComp(p => ({ ...p, [k]: v }));
 
@@ -9835,7 +9867,7 @@ function AddCompetitionModal({ open, onClose, onSave, activeTwirler, competition
     if (open && activeTwirler) {
       setStep(1);
       const firstOrg = activeTwirler.organizations?.[0] || "";
-      setComp({ name: "", date: "", location: "", state: "", orgId: firstOrg, sanctioned: true });
+      setComp({ name: "", date: "", location: "", venue: "", state: "", startTime: "", orgId: firstOrg, sanctioned: true });
       const defaultEvents = activeTwirler.regularEvents || [];
       const org = ORGS[firstOrg];
       const levels = activeTwirler.classificationState || {};
@@ -9939,9 +9971,17 @@ function AddCompetitionModal({ open, onClose, onSave, activeTwirler, competition
               </select>
             </div>
             <div className="form-group">
-              <label className="label">Address <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-              <input className="input" value={compForm.location} onChange={e => cf("location", e.target.value)} placeholder="Venue name or full address" />
+              <label className="label">Start time <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+              <input className="input" type="time" value={compForm.startTime || ""} onChange={e => cf("startTime", e.target.value)} />
             </div>
+          </div>
+          <div className="form-group">
+            <label className="label">Venue name <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+            <input className="input" value={compForm.venue || ""} onChange={e => cf("venue", e.target.value)} placeholder="e.g. Denver Coliseum" />
+          </div>
+          <div className="form-group">
+            <label className="label">Address <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+            <input className="input" value={compForm.location} onChange={e => cf("location", e.target.value)} placeholder="Street address" />
           </div>
           <div className="form-group">
             <label className="label">Sanctioned status</label>
