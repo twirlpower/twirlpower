@@ -2162,6 +2162,7 @@ export default function App() {
         onAuth={user => setAuthUser(user)}
         authError={authError}
         setAuthError={setAuthError}
+        hasInvite={!!pendingInviteToken}
       />
     );
   }
@@ -2484,9 +2485,9 @@ function PasswordResetForm({ supabase, onDone }) {
   );
 }
 
-function AuthScreen({ onAuth, authError, setAuthError }) {
-  const [mode, setMode] = useState("login"); // "login" | "signup" | "coach-signup" | "reset"
-  const [signupRole, setSignupRole] = useState(null); // null | "family" | "coach"
+function AuthScreen({ onAuth, authError, setAuthError, hasInvite }) {
+  const [mode, setMode] = useState(hasInvite ? "signup" : "login"); // "login" | "signup" | "coach-signup" | "reset"
+  const [signupRole, setSignupRole] = useState(hasInvite ? "family" : null); // null | "family" | "coach"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
