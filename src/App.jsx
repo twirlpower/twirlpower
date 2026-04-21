@@ -2352,7 +2352,7 @@ export default function App() {
         )}
         <div className="main">
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
-          {page === "history" && <HistoryPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
+          {page === "competitions" && <CompetitionsPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
           {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} authUser={authUser} supabase={supabase} />}
           {page === "coaches" && <CoachesPage {...pageProps} supabase={supabase} />}
@@ -2363,7 +2363,7 @@ export default function App() {
           {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} />}
           {page === "orgs" && <OrganizationsPage activeTwirler={activeTwirler} twirlerResults={twirlerResults} />}
           {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
-          {page === "upcoming" && <UpcomingCompetitionsPage {...pageProps} />}
+          {page === "upcoming" && <CompetitionsPage {...pageProps} initialTab="upcoming" />}
           {page === "hostdash" && <HostDashboardPage {...pageProps} />}
         </div>
         </div>
@@ -3279,7 +3279,7 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
       <div className="grid-3 mb-6">
         {[
           { label: "Twirlers", value: twirlers.length, icon: "👤", action: () => setPage("roster") },
-          { label: "Upcoming", value: upcomingComps.length, icon: "📅", action: () => setPage("history") },
+          { label: "Upcoming", value: upcomingComps.length, icon: "📅", action: () => setPage("competitions") },
           { label: "Ready to advance", value: advancingCount, icon: "⬆️", action: () => setPage("roster"), highlight: advancingCount > 0 },
         ].map(s => (
           <div key={s.label} className="stat-card" onClick={s.action}
@@ -3299,7 +3299,7 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
       <div className="card mb-4">
         <div className="section-header">
           <span className="section-title">Upcoming Competitions</span>
-          <button className="btn btn-ghost btn-sm" onClick={() => setPage("history")}>View all</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setPage("competitions")}>View all</button>
         </div>
         {upcomingComps.length === 0 ? (
           <div style={{ padding: "16px 0", textAlign: "center" }}>
@@ -3632,7 +3632,7 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
     setError(null);
     try {
       await coachCreateCompetition(coachAccount.id, form, selectedTwirlers);
-      setPage("history");
+      setPage("competitions");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -3752,7 +3752,7 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
             onClick={handleSubmit}>
             {loading ? "Sending..." : `Send Invite to ${selectedTwirlers.length} twirler${selectedTwirlers.length !== 1 ? "s" : ""}`}
           </button>
-          <button className="btn btn-ghost" onClick={() => setPage("history")}>Cancel</button>
+          <button className="btn btn-ghost" onClick={() => setPage("competitions")}>Cancel</button>
         </div>
       </div>
     </div>
@@ -4399,9 +4399,8 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
   const adminTaskCount = pendingDirectors + (pendingClubClaims || 0);
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
-    { id: "history", label: "Competition History", icon: "history" },
+    { id: "competitions", label: "Competitions", icon: "trophy" },
     { id: "progress", label: "Progress Tracker", icon: "progress" },
-    { id: "upcoming", label: "Upcoming Competitions", icon: "trophy" },
     { id: "timeline", label: "Classification Timeline", icon: "history" },
     { id: "orgs", label: "Organizations", icon: "star" },
   ];
@@ -5189,6 +5188,38 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
 }
 
 // ─── HISTORY PAGE ────────────────────────────────────────────────────────────
+
+function CompetitionsPage(props) {
+  const [tab, setTab] = useState(props.initialTab || 'history');
+
+  return (
+    <div>
+      {/* Tab switcher */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 24, borderBottom: "2px solid var(--border)" }}>
+        {[
+          { id: 'history', label: '📋 My History' },
+          { id: 'upcoming', label: '📅 Upcoming' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+              border: "none", background: "none", fontFamily: "inherit",
+              color: tab === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -2 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'history' && (
+        <HistoryPage {...props} />
+      )}
+      {tab === 'upcoming' && (
+        <UpcomingCompetitionsPage {...props} />
+      )}
+    </div>
+  );
+}
 
 function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, openModal, deleteResult, deleteCompetition, updateResult, updateCompetition, competitions, addResultsToComp }) {
   const [filterOrg, setFilterOrg] = useState("");
