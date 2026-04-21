@@ -9301,12 +9301,20 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
     setShowCreate(false);
   }
 
+  const [dismissedApproval, setDismissedApproval] = useState(() => localStorage.getItem('tp_host_approved_dismissed') === 'true');
+
   return (
     <div>
-      <div className="alert alert-success mb-4">
-        <Icon name="check" size={15} color="var(--green)" />
-        <span>Your Competition Director account is approved. You can create and manage competition listings below.</span>
-      </div>
+      {!dismissedApproval && (
+        <div className="alert alert-success mb-4" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div className="flex gap-2 items-center">
+            <Icon name="check" size={15} color="var(--green)" />
+            <span>Your Competition Director account is approved. You can create and manage competition listings below.</span>
+          </div>
+          <button onClick={() => { setDismissedApproval(true); localStorage.setItem('tp_host_approved_dismissed', 'true'); }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", fontSize: 16, padding: "0 4px", lineHeight: 1 }}>×</button>
+        </div>
+      )}
 
       <div className="flex items-center justify-between mb-4">
         <div style={{ fontSize: 15, fontWeight: 600 }}>Your competitions ({publicCompetitions.length})</div>
