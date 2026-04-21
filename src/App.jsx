@@ -1023,6 +1023,7 @@ export default function App() {
 
         // ── Coach invite: store pending coach_id, let family flow continue normally ──
         if (invite && invite.invite_type === 'coach' && invite.coach_id) {
+          console.log('[DEBUG loadAllData] Coach invite found, storing coach_id:', invite.coach_id);
           sessionStorage.setItem('tp_pending_coach_id', invite.coach_id);
           await supabase.from('family_invites')
             .update({ accepted_at: new Date().toISOString(), accepted_by_user_id: userId })
@@ -1681,6 +1682,7 @@ export default function App() {
 
     // If there's a pending coach invite, auto-create the coach link
     const pendingCoachId = sessionStorage.getItem('tp_pending_coach_id');
+    console.log('[DEBUG addTwirler] tp_pending_coach_id:', pendingCoachId);
     if (pendingCoachId) {
       await supabase.from('coach_athlete_links').insert({
         coach_id: pendingCoachId,
