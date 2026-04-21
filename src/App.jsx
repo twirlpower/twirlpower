@@ -1062,9 +1062,12 @@ export default function App() {
 
               if (mappedTwirlers.length > 0) {
                 const twirlerIds = mappedTwirlers.map(t => t.id);
-                const [{ data: comps }, { data: res }] = await Promise.all([
-                  supabase.from('competitions').select('*').in('twirler_id', twirlerIds).order('date', { ascending: false }),
-                  supabase.from('results').select('*').in('twirler_id', twirlerIds),
+                const [{ data: comps }, { data: res }, { data: coa }, { data: inv }, { data: cl }] = await Promise.all([
+                  supabase.rpc('get_guardian_competitions', { twirler_ids: twirlerIds }),
+                  supabase.rpc('get_guardian_results', { twirler_ids: twirlerIds }),
+                  supabase.rpc('get_guardian_coaches', { family_uuid: linkedFamily.id }),
+                  supabase.rpc('get_guardian_invites', { twirler_ids: twirlerIds }),
+                  supabase.rpc('get_guardian_coach_links', { twirler_ids: twirlerIds }),
                 ]);
                 setCompetitions((comps || []).map(c => ({ ...c, orgId: c.org_id, fromPublic: c.from_public })));
                 setResults((res || []).map(r => ({
@@ -1076,6 +1079,13 @@ export default function App() {
                   casPassed: r.cas_passed, judgeNote: r.judge_note,
                   scorecardUrl: r.scorecard_url, subScores: r.sub_scores || {},
                 })));
+                setCoaches((coa || []).map(c => ({ ...c, linkedTwirlers: c.linked_twirlers || [], organizations: c.organizations || [] })));
+                setInvites((inv || []).map(i => ({ ...i, twirlerId: i.twirler_id, coachId: i.coach_id,
+                  competitionId: i.competition_id, respondedAt: i.responded_at, createdAt: i.created_at })));
+                setCoachLinks((cl || []).map(l => ({ ...l, twirlerId: l.twirler_id, coachId: l.coach_id,
+                  familyId: l.family_id, coachName: l.coach_accounts?.name, coachEmail: l.coach_accounts?.email,
+                  coachStudio: l.coach_accounts?.studio, coachOrgs: l.coach_accounts?.organizations || [],
+                  createdAt: l.created_at, type: 'coach_link' })));
               }
               setDataLoading(false);
               return;
@@ -1259,18 +1269,21 @@ export default function App() {
             if (mappedTwirlers.length > 0) {
               const twirlerIds = mappedTwirlers.map(t => t.id);
               const [{ data: comps }, { data: res }, { data: coa }, { data: inv }, { data: cl }] = await Promise.all([
-                supabase.from('competitions').select('*').in('twirler_id', twirlerIds).order('date', { ascending: false }),
-                supabase.from('results').select('*').in('twirler_id', twirlerIds),
-                supabase.from('coaches').select('*').eq('family_id', linkedFamily.id),
-                supabase.from('invites').select('*').in('twirler_id', twirlerIds),
-                supabase.from('coach_athlete_links').select('*, coach_accounts(name, email, studio, organizations)')
-                  .in('twirler_id', twirlerIds),
+                supabase.rpc('get_guardian_competitions', { twirler_ids: twirlerIds }),
+                supabase.rpc('get_guardian_results', { twirler_ids: twirlerIds }),
+                supabase.rpc('get_guardian_coaches', { family_uuid: linkedFamily.id }),
+                supabase.rpc('get_guardian_invites', { twirler_ids: twirlerIds }),
+                supabase.rpc('get_guardian_coach_links', { twirler_ids: twirlerIds }),
               ]);
               setCompetitions((comps || []).map(c => ({ ...c, orgId: c.org_id })));
               setResults((res || []).map(r => ({ ...r, orgId: r.org_id, twirlerId: r.twirler_id,
                 competitionId: r.competition_id, classificationLevelEntered: r.classification_level_entered,
                 protectionRule: r.protection_rule, isFinalRound: r.is_final_round,
-                isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off })));
+                isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off,
+                score: r.score, allCatch: r.all_catch, casLevel: r.cas_level,
+                casPassed: r.cas_passed, judgeNote: r.judge_note,
+                scorecardUrl: r.scorecard_url, subScores: r.sub_scores || {},
+              })));
               setCoaches((coa || []).map(c => ({ ...c, linkedTwirlers: c.linked_twirlers || [], organizations: c.organizations || [] })));
               setInvites((inv || []).map(i => ({ ...i, twirlerId: i.twirler_id, coachId: i.coach_id,
                 competitionId: i.competition_id, respondedAt: i.responded_at, createdAt: i.created_at })));
