@@ -870,6 +870,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userRole, setUserRole] = useState(null); // 'family' | 'coach' | 'host' | null
   const [coachAccount, setCoachAccount] = useState(null);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -882,6 +883,12 @@ export default function App() {
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setShowPasswordReset(true);
+        setAuthUser(session?.user ?? null);
+        setAuthLoading(false);
+        return;
+      }
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
         setAuthUser(session?.user ?? null);
         if (session?.user) checkAdmin(session.user.id);
@@ -1975,6 +1982,34 @@ export default function App() {
     );
   }
 
+  // ── Password recovery → show reset form ──
+  if (showPasswordReset) {
+    return (
+      <>
+        <style>{css}</style>
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+          background: "linear-gradient(135deg, #0f172a 0%, #1a0a10 60%, #2d0a1a 100%)", padding: 20 }}>
+          <div className="card" style={{ maxWidth: 400, width: "100%", padding: "40px 32px" }}>
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+                <div style={{ width: 56, height: 56, background: "var(--navy)", borderRadius: 14,
+                  display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <BatonIcon size={36} />
+                </div>
+              </div>
+              <h2 className="serif" style={{ fontSize: 22, color: "var(--navy)", marginBottom: 6 }}>Set new password</h2>
+              <p style={{ fontSize: 13, color: "var(--slate)" }}>Choose a new password for your account.</p>
+            </div>
+            <PasswordResetForm
+              supabase={supabase}
+              onDone={() => { setShowPasswordReset(false); }}
+            />
+          </div>
+        </div>
+      </>
+    );
+  }
+
   // ── Not authenticated → show Auth screen ──
   if (!authUser) {
     return (
@@ -2249,6 +2284,58 @@ export default function App() {
 // ─── SETUP SCREEN ───────────────────────────────────────────────────────────
 
 // ─── AUTH SCREEN ─────────────────────────────────────────────────────────────
+
+function PasswordResetForm({ supabase, onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(false);
+
+  async function handleSubmit() {
+    if (password !== confirm) { setError("Passwords do not match."); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    setLoading(true);
+    setError(null);
+    const { error } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (error) { setError(error.message); return; }
+    setDone(true);
+    setTimeout(onDone, 2000);
+  }
+
+  if (done) return (
+    <div className="alert alert-success" style={{ textAlign: "center" }}>
+      <Icon name="check" size={16} color="var(--green)" />
+      <span>Password updated! Signing you in...</span>
+    </div>
+  );
+
+  return (
+    <>
+      {error && (
+        <div className="alert alert-warn" style={{ marginBottom: 16 }}>
+          <Icon name="alert" size={14} color="var(--amber)" />
+          <span style={{ fontSize: 13 }}>{error}</span>
+        </div>
+      )}
+      <div className="form-group">
+        <label className="label">New password</label>
+        <input className="input" type="password" value={password}
+          onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" autoFocus />
+      </div>
+      <div className="form-group">
+        <label className="label">Confirm password</label>
+        <input className="input" type="password" value={confirm}
+          onChange={e => setConfirm(e.target.value)} placeholder="Repeat password"
+          onKeyDown={e => e.key === "Enter" && handleSubmit()} />
+      </div>
+      <button className="btn btn-primary w-full" disabled={loading || !password || !confirm} onClick={handleSubmit}>
+        {loading ? "Updating..." : "Set New Password"}
+      </button>
+    </>
+  );
+}
 
 function AuthScreen({ onAuth, authError, setAuthError }) {
   const [mode, setMode] = useState("login"); // "login" | "signup" | "coach-signup" | "reset"
