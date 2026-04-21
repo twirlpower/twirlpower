@@ -1341,9 +1341,11 @@ export default function App() {
         ...c, orgId: c.org_id, hostId: c.host_id,
       })));
 
-      // Load competition hosts
-      const { data: hosts } = await supabase
-        .from('competition_hosts').select('*').eq('user_id', userId);
+      // Load competition hosts (all for admin, own for regular users)
+      const hostQuery = isAdmin
+        ? supabase.from('competition_hosts').select('*').order('created_at', { ascending: false })
+        : supabase.from('competition_hosts').select('*').eq('user_id', userId);
+      const { data: hosts } = await hostQuery;
       setCompetitionHosts((hosts || []).map(h => ({
         ...h, createdAt: h.created_at,
       })));
