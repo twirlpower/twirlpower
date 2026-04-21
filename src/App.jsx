@@ -2436,7 +2436,7 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode };
 
   return (
     <>
@@ -4469,6 +4469,135 @@ function SetupScreen({ onComplete, competitionHosts, registerHost, authUser, onS
 
       </div>
     </>
+  );
+}
+
+// ─── ADMIN COMPETITIONS TAB ──────────────────────────────────────────────────
+
+function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePublicCompetition, updatePublicCompetition, supabase }) {
+  const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
+
+  const sorted = [...publicCompetitions]
+    .filter(c => !search ||
+      c.name?.toLowerCase().includes(search.toLowerCase()) ||
+      c.state?.toLowerCase().includes(search.toLowerCase()) ||
+      c.orgId?.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const upcoming = sorted.filter(c => c.date >= new Date().toISOString().slice(0, 10));
+  const past = sorted.filter(c => c.date < new Date().toISOString().slice(0, 10));
+
+  function startEdit(comp) {
+    setEditingId(comp.id);
+    setEditForm({
+      name: comp.name, date: comp.date, orgId: comp.orgId || "",
+      state: comp.state || "", address: comp.address || "",
+      info: comp.info || "", sanctioned: comp.sanctioned !== false,
+    });
+  }
+
+  function renderComp(comp) {
+    const host = competitionHosts.find(h => h.id === comp.hostId);
+    const isEditing = editingId === comp.id;
+
+    return (
+      <div key={comp.id} className="card-sm mb-2">
+        {isEditing ? (
+          <div>
+            <div className="form-group"><label className="label">Name</label><input className="input" value={editForm.name} onChange={e => ef("name", e.target.value)} /></div>
+            <div className="form-row">
+              <div className="form-group"><label className="label">Date</label><input className="input" type="date" value={editForm.date} onChange={e => ef("date", e.target.value)} /></div>
+              <div className="form-group">
+                <label className="label">Organization</label>
+                <select className="select" value={editForm.orgId} onChange={e => ef("orgId", e.target.value)}>
+                  <option value="">Select org</option>
+                  {Object.values(ORGS).map(o => <option key={o.id} value={o.id}>{o.id}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="label">State</label>
+                <select className="select" value={editForm.state} onChange={e => ef("state", e.target.value)}>
+                  <option value="">Select</option>
+                  {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="form-group"><label className="label">Address</label><input className="input" value={editForm.address} onChange={e => ef("address", e.target.value)} /></div>
+            </div>
+            <div className="form-group"><label className="label">Info</label><textarea className="textarea" value={editForm.info} onChange={e => ef("info", e.target.value)} rows={2} /></div>
+            <div className="flex gap-2">
+              <button className="btn btn-primary btn-sm" onClick={() => { updatePublicCompetition(comp.id, editForm); setEditingId(null); }}>Save</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-start justify-between" style={{ gap: 8, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>{comp.name}</div>
+                <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
+                  {fmtDate(comp.date)}{comp.state ? ` · ${comp.state}` : ""}
+                  {comp.orgId && <span className="badge" style={{ marginLeft: 6, fontSize: 10, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
+                  {comp.sanctioned !== false && <span className="badge badge-green" style={{ marginLeft: 4, fontSize: 9 }}>Sanctioned</span>}
+                </div>
+                {comp.address && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>🏛 {comp.address}</div>}
+                {host && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Posted by {host.name}{host.organization ? ` · ${host.organization}` : ""}</div>}
+              </div>
+            </div>
+            <div className="flex gap-2" style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+              <button className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => startEdit(comp)}>Edit</button>
+              <button className="btn btn-danger btn-sm" style={{ fontSize: 11 }}
+                onClick={() => { if (window.confirm(`Delete "${comp.name}"?`)) deletePublicCompetition(comp.id); }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ position: "relative", marginBottom: 16 }}>
+        <input className="input" value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search competitions..." style={{ paddingLeft: 30, fontSize: 12 }} />
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+          style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+      </div>
+
+      {sorted.length === 0 ? (
+        <div className="empty-state" style={{ padding: "24px 0" }}>
+          <h3>{search ? "No competitions match your search" : "No competitions posted yet"}</h3>
+        </div>
+      ) : (
+        <>
+          {upcoming.length > 0 && (
+            <div className="mb-4">
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                Upcoming ({upcoming.length})
+              </div>
+              {upcoming.map(renderComp)}
+            </div>
+          )}
+          {past.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                Past ({past.length})
+              </div>
+              {past.map(renderComp)}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -6718,7 +6847,7 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
 
 // ─── ADMIN PAGE ──────────────────────────────────────────────────────────────
 
-function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole }) {
+function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole, publicCompetitions, deletePublicCompetition, updatePublicCompetition }) {
   const [tab, setTab] = useState("hosts");
 
   const pendingHosts = (competitionHosts || []).filter(h => !h.approved);
@@ -6726,6 +6855,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
 
   const tabs = [
     { id: "hosts", label: `Director Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
+    { id: "competitions", label: `Competitions (${(publicCompetitions || []).length})` },
     { id: "clubs", label: "Clubs" },
     { id: "accounts", label: "Accounts" },
     { id: "data", label: "Data Overview" },
@@ -6846,6 +6976,17 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
               </div>
             )}
           </div>
+        )}
+
+        {/* COMPETITIONS */}
+        {tab === "competitions" && (
+          <AdminCompetitionsTab
+            publicCompetitions={publicCompetitions || []}
+            competitionHosts={competitionHosts || []}
+            deletePublicCompetition={deletePublicCompetition}
+            updatePublicCompetition={updatePublicCompetition}
+            supabase={supabase}
+          />
         )}
 
         {/* STUDIOS */}
