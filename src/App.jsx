@@ -2254,6 +2254,7 @@ export default function App() {
   }
 
   if (twirlers.length === 0 && !guardianMode && !dataLoading && familyAccount) {
+    console.log('ADD TWIRLER SCREEN:', { twirlers: twirlers.length, guardianMode, dataLoading, familyAccountId: familyAccount?.id, familyAccountEmail: familyAccount?.email });
     return (
       <>
         <style>{css}</style>
