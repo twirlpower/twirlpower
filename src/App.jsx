@@ -1049,8 +1049,8 @@ export default function App() {
               setFamilyAccount({ ...linkedFamily, parentName: linkedFamily.parent_name,
                 additionalGuardians: linkedFamily.additional_guardians || [] });
 
-              // Load linked family's data
-              const { data: tw } = await supabase.from('twirlers').select('*').eq('family_id', linkedFamily.id);
+              // Load linked family's data via SECURITY DEFINER function (bypasses RLS)
+              const { data: tw } = await supabase.rpc('get_guardian_twirlers', { family_uuid: linkedFamily.id });
               const mappedTwirlers = (tw || []).map(t => ({
                 ...t, firstName: t.first_name,
                 classificationState: t.classification_state || {},
@@ -1245,8 +1245,8 @@ export default function App() {
             setFamilyAccount({ ...linkedFamily, parentName: linkedFamily.parent_name,
               additionalGuardians: linkedFamily.additional_guardians || [] });
 
-            // Load all the family data
-            const { data: tw } = await supabase.from('twirlers').select('*').eq('family_id', linkedFamily.id);
+            // Load all the family data via SECURITY DEFINER function (bypasses RLS)
+            const { data: tw } = await supabase.rpc('get_guardian_twirlers', { family_uuid: linkedFamily.id });
             const mappedTwirlers = (tw || []).map(t => ({
               ...t, firstName: t.first_name,
               classificationState: t.classification_state || {},
