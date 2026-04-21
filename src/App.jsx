@@ -1490,6 +1490,33 @@ export default function App() {
           ...i, twirlerId: i.twirler_id, status: i.status,
         }))
       })));
+
+      // Load family-side competitions and results for linked twirlers
+      const twirlerIds = linkedTwirlers.map(t => t.id);
+      const { data: famComps } = await supabase
+        .from('competitions').select('*').in('twirler_id', twirlerIds).order('date', { ascending: false });
+      setCompetitions((famComps || []).map(c => ({
+        ...c, orgId: c.org_id, fromPublic: c.from_public
+      })));
+
+      const { data: famResults } = await supabase
+        .from('results').select('*').in('twirler_id', twirlerIds);
+      setResults((famResults || []).map(r => ({
+        ...r, orgId: r.org_id, twirlerId: r.twirler_id,
+        competitionId: r.competition_id,
+        classificationLevelEntered: r.classification_level_entered,
+        protectionRule: r.protection_rule,
+        isFinalRound: r.is_final_round,
+        isPageant: r.is_pageant,
+        isTwirlOff: r.is_twirl_off,
+        score: r.score,
+        allCatch: r.all_catch,
+        casLevel: r.cas_level,
+        casPassed: r.cas_passed,
+        judgeNote: r.judge_note,
+        scorecardUrl: r.scorecard_url,
+        subScores: r.sub_scores,
+      })));
     }
 
     // Load pending link requests (twirlers invited to this coach)
@@ -2168,6 +2195,8 @@ export default function App() {
         setCoachAccount={setCoachAccount}
         twirlers={twirlers}
         setTwirlers={setTwirlers}
+        competitions={competitions}
+        results={results}
         coachCompetitions={coachCompetitions}
         coachClubs={coachClubs}
         setCoachClubs={setCoachClubs}
@@ -2851,7 +2880,7 @@ function CoachSetupScreen({ authUser, onComplete }) {
 
 // ─── COACH APP ────────────────────────────────────────────────────────────────
 
-function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirlers, coachCompetitions,
+function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirlers, competitions, results, coachCompetitions,
   coachClubs, setCoachClubs, coachClubClaims, setCoachClubClaims,
   pendingClubMembers, setPendingClubMembers,
   invites, progress, darkMode, setDarkMode, isAdmin, onSignOut, supabase, loadCoachData,
@@ -3074,8 +3103,8 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
             coachClubClaims={coachClubClaims} setCoachClubClaims={setCoachClubClaims}
             loadCoachData={loadCoachData} twirlers={twirlers}
             pendingClubMembers={pendingClubMembers} setPendingClubMembers={setPendingClubMembers} />}
-          {page === "competitions" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
-          {page === "history" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
+          {page === "competitions" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
+          {page === "history" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
           {page === "upcoming" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} initialTab="upcoming" />}
           {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} coachClubs={coachClubs} />}
@@ -3422,7 +3451,7 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
 
 // ─── COACH HISTORY PAGE ───────────────────────────────────────────────────────
 
-function CoachCompetitionsPage({ coachCompetitions, twirlers, activeTwirler, setPage, publicCompetitions, familyAccount, addAttendee, attendees, registerHost, initialTab }) {
+function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage, publicCompetitions, familyAccount, addAttendee, attendees, registerHost, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'history');
 
   return (
@@ -3443,7 +3472,7 @@ function CoachCompetitionsPage({ coachCompetitions, twirlers, activeTwirler, set
         ))}
       </div>
       {tab === 'history' && (
-        <CoachHistoryPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />
+        <CoachHistoryPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />
       )}
       {tab === 'upcoming' && (
         <UpcomingCompetitionsPage publicCompetitions={publicCompetitions || []} familyAccount={familyAccount} addAttendee={addAttendee} attendees={attendees || []} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} registerHost={registerHost} addCompetition={() => {}} />
@@ -3452,10 +3481,17 @@ function CoachCompetitionsPage({ coachCompetitions, twirlers, activeTwirler, set
   );
 }
 
-function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler, setPage }) {
+function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage }) {
   const [filterTwirler, setFilterTwirler] = useState("");
+  const [tab, setTab] = useState("family"); // "family" | "coach"
 
-  const comps = (coachCompetitions || [])
+  // Family-entered competitions (from the competitions + results tables)
+  const famComps = (competitions || [])
+    .filter(c => !filterTwirler || c.twirler_id === filterTwirler)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Coach-created competitions
+  const coachComps = (coachCompetitions || [])
     .filter(c => !filterTwirler || (c.invites || []).some(i => i.twirler_id === filterTwirler))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -3464,60 +3500,109 @@ function CoachHistoryPage({ coachCompetitions, twirlers, activeTwirler, setPage 
       <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title">Competition History</h1>
-          <p className="page-sub">Competitions you've created and invited twirlers to</p>
+          <p className="page-sub">View competition history for your twirlers</p>
         </div>
         <button className="btn btn-primary btn-sm" onClick={() => setPage("create-competition")}>
           + Create Competition
         </button>
       </div>
 
-      <div className="filter-bar mb-4">
+      <div className="filter-bar mb-4" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <select className="select" value={filterTwirler} onChange={e => setFilterTwirler(e.target.value)}>
           <option value="">All twirlers</option>
           {twirlers.map(t => <option key={t.id} value={t.id}>{t.firstName}</option>)}
         </select>
+        <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', borderRadius: 8, padding: 3 }}>
+          {[{ id: 'family', label: 'Twirler History' }, { id: 'coach', label: 'My Competitions' }].map(t => (
+            <button key={t.id} className={`btn btn-sm ${tab === t.id ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setTab(t.id)} style={{ fontSize: 12 }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {comps.length === 0 ? (
-        <div className="empty-state">
-          <h3>No competitions yet</h3>
-          <p>Create competition invites from the athlete cards on your dashboard.</p>
-        </div>
-      ) : comps.map(c => (
-        <div key={c.id} className="card mb-3">
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{c.name}</div>
-              <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>
-                {fmtDate(c.date)}{c.start_time ? ` · ${c.start_time}` : ""}{c.state ? ` · ${c.state}` : ""}{c.venue ? ` · ${c.venue}` : ""}{c.location ? ` · ${c.location}` : ""}
-                {c.org_id && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{c.org_id}</span>}
-              </div>
-            </div>
+      {tab === "family" ? (
+        famComps.length === 0 ? (
+          <div className="empty-state">
+            <h3>No competition history</h3>
+            <p>{filterTwirler ? "No competitions found for this twirler." : "Competition results entered by families will appear here."}</p>
           </div>
-          {(c.invites || []).length > 0 && (
-            <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-                Invites
+        ) : famComps.map(c => {
+          const twirler = twirlers.find(t => t.id === c.twirler_id);
+          const compResults = (results || []).filter(r => r.competitionId === c.id);
+          return (
+            <div key={c.id} className="card mb-3">
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{c.name}</div>
+                  <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>
+                    {fmtDate(c.date)}{c.location ? ` · ${c.location}` : ""}
+                    {c.orgId && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{c.orgId}</span>}
+                  </div>
+                </div>
+                {!filterTwirler && twirler && (
+                  <span className="badge badge-brand" style={{ fontSize: 11 }}>{twirler.firstName}</span>
+                )}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {c.invites.map(i => {
-                  const t = twirlers.find(tw => tw.id === i.twirler_id);
-                  const color = i.status === 'accepted' ? "var(--green)" : i.status === 'declined' ? "var(--red)" : "var(--amber)";
-                  return (
-                    <div key={i.id} style={{ padding: "4px 10px", borderRadius: 20, background: "var(--bg)",
-                      border: `1px solid ${color}`, fontSize: 12 }}>
-                      {t?.firstName || "Unknown"}
-                      <span style={{ marginLeft: 6, color, fontWeight: 600, fontSize: 10 }}>
-                        {i.status === 'accepted' ? '✓' : i.status === 'declined' ? '✗' : '⏳'}
-                      </span>
+              {compResults.length > 0 && (
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                  {compResults.map(r => (
+                    <div key={r.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", minWidth: 120 }}>{r.event}</span>
+                      {r.placement && <span className="badge badge-brand" style={{ fontSize: 11 }}>#{r.placement}</span>}
+                      {r.score != null && <span style={{ fontSize: 12, color: "var(--slate)" }}>Score: {r.score}</span>}
+                      {r.allCatch && <span className="badge" style={{ fontSize: 10, background: "var(--green-light, #d1fae5)", color: "var(--green, #059669)" }}>All Catch</span>}
+                      {r.casLevel && <span style={{ fontSize: 11, color: "var(--muted)" }}>CAS: {r.casLevel}{r.casPassed ? " ✓" : ""}</span>}
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })
+      ) : (
+        coachComps.length === 0 ? (
+          <div className="empty-state">
+            <h3>No competitions yet</h3>
+            <p>Create competition invites from the athlete cards on your dashboard.</p>
+          </div>
+        ) : coachComps.map(c => (
+          <div key={c.id} className="card mb-3">
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{c.name}</div>
+                <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>
+                  {fmtDate(c.date)}{c.start_time ? ` · ${c.start_time}` : ""}{c.state ? ` · ${c.state}` : ""}{c.venue ? ` · ${c.venue}` : ""}{c.location ? ` · ${c.location}` : ""}
+                  {c.org_id && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{c.org_id}</span>}
+                </div>
               </div>
             </div>
-          )}
-        </div>
-      ))}
+            {(c.invites || []).length > 0 && (
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                  Invites
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {c.invites.map(i => {
+                    const t = twirlers.find(tw => tw.id === i.twirler_id);
+                    const color = i.status === 'accepted' ? "var(--green)" : i.status === 'declined' ? "var(--red)" : "var(--amber)";
+                    return (
+                      <div key={i.id} style={{ padding: "4px 10px", borderRadius: 20, background: "var(--bg)",
+                        border: `1px solid ${color}`, fontSize: 12 }}>
+                        {t?.firstName || "Unknown"}
+                        <span style={{ marginLeft: 6, color, fontWeight: 600, fontSize: 10 }}>
+                          {i.status === 'accepted' ? '✓' : i.status === 'declined' ? '✗' : '⏳'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ))
+      )}
     </div>
   );
 }
