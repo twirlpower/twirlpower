@@ -2333,15 +2333,13 @@ export default function App() {
           </div>
         )}
         {/* Guardian mode banner */}
-        {guardianMode && (
-          <div style={{ background: guardianMode === 'co-guardian' ? "#e0e7ff" : "#fef3c7",
-            borderBottom: `2px solid ${guardianMode === 'co-guardian' ? "#818cf8" : "#f59e0b"}`,
+        {guardianMode === 'viewer' && (
+          <div style={{ background: "#fef3c7",
+            borderBottom: "2px solid #f59e0b",
             padding: "8px 16px", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 16 }}>{guardianMode === 'co-guardian' ? "👥" : "👁"}</span>
-            <span style={{ color: guardianMode === 'co-guardian' ? "#3730a3" : "#92400e", fontWeight: 500 }}>
-              {guardianMode === 'co-guardian'
-                ? `You're viewing this family's account as a co-guardian.`
-                : `You're viewing this family's account in read-only mode.`}
+            <span style={{ fontSize: 16 }}>👁</span>
+            <span style={{ color: "#92400e", fontWeight: 500 }}>
+              You're viewing this family's account in read-only mode.
             </span>
           </div>
         )}
@@ -6146,7 +6144,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
       {/* ── FAMILY ACCOUNT ── */}
       <div className="card mb-4">
         <div className="section-header">
-          <span className="section-title">Family Account — Guardians</span>
+          <span className="section-title">Parents & Guardians</span>
           {!editFamily
             ? <button className="btn btn-ghost btn-sm" onClick={() => setEditFamily(true)}><Icon name="edit" size={13} /> Edit</button>
             : <div className="flex gap-2">
@@ -6170,14 +6168,14 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
         <div className="flex items-start gap-3 mb-4">
           <div className="avatar avatar-lg" style={{ background: "#dbeafe", color: "#1d4ed8" }}>{initials(familyAccount.parentName)}</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Primary Guardian</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Primary Parent or Guardian</div>
             {editFamily ? (
               <>
                 <div className="form-row">
                   <div className="form-group"><label className="label">Name</label><input className="input" value={fForm.parentName||""} onChange={e => setFF(p => ({...p, parentName: e.target.value}))} /></div>
                   <div className="form-group"><label className="label">Relationship</label>
                     <select className="select" value={fForm.relationship||"Parent"} onChange={e => setFF(p => ({...p, relationship: e.target.value}))}>
-                      <option>Parent</option><option>Guardian</option><option>Co-Guardian</option><option>Grandparent</option><option>Other</option>
+                      <option>Parent</option><option>Guardian</option><option>Grandparent</option><option>Other</option>
                     </select>
                   </div>
                 </div>
@@ -6263,7 +6261,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
               <div className="form-group"><label className="label">Name</label><input className="input" value={guardianForm.name} onChange={e => setGF(p => ({...p, name: e.target.value}))} placeholder="Full name" /></div>
               <div className="form-group"><label className="label">Relationship</label>
                 <select className="select" value={guardianForm.relationship} onChange={e => setGF(p => ({...p, relationship: e.target.value}))}>
-                  <option>Parent</option><option>Guardian</option><option>Co-Guardian</option><option>Grandparent</option><option>Other</option>
+                  <option>Parent</option><option>Guardian</option><option>Grandparent</option><option>Other</option>
                 </select>
               </div>
             </div>
@@ -7677,7 +7675,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                           <div className="alert alert-info" style={{ marginTop: 6, padding: "8px 12px" }}>
                             <Icon name="info" size={13} color="var(--brand)" />
                             <div style={{ fontSize: 12 }}>
-                              Co-guardian on <strong>{linkedFamily.parent_name || linkedFamily.email}</strong>'s account
+                              Parent/Guardian on <strong>{linkedFamily.parent_name || linkedFamily.email}</strong>'s account
                               {guardianEntry?.relationship ? ` (${guardianEntry.relationship})` : ""}
                               . Twirlers and data are managed there.
                             </div>
@@ -7694,7 +7692,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                 {(a.additional_guardians || []).length > 0 && (
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: 6 }}>
-                      Co-Guardians ({a.additional_guardians.length})
+                      Parents & Guardians ({a.additional_guardians.length})
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       {a.additional_guardians.map((g, i) => (
@@ -7707,7 +7705,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                       ))}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>
-                      Co-guardians log in with their own email but access this family's twirlers. They don't have separate twirler records.
+                      Additional parents and guardians log in with their own email and have full access to this family's twirlers.
                     </div>
                   </div>
                 )}
