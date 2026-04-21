@@ -7309,9 +7309,35 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                         ))}
                       </div>
                     </div>
-                  ) : (
-                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>No twirlers on this account</div>
-                  )
+                  ) : (() => {
+                    // Check if this person is a co-guardian on another family account
+                    const linkedFamily = accounts.find(other =>
+                      other.id !== a.id &&
+                      (other.additional_guardians || []).some(g =>
+                        g.email?.toLowerCase() === a.email?.toLowerCase()
+                      )
+                    );
+                    const guardianEntry = linkedFamily
+                      ? (linkedFamily.additional_guardians || []).find(g =>
+                          g.email?.toLowerCase() === a.email?.toLowerCase()
+                        )
+                      : null;
+                    return (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, color: "var(--muted)" }}>No twirlers on this account</div>
+                        {linkedFamily && (
+                          <div className="alert alert-info" style={{ marginTop: 6, padding: "8px 12px" }}>
+                            <Icon name="info" size={13} color="var(--brand)" />
+                            <div style={{ fontSize: 12 }}>
+                              Co-guardian on <strong>{linkedFamily.parent_name || linkedFamily.email}</strong>'s account
+                              {guardianEntry?.relationship ? ` (${guardianEntry.relationship})` : ""}
+                              . Twirlers and data are managed there.
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>Loading twirlers...</div>
                 )}
