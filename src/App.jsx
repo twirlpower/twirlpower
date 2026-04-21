@@ -1037,7 +1037,6 @@ export default function App() {
 
         // ── Coach invite: store pending coach_id, let family flow continue normally ──
         if (invite && invite.invite_type === 'coach' && invite.coach_id) {
-          console.log('[DEBUG loadAllData] Coach invite found, storing coach_id:', invite.coach_id);
           sessionStorage.setItem('tp_pending_coach_id', invite.coach_id);
           await supabase.from('family_invites')
             .update({ accepted_at: new Date().toISOString(), accepted_by_user_id: userId })
@@ -1698,8 +1697,31 @@ export default function App() {
     setActiveTwirlerId(t.id);
 
     // If there's a pending coach invite, auto-create the coach link
-    const pendingCoachId = sessionStorage.getItem('tp_pending_coach_id');
-    console.log('[DEBUG addTwirler] tp_pending_coach_id:', pendingCoachId);
+    let pendingCoachId = sessionStorage.getItem('tp_pending_coach_id');
+
+    // Fallback: if sessionStorage lost the coach_id (e.g. auth redirect),
+    // check family_invites by email for any unaccepted coach invite
+    if (!pendingCoachId && fa.email) {
+      const { data: pendingInvite } = await supabase
+        .from('family_invites')
+        .select('coach_id')
+        .eq('guardian_email', fa.email.toLowerCase())
+        .eq('invite_type', 'coach')
+        .is('accepted_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      if (pendingInvite?.coach_id) {
+        pendingCoachId = pendingInvite.coach_id;
+        // Mark the invite as accepted
+        await supabase.from('family_invites')
+          .update({ accepted_at: new Date().toISOString(), accepted_by_user_id: authUser?.id })
+          .eq('guardian_email', fa.email.toLowerCase())
+          .eq('invite_type', 'coach')
+          .is('accepted_at', null);
+      }
+    }
+
     if (pendingCoachId) {
       await supabase.from('coach_athlete_links').insert({
         coach_id: pendingCoachId,
