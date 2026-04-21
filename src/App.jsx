@@ -868,6 +868,17 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [pendingInviteToken, setPendingInviteToken] = useState(() => {
+    // Read invite token from URL on first load
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('invite');
+    if (token) {
+      // Store in sessionStorage and clean URL
+      sessionStorage.setItem('tp_invite_token', token);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    return token || sessionStorage.getItem('tp_invite_token') || null;
+  });
   const [userRole, setUserRole] = useState(null); // 'family' | 'coach' | 'host' | null
   const [coachAccount, setCoachAccount] = useState(null);
   const [showPasswordReset, setShowPasswordReset] = useState(false);
@@ -996,6 +1007,104 @@ export default function App() {
 
       const role = roleData?.role || 'family';
       setUserRole(role);
+
+      // ── Process pending invite token ──
+      const inviteToken = pendingInviteToken || sessionStorage.getItem('tp_invite_token');
+      if (inviteToken && role === 'family') {
+        const { data: invite } = await supabase
+          .from('family_invites')
+          .select('*, family_accounts(*)')
+          .eq('token', inviteToken)
+          .is('accepted_at', null)
+          .gt('expires_at', new Date().toISOString())
+          .single();
+
+        if (invite && invite.family_accounts) {
+          const linkedFamily = invite.family_accounts;
+          const userAuthData = await supabase.auth.getUser();
+          const userEmail = userAuthData.data?.user?.email;
+
+          // Add this user to the family's additional_guardians if not already there
+          const existingGuardians = linkedFamily.additional_guardians || [];
+          const alreadyLinked = existingGuardians.some(g =>
+            g.email?.toLowerCase() === userEmail?.toLowerCase()
+          );
+
+          if (!alreadyLinked) {
+            const newGuardian = {
+              id: uid(),
+              name: invite.guardian_name || userEmail,
+              email: userEmail,
+              phone: invite.guardian_phone || '',
+              relationship: invite.relationship || 'Parent',
+              confirmed: true,
+            };
+            await supabase.from('family_accounts')
+              .update({ additional_guardians: [...existingGuardians, newGuardian] })
+              .eq('id', linkedFamily.id);
+          } else {
+            // Mark existing guardian as confirmed
+            const updatedGuardians = existingGuardians.map(g =>
+              g.email?.toLowerCase() === userEmail?.toLowerCase()
+                ? { ...g, confirmed: true }
+                : g
+            );
+            await supabase.from('family_accounts')
+              .update({ additional_guardians: updatedGuardians })
+              .eq('id', linkedFamily.id);
+          }
+
+          // Mark invite as accepted
+          await supabase.from('family_invites')
+            .update({ accepted_at: new Date().toISOString(), accepted_by_user_id: userId })
+            .eq('token', inviteToken);
+
+          // Clear token
+          sessionStorage.removeItem('tp_invite_token');
+          setPendingInviteToken(null);
+
+          // Set guardian mode and load linked family data
+          const rel = invite.relationship || 'Parent';
+          const isCoGuardian = ['Parent', 'Guardian', 'Co-Guardian'].includes(rel);
+          setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
+          setFamilyAccount({ ...linkedFamily, parentName: linkedFamily.parent_name,
+            additionalGuardians: linkedFamily.additional_guardians || [] });
+
+          const { data: tw } = await supabase.rpc('get_guardian_twirlers', { family_uuid: linkedFamily.id });
+          const mappedTwirlers = (tw || []).map(t => ({
+            ...t, firstName: t.first_name,
+            classificationState: t.classification_state || {},
+            classificationHistory: t.classification_history || [],
+            regularEvents: t.regular_events || [],
+            organizations: t.organizations || [],
+          }));
+          setTwirlers(mappedTwirlers);
+
+          if (mappedTwirlers.length > 0) {
+            const twirlerIds = mappedTwirlers.map(t => t.id);
+            const [{ data: comps }, { data: res }] = await Promise.all([
+              supabase.rpc('get_guardian_competitions', { twirler_ids: twirlerIds }),
+              supabase.rpc('get_guardian_results', { twirler_ids: twirlerIds }),
+            ]);
+            setCompetitions((comps || []).map(c => ({ ...c, orgId: c.org_id, fromPublic: c.from_public })));
+            setResults((res || []).map(r => ({
+              ...r, orgId: r.org_id, twirlerId: r.twirler_id, competitionId: r.competition_id,
+              classificationLevelEntered: r.classification_level_entered,
+              protectionRule: r.protection_rule, isFinalRound: r.is_final_round,
+              isPageant: r.is_pageant, isTwirlOff: r.is_twirl_off,
+              score: r.score, allCatch: r.all_catch, casLevel: r.cas_level,
+              casPassed: r.cas_passed, judgeNote: r.judge_note,
+              scorecardUrl: r.scorecard_url, subScores: r.sub_scores || {},
+            })));
+          }
+          setDataLoading(false);
+          return;
+        } else {
+          // Invalid or expired token — clear it
+          sessionStorage.removeItem('tp_invite_token');
+          setPendingInviteToken(null);
+        }
+      }
 
       // If coach — load coach data and return
       if (role === 'coach') {
@@ -5762,19 +5871,32 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
     const updated = { ...familyAccount, additionalGuardians: [...additionalGuardians, newGuardian] };
     setFamilyAccount(updated);
 
-    // Persist to Supabase
+    // Persist to Supabase — use family account id, not authUser id (works for co-guardians too)
     const { error } = await supabase.from('family_accounts')
       .update({ additional_guardians: updated.additionalGuardians })
-      .eq('user_id', authUser?.id);
+      .eq('id', familyAccount.id);
     if (error) console.error('saveGuardian error:', error);
 
-    // Send invite email if they provided an email address
+    // Create invite token in family_invites table
     if (guardianForm.email) {
+      const { data: invite } = await supabase.from('family_invites').insert({
+        family_id: familyAccount.id,
+        guardian_name: guardianForm.name,
+        guardian_email: guardianForm.email,
+        guardian_phone: guardianForm.phone || null,
+        relationship: guardianForm.relationship,
+      }).select('token').single();
+
+      const inviteUrl = invite?.token
+        ? `https://app.twirlpower.com?invite=${invite.token}`
+        : 'https://app.twirlpower.com';
+
       await sendEmail('family_invite', guardianForm.email, {
         inviterName: familyAccount.parentName || 'Your family',
         guardianName: guardianForm.name,
         relationship: guardianForm.relationship,
         athleteNames: twirlers.map(t => t.firstName).join(', '),
+        inviteUrl,
       });
     }
 
@@ -6069,11 +6191,23 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                 ) : (
                   <button className="btn btn-secondary btn-sm"
                     onClick={async () => {
+                      // Create a fresh invite token
+                      const { data: invite } = await supabase.from('family_invites').insert({
+                        family_id: familyAccount.id,
+                        guardian_name: g.name,
+                        guardian_email: g.email,
+                        guardian_phone: g.phone || null,
+                        relationship: g.relationship,
+                      }).select('token').single();
+                      const inviteUrl = invite?.token
+                        ? `https://app.twirlpower.com?invite=${invite.token}`
+                        : 'https://app.twirlpower.com';
                       await sendEmail("family_invite", g.email, {
                         inviterName: familyAccount?.parentName || "Your family",
                         guardianName: g.name,
                         relationship: g.relationship,
                         athleteNames: twirlers.map(t => t.firstName).join(", "),
+                        inviteUrl,
                       });
                       alert(`Invite resent to ${g.email}`);
                     }}
