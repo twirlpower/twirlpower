@@ -1137,6 +1137,12 @@ export default function App() {
           setCoachAccount({ ...ca, organizations: ca.organizations || [] });
           await loadCoachData(ca.id);
         }
+
+        // Load public competitions for upcoming tab
+        const { data: pubComps } = await supabase
+          .from('public_competitions').select('*').eq('approved', true).order('date', { ascending: true });
+        setPublicCompetitions((pubComps || []).map(c => ({ ...c, orgId: c.org_id, hostId: c.host_id })));
+
         setDataLoading(false);
         return;
       }
@@ -2041,6 +2047,16 @@ export default function App() {
     await supabase.from('public_competitions').delete().eq('id', compId);
   }
 
+  async function updatePublicCompetition(compId, data) {
+    const dbData = {
+      name: data.name, date: data.date, org_id: data.orgId,
+      state: data.state, address: data.address, info: data.info,
+      sanctioned: data.sanctioned,
+    };
+    setPublicCompetitions(prev => prev.map(c => c.id === compId ? { ...c, ...data } : c));
+    await supabase.from('public_competitions').update(dbData).eq('id', compId);
+  }
+
   async function addAttendee(competitionId, twirlerId) {
     if (attendees.find(a => a.competitionId === competitionId && a.twirlerId === twirlerId)) return;
     const newAttendee = { id: uid(), competitionId, twirlerId, addedAt: new Date().toISOString().slice(0,10) };
@@ -2382,6 +2398,7 @@ export default function App() {
                 registerHost={registerHost}
                 createPublicCompetition={createPublicCompetition}
                 deletePublicCompetition={deletePublicCompetition}
+                updatePublicCompetition={updatePublicCompetition}
               />
             </div>
           </div>
@@ -8883,54 +8900,52 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
             const count = attendeeCount(comp.id);
             return (
               <div key={comp.id} className="card" style={{ borderLeft: `4px solid ${orgColor(comp.orgId)}` }}>
-                <div className="flex items-start justify-between gap-3">
-                  <div style={{ flex: 1 }}>
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span style={{ fontWeight: 700, fontSize: 16 }}>{comp.name}</span>
-                      {comp.sanctioned !== false && <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
-                      {comp.sanctioned === false && <span className="badge badge-warn" style={{ fontSize: 10 }}>Unsanctioned</span>}
-                    </div>
-                    <div className="flex items-center gap-3 flex-wrap mb-2">
-                      <span style={{ fontSize: 13, color: "var(--slate)" }}>📅 {fmtDate(comp.date)}</span>
-                      {comp.state && <span style={{ fontSize: 13, color: "var(--slate)" }}>📍 {comp.state}</span>}
-                      {comp.orgId && <span className="badge" style={{ background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
-                    </div>
-                    {comp.address && (
-                      <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>
-                        🏛 {comp.address}
-                      </div>
-                    )}
-                    {comp.info && (
-                      <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6, marginBottom: 8,
-                        background: "#f8fafc", padding: "8px 12px", borderRadius: 8 }}>
-                        {comp.info}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {host && <span style={{ fontSize: 12, color: "var(--muted)" }}>Posted by {host.name}{host.organization ? ` · ${host.organization}` : ""}</span>}
-                      {count > 0 && <span style={{ fontSize: 12, color: "var(--slate)" }}>👥 {count} attending</span>}
-                    </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span style={{ fontWeight: 700, fontSize: 16 }}>{comp.name}</span>
+                    {comp.sanctioned !== false && <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
+                    {comp.sanctioned === false && <span className="badge badge-warn" style={{ fontSize: 10 }}>Unsanctioned</span>}
                   </div>
-                  <div style={{ flexShrink: 0 }}>
-                    {activeTwirler ? (
-                      attending ? (
-                        <div style={{ textAlign: "center" }}>
-                          <div className="badge badge-green" style={{ marginBottom: 6, display: "block" }}>✓ Added</div>
-                          <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
-                            onClick={() => removeAttendee(comp.id, activeTwirler.id)}>
-                            Remove
-                          </button>
-                        </div>
-                      ) : (
-                        <button className="btn btn-primary btn-sm"
-                          onClick={() => addAttendee(comp.id, activeTwirler.id)}>
-                          + Add to my competitions
+                  <div className="flex items-center gap-3 flex-wrap mb-2">
+                    <span style={{ fontSize: 13, color: "var(--slate)" }}>📅 {fmtDate(comp.date)}</span>
+                    {comp.state && <span style={{ fontSize: 13, color: "var(--slate)" }}>📍 {comp.state}</span>}
+                    {comp.orgId && <span className="badge" style={{ background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
+                  </div>
+                  {comp.address && (
+                    <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>
+                      🏛 {comp.address}
+                    </div>
+                  )}
+                  {comp.info && (
+                    <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6, marginBottom: 8,
+                      background: "#f8fafc", padding: "8px 12px", borderRadius: 8 }}>
+                      {comp.info}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {host && <span style={{ fontSize: 12, color: "var(--muted)" }}>Posted by {host.name}{host.organization ? ` · ${host.organization}` : ""}</span>}
+                    {count > 0 && <span style={{ fontSize: 12, color: "var(--slate)" }}>👥 {count} attending</span>}
+                  </div>
+                </div>
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                  {activeTwirler ? (
+                    attending ? (
+                      <div className="flex items-center gap-3">
+                        <span className="badge badge-green">✓ Added to my competitions</span>
+                        <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
+                          onClick={() => removeAttendee(comp.id, activeTwirler.id)}>
+                          Remove
                         </button>
-                      )
+                      </div>
                     ) : (
-                      <span style={{ fontSize: 12, color: "var(--muted)" }}>No twirler selected</span>
-                    )}
-                  </div>
+                      <button className="btn btn-primary btn-sm"
+                        onClick={() => addAttendee(comp.id, activeTwirler.id)}>
+                        + Add to my competitions
+                      </button>
+                    )
+                  ) : (
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>No twirler selected</span>
+                  )}
                 </div>
               </div>
             );
@@ -9141,7 +9156,7 @@ function DirectorRequestModal({ step, setStep, familyAccount, registerHost }) {
 
 // ─── HOST DASHBOARD PAGE ──────────────────────────────────────────────────────
 
-function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, twirlers, familyAccount, registerHost, createPublicCompetition, deletePublicCompetition }) {
+function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, twirlers, familyAccount, registerHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition }) {
   const [view, setView] = useState("find"); // "find" | "register" | "dashboard"
   const [hostId, setHostId] = useState(null);
 
@@ -9194,6 +9209,7 @@ function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, tw
           twirlers={twirlers}
           onCreateComp={(data) => createPublicCompetition(myHost.id, data)}
           onDeleteComp={deletePublicCompetition}
+          onEditComp={updatePublicCompetition}
         />
       )}
     </div>
@@ -9289,11 +9305,14 @@ function HostRegisterView({ onRegister, familyAccount }) {
   );
 }
 
-function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreateComp, onDeleteComp }) {
+function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreateComp, onDeleteComp, onEditComp }) {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", date: "", orgId: "", state: host.state || "", address: "", info: "", sanctioned: true });
   const cf = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const [expandedComp, setExpandedComp] = useState(null);
+  const [editingComp, setEditingComp] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
 
   function save() {
     onCreateComp({ ...form, approved: true });
@@ -9407,35 +9426,97 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                 </div>
                 {expanded && (
                   <div style={{ borderTop: "1px solid var(--border)", padding: "14px 18px" }}>
-                    {comp.address && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>🏛 {comp.address}</div>}
-                    {comp.info && <div style={{ fontSize: 13, color: "var(--navy)", marginBottom: 12, lineHeight: 1.6 }}>{comp.info}</div>}
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-                      Attendees ({compAttendees.length})
-                    </div>
-                    {compAttendees.length === 0 ? (
-                      <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>No attendees yet</div>
-                    ) : (
-                      <div className="flex gap-2 flex-wrap">
-                        {compAttendees.map((a, i) => {
-                          const t = twirlers.find(tw => tw.id === a.twirlerId);
-                          return (
-                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
-                              background: "#f0fdf4", borderRadius: 20, fontSize: 12 }}>
-                              <div className="avatar" style={{ width: 20, height: 20, fontSize: 9, background: "#bbf7d0", color: "#166534" }}>
-                                {initials(t?.firstName || "?")}
-                              </div>
-                              <span style={{ fontWeight: 500 }}>{t?.firstName || "Unknown"}</span>
-                              <span style={{ color: "var(--muted)", fontSize: 11 }}>Added {fmtDate(a.addedAt)}</span>
+                    {editingComp === comp.id ? (
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Edit Competition</div>
+                        <div className="form-group"><label className="label">Competition name</label><input className="input" value={editForm.name} onChange={e => ef("name", e.target.value)} /></div>
+                        <div className="form-row">
+                          <div className="form-group"><label className="label">Date</label><input className="input" type="date" value={editForm.date} onChange={e => ef("date", e.target.value)} /></div>
+                          <div className="form-group">
+                            <label className="label">Organization</label>
+                            <select className="select" value={editForm.orgId} onChange={e => ef("orgId", e.target.value)}>
+                              <option value="">Select org</option>
+                              {Object.values(ORGS).map(o => <option key={o.id} value={o.id}>{o.id} — {o.name}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="form-row">
+                          <div className="form-group">
+                            <label className="label">State</label>
+                            <select className="select" value={editForm.state} onChange={e => ef("state", e.target.value)}>
+                              <option value="">Select state</option>
+                              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                          <div className="form-group">
+                            <label className="label">Sanctioned</label>
+                            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                              {[{ val: true, label: "Sanctioned" }, { val: false, label: "Unsanctioned" }].map(opt => (
+                                <div key={String(opt.val)} onClick={() => ef("sanctioned", opt.val)}
+                                  style={{ flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                                    border: `2px solid ${editForm.sanctioned === opt.val ? "var(--brand)" : "var(--border)"}`,
+                                    background: editForm.sanctioned === opt.val ? "var(--brand-light)" : "#f8fafc",
+                                    fontSize: 12, fontWeight: editForm.sanctioned === opt.val ? 600 : 400,
+                                    color: editForm.sanctioned === opt.val ? "var(--brand2)" : "var(--navy)" }}>
+                                  {editForm.sanctioned === opt.val ? "✓ " : ""}{opt.label}
+                                </div>
+                              ))}
                             </div>
-                          );
-                        })}
+                          </div>
+                        </div>
+                        <div className="form-group"><label className="label">Venue address</label><input className="input" value={editForm.address} onChange={e => ef("address", e.target.value)} /></div>
+                        <div className="form-group"><label className="label">Competition info</label><textarea className="textarea" value={editForm.info} onChange={e => ef("info", e.target.value)} rows={3} /></div>
+                        <div className="flex gap-2">
+                          <button className="btn btn-primary btn-sm" disabled={!editForm.name || !editForm.date}
+                            onClick={() => { onEditComp(comp.id, editForm); setEditingComp(null); }}>
+                            Save Changes
+                          </button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => setEditingComp(null)}>Cancel</button>
+                        </div>
                       </div>
+                    ) : (
+                      <>
+                        {comp.address && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>🏛 {comp.address}</div>}
+                        {comp.info && <div style={{ fontSize: 13, color: "var(--navy)", marginBottom: 12, lineHeight: 1.6 }}>{comp.info}</div>}
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                          Attendees ({compAttendees.length})
+                        </div>
+                        {compAttendees.length === 0 ? (
+                          <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>No attendees yet</div>
+                        ) : (
+                          <div className="flex gap-2 flex-wrap">
+                            {compAttendees.map((a, i) => {
+                              const t = twirlers.find(tw => tw.id === a.twirlerId);
+                              return (
+                                <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
+                                  background: "#f0fdf4", borderRadius: 20, fontSize: 12 }}>
+                                  <div className="avatar" style={{ width: 20, height: 20, fontSize: 9, background: "#bbf7d0", color: "#166534" }}>
+                                    {initials(t?.firstName || "?")}
+                                  </div>
+                                  <span style={{ fontWeight: 500 }}>{t?.firstName || "Unknown"}</span>
+                                  <span style={{ color: "var(--muted)", fontSize: 11 }}>Added {fmtDate(a.addedAt)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <div className="flex gap-2" style={{ marginTop: 12 }}>
+                          <button className="btn btn-secondary btn-sm" onClick={() => {
+                            setEditingComp(comp.id);
+                            setEditForm({
+                              name: comp.name, date: comp.date, orgId: comp.orgId || "",
+                              state: comp.state || "", address: comp.address || "",
+                              info: comp.info || "", sanctioned: comp.sanctioned !== false,
+                            });
+                          }}>
+                            <Icon name="edit" size={13} /> Edit
+                          </button>
+                          <button className="btn btn-danger btn-sm" onClick={() => onDeleteComp(comp.id)}>
+                            <Icon name="trash" size={13} /> Delete
+                          </button>
+                        </div>
+                      </>
                     )}
-                    <div style={{ marginTop: 12 }}>
-                      <button className="btn btn-danger btn-sm" onClick={() => onDeleteComp(comp.id)}>
-                        <Icon name="trash" size={13} /> Delete listing
-                      </button>
-                    </div>
                   </div>
                 )}
               </div>
