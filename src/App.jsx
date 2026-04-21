@@ -1008,9 +1008,8 @@ export default function App() {
 
     try {
       // Load user role — seed from auth metadata if missing
-      let { data: roleData, error: roleErr } = await supabase
+      let { data: roleData } = await supabase
         .from('user_roles').select('role').eq('user_id', userId).single();
-      console.log('[DEBUG] user_roles query:', roleData, 'error:', roleErr);
 
       if (!roleData) {
         // Role row missing — read from auth user metadata and create it
@@ -1021,7 +1020,6 @@ export default function App() {
       }
 
       const role = roleData?.role || 'family';
-      console.log('[DEBUG] resolved role:', role);
       setUserRole(role);
 
       // ── Process pending invite token ──
@@ -2304,8 +2302,8 @@ export default function App() {
   }
 
   // ── Authenticated but no family profile yet → show SetupScreen ──
-  // Skip for co-guardians/viewers who are linked to another family account
-  if (!familyAccount && !guardianMode) {
+  // Skip for co-guardians/viewers, coaches, and directors
+  if (!familyAccount && !guardianMode && userRole !== 'host' && userRole !== 'coach') {
     return (
       <SetupScreen
         onComplete={async data => {
