@@ -6958,10 +6958,11 @@ function DataOverviewTab({ supabase, competitionHosts, pendingHosts, setPage }) 
 // ─── ACCOUNTS TAB (ADMIN) ─────────────────────────────────────────────────────
 
 function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
-  const [accountType, setAccountType] = useState("family"); // "family" | "coach" | "host"
+  const [accountType, setAccountType] = useState("family"); // "family" | "coach" | "host" | "twirlers"
   const [accounts, setAccounts] = useState([]);
   const [coachAccounts, setCoachAccounts] = useState([]);
   const [hostAccounts, setHostAccounts] = useState([]);
+  const [allTwirlers, setAllTwirlers] = useState([]);
   const [clubOwnerIds, setClubOwnerIds] = useState(new Set());
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -6980,18 +6981,20 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
       setLoading(true);
       try {
         const [{ data: accts, error: e1 }, { data: coaches }, { data: adms, error: e3 },
-               { data: hosts }, { data: owners }] = await Promise.all([
+               { data: hosts }, { data: owners }, { data: tw }] = await Promise.all([
           supabase.from('family_accounts').select('*').order('created_at', { ascending: false }),
           supabase.from('coach_accounts').select('*').order('created_at', { ascending: false }),
           supabase.from('admins').select('user_id'),
           supabase.from('competition_hosts').select('*').order('created_at', { ascending: false }),
           supabase.from('club_coaches').select('coach_id').eq('role', 'owner').eq('status', 'active'),
+          supabase.from('twirlers').select('id, first_name, dob, organizations, family_id').order('created_at', { ascending: false }),
         ]);
         if (e1) throw e1;
         if (e3) throw e3;
         setAccounts(accts || []);
         setCoachAccounts(coaches || []);
         setHostAccounts(hosts || []);
+        setAllTwirlers((tw || []).map(t => ({ ...t, firstName: t.first_name })));
         setClubOwnerIds(new Set((owners || []).map(o => o.coach_id)));
         setAdmins((adms || []).map(a => a.user_id));
       } catch (err) {
@@ -7104,6 +7107,7 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
             { id: "family", label: `Families (${accounts.length})` },
             { id: "coach", label: `Coaches (${coachAccounts.length})` },
             { id: "host", label: `Directors (${hostAccounts.length})` },
+            { id: "twirlers", label: `Twirlers (${allTwirlers.length})` },
           ].map(t => (
             <button key={t.id} onClick={() => { setAccountType(t.id); setSearch(""); setExpandedId(null); }}
               style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
@@ -7331,6 +7335,65 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Twirlers list */}
+      {accountType === "twirlers" && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: "var(--slate)" }}>{allTwirlers.length} twirler{allTwirlers.length !== 1 ? "s" : ""}</span>
+            <div style={{ position: "relative" }}>
+              <input className="input" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search name or org..." style={{ paddingLeft: 30, width: 220, fontSize: 12 }} />
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+                style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+            </div>
+          </div>
+          {allTwirlers.filter(t =>
+            !search ||
+            t.first_name?.toLowerCase().includes(search.toLowerCase()) ||
+            (t.organizations || []).some(o => o.toLowerCase().includes(search.toLowerCase()))
+          ).map(t => {
+            const family = accounts.find(a => a.id === t.family_id);
+            return (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                border: "1px solid var(--border)", borderRadius: 8, marginBottom: 6, background: "var(--card)" }}>
+                <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0,
+                  background: "var(--brand-light)", color: "var(--brand)" }}>
+                  {initials(t.first_name || "?")}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>{t.first_name}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                    {family ? `${family.parent_name || family.email}` : "Unknown family"}
+                    {t.dob ? ` · Age ${getAge(t.dob)}` : ""}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                  {(t.organizations || []).map(o => (
+                    <span key={o} className="badge" style={{ fontSize: 9, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>
+                  ))}
+                  <button className="btn btn-danger btn-sm"
+                    onClick={() => {
+                      if (window.confirm(`Delete twirler "${t.first_name}"? This will also delete all their competitions and results. This cannot be undone.`)) {
+                        Promise.all([
+                          supabase.from("results").delete().eq("twirler_id", t.id),
+                          supabase.from("competitions").delete().eq("twirler_id", t.id),
+                        ]).then(() => supabase.from("twirlers").delete().eq("id", t.id)).then(() => {
+                          setAllTwirlers(prev => prev.filter(x => x.id !== t.id));
+                        });
+                      }
+                    }}
+                    style={{ fontSize: 10, padding: "2px 8px" }}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
