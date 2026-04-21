@@ -3809,124 +3809,135 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
 }
 
 function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
-  const [tab, setTab] = useState('existing'); // 'existing' | 'new'
-  // Existing users tab
-  const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState([]); // [{family, twirlers}]
-  const [searching, setSearching] = useState(false);
-  const [selected, setSelected] = useState([]); // array of {family, twirler}
-  const [sending, setSending] = useState(false);
-  const [sentCount, setSentCount] = useState(null);
-  // New families tab
   const [emailInput, setEmailInput] = useState('');
-  const [newEmails, setNewEmails] = useState([]); // array of email strings
-  const [sendingNew, setSendingNew] = useState(false);
-  const [sentNew, setSentNew] = useState(false);
+  const [emails, setEmails] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [results, setResults] = useState(null); // { sent: [], existing: [], failed: [] }
+  const [pendingLinks, setPendingLinks] = useState([]);
+  const [loadingPending, setLoadingPending] = useState(true);
+  const [resending, setResending] = useState({});
 
-  async function doSearch() {
-    if (search.length < 2) return;
-    setSearching(true);
-    const { data: families } = await supabase
-      .from('family_accounts')
-      .select('id, parent_name, email, state')
-      .or(`email.ilike.%${search}%,parent_name.ilike.%${search}%`)
-      .limit(10);
-    if (!families?.length) { setSearchResults([]); setSearching(false); return; }
-    const { data: twirlers } = await supabase
-      .from('twirlers')
-      .select('id, first_name, organizations')
-      .in('family_id', families.map(f => f.id));
-    setSearchResults(families.map(f => ({
-      family: f,
-      twirlers: (twirlers || []).filter(t => t.family_id === f.id),
-    })).filter(r => r.twirlers.length > 0));
-    setSearching(false);
+  useEffect(() => { loadPending(); }, []);
+
+  async function loadPending() {
+    setLoadingPending(true);
+    const { data: links } = await supabase
+      .from('coach_athlete_links')
+      .select('*, twirlers(first_name), family_accounts(parent_name, email)')
+      .eq('coach_id', coachAccount.id)
+      .eq('status', 'pending')
+      .eq('invited_by', 'coach')
+      .order('created_at', { ascending: false });
+    setPendingLinks(links || []);
+    setLoadingPending(false);
   }
 
-  function toggleTwirler(family, twirler) {
-    const key = twirler.id;
-    if (selected.find(s => s.twirler.id === key)) {
-      setSelected(prev => prev.filter(s => s.twirler.id !== key));
-    } else {
-      setSelected(prev => [...prev, { family, twirler }]);
-    }
-  }
-
-  function selectAllFromFamily(family, twirlers) {
-    const alreadyAll = twirlers.every(t => selected.find(s => s.twirler.id === t.id));
-    if (alreadyAll) {
-      setSelected(prev => prev.filter(s => !twirlers.find(t => t.id === s.twirler.id)));
-    } else {
-      const toAdd = twirlers.filter(t => !selected.find(s => s.twirler.id === t.id))
-        .map(t => ({ family, twirler: t }));
-      setSelected(prev => [...prev, ...toAdd]);
-    }
-  }
-
-  async function sendInvites() {
-    if (!selected.length) return;
-    setSending(true);
-    const links = selected.map(({ family, twirler }) => ({
-      coach_id: coachAccount.id,
-      twirler_id: twirler.id,
-      family_id: family.id,
-      status: 'pending',
-      invited_by: 'coach',
-    }));
-    await supabase.from('coach_athlete_links').upsert(links, { onConflict: 'coach_id,twirler_id', ignoreDuplicates: true });
-    // Send emails grouped by family
-    const byFamily = {};
-    for (const { family, twirler } of selected) {
-      if (!byFamily[family.id]) byFamily[family.id] = { family, twirlers: [] };
-      byFamily[family.id].twirlers.push(twirler);
-    }
-    for (const { family, twirlers } of Object.values(byFamily)) {
-      await sendEmail('coach_link_request', family.email, {
-        coachName: coachAccount.name, coachStudio: coachAccount.studio,
-        coachOrgs: coachAccount.organizations,
-        athleteName: twirlers.map(t => t.first_name).join(', '),
-      });
-    }
-    await loadCoachData(coachAccount.id);
-    setSentCount(selected.length);
-    setSelected([]);
-    setSearchResults([]);
-    setSearch('');
-    setSending(false);
-  }
-
-  function addEmailFromInput() {
-    const emails = emailInput.split(/[\s,;]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@'));
-    const unique = emails.filter(e => !newEmails.includes(e));
-    if (unique.length) setNewEmails(prev => [...prev, ...unique]);
+  function addEmails() {
+    const parsed = emailInput.split(/[\s,;]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@'));
+    const unique = parsed.filter(e => !emails.includes(e));
+    if (unique.length) setEmails(prev => [...prev, ...unique]);
     setEmailInput('');
   }
 
-  async function sendNewInvites() {
-    if (!newEmails.length) return;
-    setSendingNew(true);
-    for (const email of newEmails) {
-      // Create a family_invites token that also carries the coach link
-      const { data: invite } = await supabase.from('family_invites').insert({
-        guardian_email: email,
-        coach_id: coachAccount.id,
-        invite_type: 'coach',
-        relationship: 'Parent',
-      }).select('token').single();
+  async function sendInvites() {
+    if (!emails.length) return;
+    setSending(true);
+    const sent = [], existing = [], failed = [];
 
-      const inviteUrl = invite?.token
-        ? `https://app.twirlpower.com?invite=${invite.token}`
-        : 'https://app.twirlpower.com';
+    for (const email of emails) {
+      try {
+        // Check if family exists
+        const { data: families } = await supabase
+          .from('family_accounts')
+          .select('id, parent_name, email')
+          .eq('email', email)
+          .limit(1);
 
-      await sendEmail('coach_invite_new_family', email, {
-        coachName: coachAccount.name,
-        coachStudio: coachAccount.studio,
-        coachOrgs: coachAccount.organizations,
-        inviteUrl,
-      });
+        const family = families?.[0];
+
+        if (family) {
+          // Get their twirlers
+          const { data: twirlers } = await supabase
+            .from('twirlers')
+            .select('id, first_name')
+            .eq('family_id', family.id);
+
+          if (twirlers?.length) {
+            // Create pending coach_athlete_links for each twirler
+            const links = twirlers.map(t => ({
+              coach_id: coachAccount.id,
+              twirler_id: t.id,
+              family_id: family.id,
+              status: 'pending',
+              invited_by: 'coach',
+            }));
+            await supabase.from('coach_athlete_links')
+              .upsert(links, { onConflict: 'coach_id,twirler_id', ignoreDuplicates: true });
+
+            // Send connection request email
+            await sendEmail('coach_link_request', family.email, {
+              coachName: coachAccount.name,
+              coachStudio: coachAccount.studio,
+              coachOrgs: coachAccount.organizations,
+              athleteName: twirlers.map(t => t.first_name).join(', '),
+            });
+            existing.push({ email, name: family.parent_name, twirlers: twirlers.map(t => t.first_name) });
+          } else {
+            // Family exists but no twirlers yet — send token invite
+            const { data: invite } = await supabase.from('family_invites').insert({
+              guardian_email: email,
+              coach_id: coachAccount.id,
+              invite_type: 'coach',
+              relationship: 'Parent',
+            }).select('token').single();
+            const inviteUrl = invite?.token ? `https://app.twirlpower.com?invite=${invite.token}` : 'https://app.twirlpower.com';
+            await sendEmail('coach_invite_new_family', email, {
+              coachName: coachAccount.name, coachStudio: coachAccount.studio,
+              coachOrgs: coachAccount.organizations, inviteUrl,
+            });
+            sent.push({ email, isNew: false });
+          }
+        } else {
+          // New family — create token invite
+          const { data: invite } = await supabase.from('family_invites').insert({
+            guardian_email: email,
+            coach_id: coachAccount.id,
+            invite_type: 'coach',
+            relationship: 'Parent',
+          }).select('token').single();
+          const inviteUrl = invite?.token ? `https://app.twirlpower.com?invite=${invite.token}` : 'https://app.twirlpower.com';
+          await sendEmail('coach_invite_new_family', email, {
+            coachName: coachAccount.name, coachStudio: coachAccount.studio,
+            coachOrgs: coachAccount.organizations, inviteUrl,
+          });
+          sent.push({ email, isNew: true });
+        }
+      } catch (err) {
+        failed.push(email);
+      }
     }
-    setSentNew(true);
-    setSendingNew(false);
+
+    await loadCoachData(coachAccount.id);
+    await loadPending();
+    setResults({ sent, existing, failed });
+    setEmails([]);
+    setSending(false);
+  }
+
+  async function resendInvite(link) {
+    setResending(p => ({ ...p, [link.id]: true }));
+    const family = link.family_accounts;
+    const twirlerName = link.twirlers?.first_name || 'your twirler';
+    await sendEmail('coach_link_request', family?.email, {
+      coachName: coachAccount.name, coachStudio: coachAccount.studio,
+      coachOrgs: coachAccount.organizations, athleteName: twirlerName,
+    });
+    setResending(p => ({ ...p, [link.id]: false }));
+  }
+
+  async function cancelInvite(linkId) {
+    await supabase.from('coach_athlete_links').delete().eq('id', linkId);
+    setPendingLinks(prev => prev.filter(l => l.id !== linkId));
   }
 
   return (
@@ -3934,196 +3945,151 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
       <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title">Invite Twirlers</h1>
-          <p className="page-sub">Add existing TwirlPower families or invite new ones by email</p>
+          <p className="page-sub">Add families to your roster by email</p>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={() => setPage('home')}>← Back</button>
       </div>
 
-      {/* Tab switcher */}
-      <div className="flex gap-2 mb-6">
-        {[{ id: 'existing', label: '🔍 Find Existing Users' }, { id: 'new', label: '✉️ Invite New Families' }].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`btn ${tab === t.id ? 'btn-primary' : 'btn-secondary'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── EXISTING USERS ── */}
-      {tab === 'existing' && (
+      {results ? (
         <div>
-          {sentCount !== null && (
-            <div className="alert alert-success mb-4">
-              <Icon name="check" size={14} color="var(--green)" />
-              <span>✓ Sent {sentCount} invite{sentCount !== 1 ? 's' : ''}! Families will see a pending request in their notifications.</span>
-            </div>
-          )}
-
-          <div className="card mb-4">
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="label">Search by name or email</label>
-              <div className="flex gap-2">
-                <input className="input" value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="e.g. Smith or family@email.com" autoFocus
-                  onKeyDown={e => e.key === 'Enter' && doSearch()} />
-                <button className="btn btn-primary btn-sm" disabled={search.length < 2 || searching} onClick={doSearch}>
-                  {searching ? '...' : 'Search'}
-                </button>
+          {results.existing.length > 0 && (
+            <div className="card mb-4" style={{ borderLeft: '4px solid var(--brand)' }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 8 }}>
+                ✓ Connection requests sent ({results.existing.length})
               </div>
-            </div>
-          </div>
-
-          {searchResults.length > 0 && (
-            <div className="card mb-4">
-              <div className="section-header">
-                <span className="section-title">Results</span>
-                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{selected.length} selected</span>
-              </div>
-              {searchResults.map(({ family, twirlers }) => (
-                <div key={family.id} style={{ paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)' }}>{family.parent_name || family.email}</span>
-                      <span style={{ fontSize: 12, color: 'var(--muted)', marginLeft: 8 }}>{family.email}</span>
-                      {family.state && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{family.state}</span>}
-                    </div>
-                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
-                      onClick={() => selectAllFromFamily(family, twirlers)}>
-                      {twirlers.every(t => selected.find(s => s.twirler.id === t.id)) ? 'Deselect all' : 'Select all'}
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {twirlers.map(t => {
-                      const isSelected = !!selected.find(s => s.twirler.id === t.id);
-                      return (
-                        <div key={t.id} onClick={() => toggleTwirler(family, t)}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-                            borderRadius: 8, cursor: 'pointer', border: `2px solid ${isSelected ? 'var(--brand)' : 'var(--border)'}`,
-                            background: isSelected ? 'var(--brand-light)' : 'var(--bg)', transition: 'all 0.1s' }}>
-                          <div className="avatar" style={{ width: 28, height: 28, fontSize: 11,
-                            background: isSelected ? 'var(--brand)' : 'var(--slate)', color: 'white' }}>
-                            {initials(t.first_name)}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{t.first_name}</div>
-                            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{(t.organizations || []).join(', ')}</div>
-                          </div>
-                          {isSelected && <span style={{ fontSize: 16, color: 'var(--brand)', marginLeft: 4 }}>✓</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
+              <p style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 10 }}>
+                These families are already on TwirlPower and received a connection request:
+              </p>
+              {results.existing.map(r => (
+                <div key={r.email} style={{ fontSize: 13, color: 'var(--navy)', marginBottom: 4 }}>
+                  <strong>{r.name || r.email}</strong>
+                  {r.twirlers?.length > 0 && <span style={{ color: 'var(--slate)' }}> · {r.twirlers.join(', ')}</span>}
                 </div>
               ))}
             </div>
           )}
-
-          {searchResults.length === 0 && search.length >= 2 && !searching && (
-            <div className="card mb-4">
-              <p style={{ fontSize: 13, color: 'var(--muted)' }}>No families found matching "{search}". Try their email address, or use the "Invite New Families" tab to send them an email invite.</p>
+          {results.sent.length > 0 && (
+            <div className="card mb-4" style={{ borderLeft: '4px solid var(--amber)' }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 8 }}>
+                ✉️ Invites sent ({results.sent.length})
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 10 }}>
+                These emails aren't on TwirlPower yet. Once they sign up and add a twirler, they'll appear in your roster automatically:
+              </p>
+              {results.sent.map(r => (
+                <div key={r.email} style={{ fontSize: 13, color: 'var(--navy)', marginBottom: 4 }}>📧 {r.email}</div>
+              ))}
             </div>
           )}
-
-          {selected.length > 0 && (
-            <div className="card" style={{ background: 'var(--brand-light)', border: '1px solid var(--brand)' }}>
-              <div className="section-header">
-                <span className="section-title" style={{ color: 'var(--brand)' }}>Selected ({selected.length})</span>
+          {results.failed.length > 0 && (
+            <div className="card mb-4" style={{ borderLeft: '4px solid var(--red)' }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--red)', marginBottom: 8 }}>
+                Failed ({results.failed.length})
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-                {selected.map(({ family, twirler }) => (
-                  <span key={twirler.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4,
-                    padding: '4px 10px', background: 'white', borderRadius: 20,
-                    border: '1px solid var(--brand)', fontSize: 12 }}>
-                    {twirler.first_name}
-                    <span style={{ color: 'var(--muted)', fontSize: 11 }}>({family.parent_name || family.email})</span>
-                    <button onClick={() => toggleTwirler(family, twirler)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)',
-                        fontSize: 14, lineHeight: 1, padding: '0 0 0 4px' }}>×</button>
+              {results.failed.map(e => <div key={e} style={{ fontSize: 13 }}>{e}</div>)}
+            </div>
+          )}
+          <button className="btn btn-primary" onClick={() => setResults(null)}>Invite More</button>
+        </div>
+      ) : (
+        <div className="card mb-6">
+          <div className="section-header">
+            <span className="section-title">Email Addresses</span>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 16, lineHeight: 1.6 }}>
+            Enter one or more email addresses. Existing TwirlPower families will get a connection request. New families will get an invite link to create an account.
+          </p>
+          <div className="form-group">
+            <label className="label">Add emails (press Enter or comma to add)</label>
+            <div className="flex gap-2">
+              <input className="input" value={emailInput} onChange={e => setEmailInput(e.target.value)}
+                placeholder="parent@email.com" autoFocus
+                onKeyDown={e => (e.key === 'Enter' || e.key === ',') && (e.preventDefault(), addEmails())} />
+              <button className="btn btn-secondary btn-sm" onClick={addEmails} disabled={!emailInput.trim()}>Add</button>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+              Paste a comma-separated list and click Add
+            </div>
+          </div>
+
+          {emails.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--slate)', marginBottom: 8 }}>
+                {emails.length} email{emails.length !== 1 ? 's' : ''} queued:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {emails.map(e => (
+                  <span key={e} style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '4px 10px', background: 'var(--bg)', borderRadius: 20,
+                    border: '1px solid var(--border)', fontSize: 12 }}>
+                    {e}
+                    <button onClick={() => setEmails(prev => prev.filter(x => x !== e))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--muted)', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
                   </span>
                 ))}
               </div>
-              <button className="btn btn-primary" disabled={sending} onClick={sendInvites}>
-                {sending ? 'Sending...' : `Send ${selected.length} Invite Request${selected.length !== 1 ? 's' : ''}`}
-              </button>
             </div>
           )}
+
+          <button className="btn btn-primary" disabled={!emails.length || sending} onClick={sendInvites}>
+            {sending ? 'Sending...' : `Send ${emails.length ? `to ${emails.length}` : ''} Invite${emails.length !== 1 ? 's' : ''}`}
+          </button>
         </div>
       )}
 
-      {/* ── NEW FAMILIES ── */}
-      {tab === 'new' && (
-        <div>
-          {sentNew ? (
-            <div className="card" style={{ textAlign: 'center', padding: '40px 32px' }}>
-              <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-              <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: 'var(--navy)', marginBottom: 8 }}>
-                Invites sent!
-              </h2>
-              <p style={{ fontSize: 14, color: 'var(--slate)', marginBottom: 20 }}>
-                {newEmails.length} email{newEmails.length !== 1 ? 's' : ''} sent. Once they create an account and add their twirler, they'll appear in your roster automatically.
-              </p>
-              <button className="btn btn-primary" onClick={() => { setSentNew(false); setNewEmails([]); }}>
-                Invite More
-              </button>
-            </div>
-          ) : (
-            <div className="card">
-              <div className="section-header">
-                <span className="section-title">Email Addresses</span>
-              </div>
-              <p style={{ fontSize: 13, color: 'var(--slate)', marginBottom: 16, lineHeight: 1.6 }}>
-                Enter one or more email addresses. Each family will receive an email inviting them to create a TwirlPower account and connect with you.
-              </p>
-
-              <div className="form-group">
-                <label className="label">Add emails (press Enter or comma to add)</label>
-                <div className="flex gap-2">
-                  <input className="input" value={emailInput} onChange={e => setEmailInput(e.target.value)}
-                    placeholder="parent@email.com"
-                    onKeyDown={e => (e.key === 'Enter' || e.key === ',') && (e.preventDefault(), addEmailFromInput())} />
-                  <button className="btn btn-secondary btn-sm" onClick={addEmailFromInput} disabled={!emailInput.trim()}>
-                    Add
-                  </button>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-                  You can also paste a comma-separated list of emails and click Add
-                </div>
-              </div>
-
-              {newEmails.length > 0 && (
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--slate)', marginBottom: 8 }}>
-                    {newEmails.length} email{newEmails.length !== 1 ? 's' : ''} queued:
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {newEmails.map(e => (
-                      <span key={e} style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '4px 10px', background: 'var(--bg)', borderRadius: 20,
-                        border: '1px solid var(--border)', fontSize: 12 }}>
-                        {e}
-                        <button onClick={() => setNewEmails(prev => prev.filter(x => x !== e))}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer',
-                            color: 'var(--muted)', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="alert alert-info mb-4">
-                <Icon name="info" size={14} color="var(--brand)" />
-                <span style={{ fontSize: 12 }}>
-                  The invite link is personal to each family. Once they sign up and add their twirler, they'll appear in your roster automatically — no second step needed.
-                </span>
-              </div>
-
-              <button className="btn btn-primary" disabled={!newEmails.length || sendingNew} onClick={sendNewInvites}>
-                {sendingNew ? 'Sending...' : `Send ${newEmails.length || ''} Invite Email${newEmails.length !== 1 ? 's' : ''}`}
-              </button>
-            </div>
-          )}
+      {/* Pending Invites */}
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--slate)', textTransform: 'uppercase',
+          letterSpacing: '0.5px', marginBottom: 12 }}>
+          Pending Invites {!loadingPending && pendingLinks.length > 0 && `(${pendingLinks.length})`}
         </div>
-      )}
+        {loadingPending ? (
+          <div style={{ fontSize: 13, color: 'var(--muted)' }}>Loading...</div>
+        ) : pendingLinks.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--muted)', fontStyle: 'italic' }}>
+            No pending invites. Families you've invited will appear here until they accept.
+          </div>
+        ) : (
+          <div className="flex-col gap-2">
+            {pendingLinks.map(link => {
+              const family = link.family_accounts;
+              const twirler = link.twirlers;
+              return (
+                <div key={link.id} className="card-sm" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div className="avatar" style={{ background: 'var(--brand-light)', color: 'var(--brand)', flexShrink: 0 }}>
+                    {initials(twirler?.first_name || family?.parent_name || '?')}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--navy)' }}>
+                      {twirler?.first_name || '—'}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--slate)' }}>
+                      {family?.parent_name || family?.email || 'Pending signup'}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                      Invited {fmtDate(link.created_at)}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="btn btn-secondary btn-sm"
+                      disabled={resending[link.id]}
+                      onClick={() => resendInvite(link)}
+                      style={{ fontSize: 11 }}>
+                      {resending[link.id] ? '...' : 'Resend'}
+                    </button>
+                    <button className="btn btn-danger btn-sm"
+                      onClick={() => { if (window.confirm('Cancel this invite?')) cancelInvite(link.id); }}
+                      style={{ fontSize: 11 }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
