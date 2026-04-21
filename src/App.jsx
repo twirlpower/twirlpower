@@ -2908,7 +2908,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
-    { id: "roster", label: "Club Roster", icon: "users" },
+    { id: "roster", label: "My Roster", icon: "users" },
     { id: "club", label: `My Clubs${coachClubs.length > 0 ? ` (${coachClubs.length})` : ""}`, icon: "star", pending: pendingClubMembers.length },
     { id: "competitions", label: "Competitions", icon: "trophy" },
     { id: "progress", label: "Progress Tracker", icon: "progress" },
@@ -3097,7 +3097,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 
           {/* Pages */}
           {page === "home" && <CoachHomePage coachAccount={coachAccount} twirlers={twirlers} coachCompetitions={coachCompetitions} progress={allProgress} activeTwirler={activeTwirler} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
-          {page === "roster" && <ClubRosterPage twirlers={twirlers} progress={allProgress} coachAccount={coachAccount} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
+          {page === "roster" && <ClubRosterPage twirlers={twirlers} progress={allProgress} coachAccount={coachAccount} coachClubs={coachClubs} setPage={setPage} setActiveTwirlerId={setActiveTwirlerId} />}
           {page === "club" && <ClubPage coachAccount={coachAccount} supabase={supabase}
             setPage={setPage} coachClubs={coachClubs} setCoachClubs={setCoachClubs}
             coachClubClaims={coachClubClaims} setCoachClubClaims={setCoachClubClaims}
@@ -3121,15 +3121,18 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 
 // ─── STUDIO ROSTER PAGE ───────────────────────────────────────────────────────
 
-function ClubRosterPage({ twirlers, progress, coachAccount, setPage, setActiveTwirlerId }) {
+function ClubRosterPage({ twirlers, progress, coachAccount, coachClubs, setPage, setActiveTwirlerId }) {
   const [filterOrg, setFilterOrg] = useState("");
+  const [filterClub, setFilterClub] = useState("");
   const [search, setSearch] = useState("");
 
   const filtered = twirlers
     .filter(t => !search || t.firstName?.toLowerCase().includes(search.toLowerCase()) || t.familyName?.toLowerCase().includes(search.toLowerCase()))
-    .filter(t => !filterOrg || (t.organizations || []).includes(filterOrg));
+    .filter(t => !filterOrg || (t.organizations || []).includes(filterOrg))
+    .filter(t => !filterClub || t.club === filterClub);
 
   const allOrgs = [...new Set(twirlers.flatMap(t => t.organizations || []))];
+  const allClubs = [...new Set(twirlers.map(t => t.club).filter(Boolean))].sort();
 
   function exportRoster() {
     const rows = [
@@ -3167,7 +3170,7 @@ function ClubRosterPage({ twirlers, progress, coachAccount, setPage, setActiveTw
     <div>
       <div className="page-header flex items-center justify-between">
         <div>
-          <h1 className="page-title">Club Roster</h1>
+          <h1 className="page-title">My Roster</h1>
           <p className="page-sub">{twirlers.length} athlete{twirlers.length !== 1 ? "s" : ""} · all classifications at a glance</p>
         </div>
         <div className="flex gap-2">
@@ -3194,6 +3197,12 @@ function ClubRosterPage({ twirlers, progress, coachAccount, setPage, setActiveTw
           <option value="">All Orgs</option>
           {allOrgs.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
+        {allClubs.length > 1 && (
+          <select className="select" value={filterClub} onChange={e => setFilterClub(e.target.value)}>
+            <option value="">All Clubs</option>
+            {allClubs.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
       </div>
 
       {filtered.length === 0 ? (
