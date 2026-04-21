@@ -1973,6 +1973,17 @@ export default function App() {
     if (error) { console.error('registerHost:', error); return; }
     const h = { ...inserted, createdAt: inserted.created_at, document_url: inserted.document_url };
     setCompetitionHosts(prev => [...prev, h]);
+
+    // Notify admin of new director registration
+    await sendEmail('host_registration_notify', 'tye@twirlpower.com', {
+      directorName: data.name,
+      directorEmail: data.email,
+      organization: data.organization,
+      state: data.state,
+      notes: data.notes,
+      hasDocument: !!docUrl,
+    });
+
     return h;
   }
 
@@ -9419,8 +9430,10 @@ function HostRegisterView({ onRegister, familyAccount }) {
     email: familyAccount?.email || "",
     phone: familyAccount?.phone || "",
     state: familyAccount?.state || "",
-    notes: ""
+    notes: "",
+    file: null
   });
+  const [fileName, setFileName] = useState("");
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   return (
@@ -9432,10 +9445,9 @@ function HostRegisterView({ onRegister, familyAccount }) {
             <div style={{ fontWeight: 600, fontSize: 14, color: "var(--brand2)", marginBottom: 4 }}>What happens next</div>
             <ul style={{ fontSize: 13, color: "var(--slate)", lineHeight: 1.8, paddingLeft: 16 }}>
               <li>Complete your director profile below</li>
+              <li>Upload documentation verifying your role (e.g. sanctioning letter, org affiliation)</li>
               <li>A TwirlPower admin reviews and approves your account (one-time)</li>
               <li>Once approved, you can post unlimited competition listings</li>
-              <li>Twirlers and coaches can see your listings and add them to their schedules</li>
-              <li>You can see who plans to attend each competition</li>
             </ul>
           </div>
         </div>
@@ -9461,12 +9473,36 @@ function HostRegisterView({ onRegister, familyAccount }) {
           <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)} placeholder="e.g. USTA Ohio Regional Council, ABC Twirling Club" />
         </div>
         <div className="form-group">
+          <label className="label">Supporting documentation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(recommended)</span></label>
+          <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+            Upload a sanctioning letter, org membership card, or other proof of your director role. This helps speed up approval.
+          </p>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px",
+            background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8,
+            cursor: "pointer", fontSize: 13, color: "var(--slate)" }}>
+            <Icon name="export" size={14} />
+            {fileName || "Choose file..."}
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{ display: "none" }}
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) { f("file", file); setFileName(file.name); }
+              }} />
+          </label>
+          {fileName && (
+            <button onClick={() => { f("file", null); setFileName(""); }}
+              style={{ marginLeft: 8, background: "none", border: "none", color: "var(--red)",
+                cursor: "pointer", fontSize: 12 }}>
+              Remove
+            </button>
+          )}
+        </div>
+        <div className="form-group">
           <label className="label">Notes for admin <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
           <textarea className="textarea" value={form.notes} onChange={e => f("notes", e.target.value)} rows={2} placeholder="Any context about your role or organization..." />
         </div>
         <div className="alert alert-info mb-4">
           <Icon name="info" size={15} color="var(--brand)" />
-          <span style={{ fontSize: 13 }}>Your registration will be reviewed by a TwirlPower admin before your account is activated. This helps ensure competition listings are from verified organizers.</span>
+          <span style={{ fontSize: 13 }}>Your profile will be reviewed by a TwirlPower admin before your account is activated. This helps ensure competition listings are from verified organizers.</span>
         </div>
         <button className="btn btn-primary" disabled={!form.name || !form.email} onClick={() => onRegister(form)}>
           Create Profile

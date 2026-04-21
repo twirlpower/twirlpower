@@ -515,6 +515,30 @@ export default async function handler(req, res) {
     </div>${footer}</div>`;
   }
 
+  else if (type === 'host_registration_notify') {
+    const { directorName, directorEmail, organization, state, notes, hasDocument } = data;
+    subject = `New Competition Director registration: ${directorName}`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">New Director Registration</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        <strong>${directorName}</strong> has submitted a Competition Director profile and is awaiting approval.
+      </p>
+      <div style="background:#f1f5f9;border-radius:10px;padding:16px 20px;margin-bottom:20px;font-size:14px;color:#0f172a;line-height:1.8;">
+        <strong>Name:</strong> ${directorName}<br/>
+        <strong>Email:</strong> ${directorEmail}<br/>
+        ${state ? `<strong>State:</strong> ${state}<br/>` : ''}
+        ${organization ? `<strong>Organization:</strong> ${organization}<br/>` : ''}
+        ${notes ? `<strong>Notes:</strong> ${notes}<br/>` : ''}
+        <strong>Document uploaded:</strong> ${hasDocument ? 'Yes' : 'No'}
+      </div>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">
+          Review in Admin Dashboard
+        </a>
+      </div>
+    </div>${footer}</div>`;
+  }
+
   else {
     return res.status(400).json({ error: `Unknown email type: ${type}` });
   }
