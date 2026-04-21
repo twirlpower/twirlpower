@@ -2355,7 +2355,7 @@ export default function App() {
     );
   }
 
-  const isHost = competitionHosts.some(h => h.email?.toLowerCase() === authUser?.email?.toLowerCase());
+  const isHost = competitionHosts.some(h => h.email?.toLowerCase() === authUser?.email?.toLowerCase()) || authUser?.user_metadata?.role === 'host';
 
   if (twirlers.length === 0 && !guardianMode && !dataLoading && familyAccount && !hostMode && !isHost) {
     return (
@@ -2374,6 +2374,12 @@ export default function App() {
             <button className="btn btn-primary w-full" onClick={() => openModal("addTwirler")}>
               <Icon name="plus" size={16} /> Add Twirler Profile
             </button>
+            <div style={{ margin: "16px 0 0", paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+              <button className="btn btn-ghost w-full" style={{ fontSize: 13 }}
+                onClick={() => setHostMode({ email: authUser?.email, id: null })}>
+                🏆 I'm a Competition Director
+              </button>
+            </div>
             <button className="btn btn-ghost w-full" style={{ marginTop: 10, fontSize: 13 }} onClick={signOut}>
               Sign out
             </button>
@@ -2793,7 +2799,7 @@ function AuthScreen({ onAuth, authError, setAuthError, hasInvite, inviteEmail })
                   setLoading(true); setAuthError(null);
                   const { data, error } = await supabase.auth.signUp({
                     email, password,
-                    options: { data: { role: 'family' } } // hosts start as family, get host via setup
+                    options: { data: { role: 'host' } }
                   });
                   if (error) { setAuthError(error.message); setLoading(false); return; }
                   setMessage("Account created! Check your email to verify, then sign in to complete director registration.");
@@ -4295,7 +4301,9 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
 }
 
 function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, authUser, onSignOut, isInvite }) {
-  const [accountType, setAccountType] = useState(isInvite ? "family" : null); // null | "family" | "host"
+  const metaRole = authUser?.user_metadata?.role;
+  const defaultType = isInvite ? "family" : metaRole === "host" ? "host" : null;
+  const [accountType, setAccountType] = useState(defaultType); // null | "family" | "host"
   const [form, setForm] = useState({ parentName: "", email: authUser?.email || "", phone: "", state: "" });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
