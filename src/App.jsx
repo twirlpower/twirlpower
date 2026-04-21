@@ -1019,33 +1019,11 @@ export default function App() {
         const { data: authUserData } = await supabase.auth.getUser();
         const userEmail = authUserData?.user?.email;
         if (userEmail) {
-          // Query for families where this email appears in additional_guardians
-          // Using contains filter on the jsonb array
-          const { data: guardianFamilies } = await supabase
-            .from('family_accounts')
-            .select('*')
-            .neq('id', fa.id)
-            .filter('additional_guardians', 'cs', JSON.stringify([{ email: userEmail.toLowerCase() }]));
+          // Use SECURITY DEFINER function to bypass RLS and find linked family
+          const { data: guardianRows } = await supabase
+            .rpc('get_guardian_family', { guardian_email: userEmail.toLowerCase() });
 
-          // Also try case variations since email comparison can be tricky in jsonb
-          let linkedFamily = (guardianFamilies || []).find(f =>
-            (f.additional_guardians || []).some(g =>
-              g.email?.toLowerCase() === userEmail.toLowerCase()
-            )
-          );
-
-          // Fallback: if jsonb filter didn't work, fetch all and filter in JS
-          // (needed when RLS allows reading all family accounts)
-          if (!linkedFamily) {
-            const { data: allFamilies } = await supabase
-              .from('family_accounts').select('*');
-            linkedFamily = (allFamilies || []).find(f =>
-              f.id !== fa.id &&
-              (f.additional_guardians || []).some(g =>
-                g.email?.toLowerCase() === userEmail.toLowerCase()
-              )
-            );
-          }
+          const linkedFamily = (guardianRows || []).find(f => f.id !== fa.id) || null;
           if (linkedFamily) {
             // Check if own account is empty (no twirlers)
             const { data: ownTwirlers } = await supabase.from('twirlers').select('id').eq('family_id', fa.id);
@@ -1241,24 +1219,11 @@ export default function App() {
         const { data: authUserData } = await supabase.auth.getUser();
         const userEmail = authUserData?.user?.email;
         if (userEmail) {
-          // Search for families where this email appears in additional_guardians
-          const { data: guardianFamilies } = await supabase
-            .from('family_accounts')
-            .select('*')
-            .filter('additional_guardians', 'cs', JSON.stringify([{ email: userEmail.toLowerCase() }]));
+          // Use SECURITY DEFINER function to bypass RLS
+          const { data: guardianRows } = await supabase
+            .rpc('get_guardian_family', { guardian_email: userEmail.toLowerCase() });
 
-          let linkedFamily = (guardianFamilies || []).find(f =>
-            (f.additional_guardians || []).some(g => g.email?.toLowerCase() === userEmail.toLowerCase())
-          );
-
-          // Fallback to full scan if jsonb filter returned nothing
-          if (!linkedFamily) {
-            const { data: allFamilies } = await supabase.from('family_accounts').select('*');
-            linkedFamily = (allFamilies || []).find(f => {
-              const guardians = f.additional_guardians || [];
-              return guardians.some(g => g.email?.toLowerCase() === userEmail.toLowerCase());
-            });
-          }
+          const linkedFamily = (guardianRows || [])[0] || null;
           if (linkedFamily) {
             const guardian = (linkedFamily.additional_guardians || [])
               .find(g => g.email?.toLowerCase() === userEmail.toLowerCase());
