@@ -2051,7 +2051,9 @@ export default function App() {
           const { data: existing } = await supabase.from('family_accounts')
             .select('*').eq('user_id', authUser.id).single();
           if (existing) {
-            // Already have an account — just load it and move on
+            // Ensure user_roles row exists
+            await supabase.from('user_roles').upsert({ user_id: authUser.id, role: 'family' });
+            setUserRole('family');
             setFamilyAccount({ ...existing, parentName: existing.parent_name, additionalGuardians: existing.additional_guardians || [] });
             await loadAllData(authUser.id);
             return;
@@ -2066,7 +2068,9 @@ export default function App() {
             additional_guardians: [],
           }).select().single();
           if (error) {
-            // Likely a duplicate — reload data which will trigger co-guardian check
+            // Likely a duplicate — ensure role exists and reload
+            await supabase.from('user_roles').upsert({ user_id: authUser.id, role: 'family' });
+            setUserRole('family');
             await loadAllData(authUser.id);
             return;
           }
