@@ -6711,12 +6711,6 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
     { id: "data", label: "Data Overview" },
   ];
 
-  const roles = [
-    { id: "family", label: "👨‍👩‍👧 Family", desc: "Standard family account view" },
-    { id: "coach", label: "🎓 Coach", desc: "Coach account view (Phase 2)" },
-    { id: "host", label: "📅 Director", desc: "Competition Director view" },
-  ];
-
   return (
     <div>
       <div className="page-header">
@@ -6729,45 +6723,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
         </div>
       </div>
 
-      {/* ── ROLE PREVIEW ── */}
-      <div className="card mb-4">
-        <div className="section-header" style={{ marginBottom: 12 }}>
-          <span className="section-title">Preview as Role</span>
-          {previewRole && (
-            <button className="btn btn-sm btn-secondary" onClick={() => setPreviewRole(null)}>
-              ✕ Exit preview
-            </button>
-          )}
-        </div>
-        <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 14, lineHeight: 1.6 }}>
-          Switch to a different role view to see what families, coaches, and hosts experience. Your admin access is always one click away.
-        </p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {roles.map(r => (
-            <div key={r.id}
-              onClick={() => { setPreviewRole(previewRole === r.id ? null : r.id); setPage("home"); }}
-              style={{ padding: "10px 16px", borderRadius: 10, cursor: "pointer", border: "2px solid",
-                borderColor: previewRole === r.id ? "var(--brand)" : "var(--border)",
-                background: previewRole === r.id ? "var(--brand-light)" : "var(--bg)",
-                transition: "all 0.15s", minWidth: 140 }}>
-              <div style={{ fontSize: 15, marginBottom: 3 }}>{r.label}</div>
-              <div style={{ fontSize: 11, color: "var(--slate)" }}>{r.desc}</div>
-              {previewRole === r.id && (
-                <div style={{ fontSize: 10, color: "var(--brand)", fontWeight: 700, marginTop: 4 }}>● ACTIVE PREVIEW</div>
-              )}
-            </div>
-          ))}
-        </div>
-        {previewRole && (
-          <div className="alert alert-info" style={{ marginTop: 12 }}>
-            <Icon name="info" size={14} color="var(--brand)" />
-            <span style={{ fontSize: 12 }}>
-              You're previewing the <strong>{previewRole}</strong> view. Navigate the sidebar to see what {previewRole}s experience.
-              Click "Exit preview" above or visit Admin again to return to your normal view.
-            </span>
-          </div>
-        )}
-      </div>
+      {/* ── TABS ── */}
 
       {/* ── TABS ── */}
       <div className="card">
@@ -6818,15 +6774,15 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
                         )}
                         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt)}</div>
                       </div>
-                      <div className="flex gap-2">
-                        <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
-                        <button className="btn btn-danger btn-sm"
-                          onClick={() => {
-                            if (window.confirm(`Delete director registration for ${h.name}?`)) {
-                              supabase.from("competition_hosts").delete().eq("id", h.id);
-                            }
-                          }}>Delete</button>
-                      </div>
+                    </div>
+                    <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
+                      <button className="btn btn-danger btn-sm"
+                        onClick={() => {
+                          if (window.confirm(`Delete director registration for ${h.name}?`)) {
+                            supabase.from("competition_hosts").delete().eq("id", h.id);
+                          }
+                        }}>Delete</button>
                     </div>
                   </div>
                 ))}
