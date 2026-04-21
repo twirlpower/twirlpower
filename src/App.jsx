@@ -2291,6 +2291,7 @@ export default function App() {
         registerHost={registerHost}
         authUser={authUser}
         onSignOut={signOut}
+        isInvite={!!sessionStorage.getItem('tp_pending_coach_id') || userRole === 'family'}
       />
     );
   }
@@ -4269,8 +4270,8 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
   );
 }
 
-function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, authUser, onSignOut }) {
-  const [accountType, setAccountType] = useState(null); // null | "family" | "host"
+function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, authUser, onSignOut, isInvite }) {
+  const [accountType, setAccountType] = useState(isInvite ? "family" : null); // null | "family" | "host"
   const [form, setForm] = useState({ parentName: "", email: authUser?.email || "", phone: "", state: "" });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
