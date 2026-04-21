@@ -1947,6 +1947,7 @@ export default function App() {
         name: compData.name,
         date: compData.date || null,
         location: compData.location || null,
+        state: compData.state || null,
         org_id: compData.orgId || null,
         notes: compData.notes || null,
       })
@@ -3612,7 +3613,7 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
 
 function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coachCreateCompetition }) {
   const [form, setForm] = useState({
-    name: "", date: "", location: "", orgId: "", notes: ""
+    name: "", date: "", location: "", state: "", orgId: "", notes: ""
   });
   const [selectedTwirlers, setSelectedTwirlers] = useState(twirlers.map(t => t.id));
   const [loading, setLoading] = useState(false);
@@ -3667,10 +3668,19 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
             </select>
           </div>
         </div>
-        <div className="form-group">
-          <label className="label">Location</label>
-          <input className="input" value={form.location} onChange={e => f("location", e.target.value)}
-            placeholder="City, State or venue name" />
+        <div className="form-row">
+          <div className="form-group">
+            <label className="label">State</label>
+            <select className="select" value={form.state} onChange={e => f("state", e.target.value)}>
+              <option value="">Select state</option>
+              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="label">Address <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+            <input className="input" value={form.location} onChange={e => f("location", e.target.value)}
+              placeholder="Venue name or full address" />
+          </div>
         </div>
         <div className="form-group">
           <label className="label">Notes</label>
@@ -8075,13 +8085,13 @@ function CoachesPage({ coaches, twirlers, activeTwirler, familyAccount, coachLin
 }
 
 function CoachCreateCompModal({ open, onClose, coach, twirlers, onSave }) {
-  const [compForm, setComp] = useState({ name: "", date: "", location: "", orgId: "" });
+  const [compForm, setComp] = useState({ name: "", date: "", location: "", state: "", orgId: "" });
   const [invitedIds, setInvitedIds] = useState([]);
   const cf = (k, v) => setComp(p => ({ ...p, [k]: v }));
 
   useEffect(() => {
     if (open) {
-      setComp({ name: "", date: "", location: "", orgId: "", sanctioned: true });
+      setComp({ name: "", date: "", location: "", state: "", orgId: "", sanctioned: true });
       setInvitedIds(twirlers.map(t => t.id));
     }
   }, [open]);
@@ -8126,9 +8136,18 @@ function CoachCreateCompModal({ open, onClose, coach, twirlers, onSave }) {
           </select>
         </div>
       </div>
-      <div className="form-group">
-        <label className="label">Location</label>
-        <input className="input" value={compForm.location} onChange={e => cf("location", e.target.value)} placeholder="City, State" />
+      <div className="form-row">
+        <div className="form-group">
+          <label className="label">State</label>
+          <select className="select" value={compForm.state || ""} onChange={e => cf("state", e.target.value)}>
+            <option value="">Select state</option>
+            {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="label">Address <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+          <input className="input" value={compForm.location} onChange={e => cf("location", e.target.value)} placeholder="Venue name or full address" />
+        </div>
       </div>
       <div className="form-group">
         <label className="label">Sanctioned status</label>
