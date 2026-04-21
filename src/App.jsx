@@ -1686,6 +1686,14 @@ export default function App() {
     await supabase.from('competitions').update(dbUpdates).eq('id', id);
   }
 
+  async function deleteCompetition(id) {
+    // Delete all results for this competition first, then the competition itself
+    await supabase.from('results').delete().eq('competition_id', id);
+    await supabase.from('competitions').delete().eq('id', id);
+    setResults(prev => prev.filter(r => r.competitionId !== id));
+    setCompetitions(prev => prev.filter(c => c.id !== id));
+  }
+
   // ── COACH MUTATIONS ──
   async function addCoach(data) {
     if (!familyAccount) return;
@@ -2092,7 +2100,7 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode };
 
   return (
     <>
@@ -4880,7 +4888,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
 
 // ─── HISTORY PAGE ────────────────────────────────────────────────────────────
 
-function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, openModal, deleteResult, updateResult, updateCompetition, competitions, addResultsToComp }) {
+function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, openModal, deleteResult, deleteCompetition, updateResult, updateCompetition, competitions, addResultsToComp }) {
   const [filterOrg, setFilterOrg] = useState("");
   const [filterEvent, setFilterEvent] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
@@ -4991,6 +4999,17 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
               <button className="btn btn-ghost btn-sm" title="Edit competition"
                 onClick={e => { e.stopPropagation(); startEditComp(comp); setExpandedComp(comp.id); }}>
                 <Icon name="edit" size={13} color="var(--slate)" />
+              </button>
+              <button className="btn btn-ghost btn-sm" title="Delete competition"
+                onClick={e => {
+                  e.stopPropagation();
+                  const hasResults = compResults.length > 0;
+                  const msg = hasResults
+                    ? `Delete "${comp.name}" and all ${compResults.length} result${compResults.length !== 1 ? "s" : ""}? This cannot be undone.`
+                    : `Delete "${comp.name}"? This cannot be undone.`;
+                  if (window.confirm(msg)) deleteCompetition(comp.id);
+                }}>
+                <Icon name="trash" size={13} color="var(--red)" />
               </button>
               <Icon name={expanded ? "chevron_down" : "chevron_right"} size={16} color="var(--muted)" />
             </div>
