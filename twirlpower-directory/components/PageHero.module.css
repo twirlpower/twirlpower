@@ -1,0 +1,46 @@
+.hero {
+  background: var(--navy);
+  padding: 72px 0 64px;
+  position: relative;
+  overflow: hidden;
+}
+
+.glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 65% 0%, rgba(13,148,136,.3) 0%, transparent 60%),
+    radial-gradient(ellipse at 5% 100%, rgba(225,29,106,.15) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.eyebrow {
+  display: inline-block;
+  background: rgba(13,148,136,.15);
+  color: #5eead4;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border-radius: 99px;
+  border: 1px solid rgba(13,148,136,.25);
+  margin-bottom: 20px;
+}
+
+.title {
+  font-size: clamp(30px, 5vw, 50px);
+  color: #fff;
+  margin-bottom: 16px;
+  max-width: 700px;
+}
+
+.title span { color: var(--teal); }
+
+.subtitle {
+  color: var(--slate-light);
+  font-size: 17px;
+  max-width: 560px;
+  line-height: 1.65;
+  margin: 0;
+}

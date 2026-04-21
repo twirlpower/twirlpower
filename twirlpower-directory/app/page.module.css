@@ -1,0 +1,243 @@
+.hero {
+  background: var(--navy);
+  padding: 96px 0 80px;
+  position: relative;
+  overflow: hidden;
+}
+
+.heroGlow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 70% -10%, rgba(13,148,136,.4) 0%, transparent 55%),
+    radial-gradient(ellipse at 0% 110%, rgba(225,29,106,.2) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.eyebrow {
+  display: inline-block;
+  background: rgba(13,148,136,.15);
+  color: #5eead4;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  border-radius: 99px;
+  border: 1px solid rgba(13,148,136,.25);
+  margin-bottom: 24px;
+}
+
+.heroTitle {
+  font-size: clamp(36px, 6vw, 60px);
+  color: #fff;
+  line-height: 1.08;
+  margin-bottom: 20px;
+  max-width: 640px;
+}
+
+.heroTitle span { color: var(--teal); }
+
+.heroSub {
+  color: var(--slate-light);
+  font-size: 18px;
+  max-width: 540px;
+  line-height: 1.65;
+  margin: 0 0 36px;
+}
+
+.heroActions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* STATS BAR */
+.statsBar {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 8px rgba(0,0,0,.05);
+}
+
+.statsInner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding-top: 28px;
+  padding-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 48px;
+}
+
+.statNum {
+  font-family: 'DM Serif Display', serif;
+  font-size: 36px;
+  color: var(--teal);
+  line-height: 1;
+}
+
+.statLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--slate);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.statDivider {
+  width: 1px;
+  height: 40px;
+  background: var(--border);
+}
+
+/* DIRECTORY SECTIONS */
+.sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+  padding: 64px 0 0;
+}
+
+.sectionCard {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none;
+  transition: box-shadow .2s, transform .2s, border-color .2s;
+}
+
+.sectionCard:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-3px);
+  border-color: var(--teal);
+}
+
+.sectionIcon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.sectionCard h2 {
+  font-size: 22px;
+  color: var(--navy);
+  margin: 0;
+}
+
+.sectionCard p {
+  font-size: 15px;
+  color: var(--slate);
+  line-height: 1.6;
+  margin: 0;
+  flex: 1;
+}
+
+.sectionLink {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--teal);
+  margin-top: 8px;
+}
+
+/* ORG SECTION */
+.orgSection {
+  padding: 80px 0 0;
+  text-align: center;
+}
+
+.orgTitle {
+  font-size: 32px;
+  color: var(--navy);
+  margin: 8px 0 40px;
+}
+
+.orgGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.orgCard {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.orgBadgeLg {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  padding: 6px 18px;
+  border-radius: 99px;
+  letter-spacing: .06em;
+}
+
+.orgName {
+  font-size: 13px;
+  color: var(--slate);
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* APP CTA */
+.appCta {
+  background: var(--navy);
+  border-radius: var(--radius);
+  padding: 48px 40px;
+  margin: 64px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  flex-wrap: wrap;
+  position: relative;
+  overflow: hidden;
+}
+
+.appCta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 90% 50%, rgba(13,148,136,.25) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.appCta h2 {
+  color: #fff;
+  font-size: 26px;
+  margin-bottom: 8px;
+  position: relative;
+}
+
+.appCta p {
+  color: var(--slate-light);
+  font-size: 15px;
+  margin: 0;
+  position: relative;
+  max-width: 460px;
+}
+
+.appCta a { position: relative; flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .stat { padding: 0 24px; }
+  .statNum { font-size: 28px; }
+  .appCta { padding: 32px 24px; }
+  .heroActions { flex-direction: column; }
+}

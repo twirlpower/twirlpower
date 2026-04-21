@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap');
+
+:root {
+  --teal:   #0d9488;
+  --teal-dark: #0f766e;
+  --teal-light: #ccfbf1;
+  --pink:   #e11d6a;
+  --pink-light: #fce7f3;
+  --navy:   #0f172a;
+  --slate:  #475569;
+  --slate-light: #94a3b8;
+  --border: #e2e8f0;
+  --bg:     #f8fafc;
+  --card:   #ffffff;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.12);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-family: 'DM Sans', sans-serif;
+  color: var(--navy);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+body { margin: 0; }
+
+h1, h2, h3, h4 {
+  font-family: 'DM Serif Display', serif;
+  line-height: 1.15;
+  margin: 0;
+}
+
+a { color: inherit; }
+
+/* ── UTILITY CLASSES ── */
+.container {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.org-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 3px 10px;
+  border-radius: 99px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.org-badge.USTA { background: #0d9488; }
+.org-badge.NBTA { background: #0f172a; }
+.org-badge.TU   { background: #7c3aed; }
+.org-badge.DMA  { background: #b45309; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .15s, color .15s, border-color .15s;
+  white-space: nowrap;
+}
+.btn-primary { background: var(--teal); color: #fff; }
+.btn-primary:hover { background: var(--teal-dark); color: #fff; }
+.btn-ghost { background: transparent; color: var(--slate); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--teal); color: var(--teal); }
+.btn-pink { background: var(--pink); color: #fff; }
+.btn-pink:hover { background: #be185d; color: #fff; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: box-shadow .2s, transform .2s;
+}
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+.section-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin-bottom: 8px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 80px 24px;
+  color: var(--slate);
+}
+.empty-state h3 {
+  font-family: 'DM Serif Display', serif;
+  color: var(--navy);
+  margin-bottom: 8px;
+}

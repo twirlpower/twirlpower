@@ -1,0 +1,232 @@
+.hero {
+  background: var(--navy);
+  padding: 48px 0 56px;
+  position: relative;
+  overflow: hidden;
+}
+
+.heroGlow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 70% 0%, rgba(13,148,136,.3) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.backLink {
+  font-size: 13px;
+  color: var(--slate-light);
+  text-decoration: none;
+  display: inline-block;
+  margin-bottom: 24px;
+  transition: color .15s;
+  position: relative;
+}
+.backLink:hover { color: #fff; }
+
+.heroInner {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+  position: relative;
+}
+
+.clubAvatar {
+  width: 72px;
+  height: 72px;
+  background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'DM Serif Display', serif;
+  font-size: 24px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.claimedBadge {
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 700;
+  color: #5eead4;
+  background: rgba(13,148,136,.15);
+  border: 1px solid rgba(13,148,136,.25);
+  padding: 3px 12px;
+  border-radius: 99px;
+  margin-bottom: 10px;
+}
+
+.unclaimedBadge {
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate-light);
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  padding: 3px 12px;
+  border-radius: 99px;
+  margin-bottom: 10px;
+}
+
+.clubName {
+  font-size: clamp(24px, 4vw, 38px);
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.location {
+  font-size: 15px;
+  color: var(--slate-light);
+  margin: 0 0 6px;
+}
+
+.website {
+  font-size: 14px;
+  color: var(--teal);
+  text-decoration: none;
+  transition: color .15s;
+}
+.website:hover { color: #5eead4; }
+
+/* LAYOUT */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 40px;
+  padding: 48px 0 80px;
+  align-items: start;
+}
+
+/* MAIN */
+.section { margin-bottom: 40px; }
+
+.sectionTitle {
+  font-family: 'DM Serif Display', serif;
+  font-size: 22px;
+  color: var(--navy);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.coachList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.coachCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+}
+
+.coachAvatar {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, var(--teal), var(--teal-dark));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.coachInfo { flex: 1; }
+
+.coachNameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.coachName {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--navy);
+}
+
+.ownerBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--pink);
+  background: var(--pink-light);
+  padding: 2px 8px;
+  border-radius: 99px;
+  letter-spacing: .04em;
+}
+
+.coachStudio {
+  font-size: 13px;
+  color: var(--teal);
+  margin: 0 0 6px;
+}
+
+.orgRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.orgBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+
+.noCoaches {
+  font-size: 14px;
+  color: var(--slate);
+  font-style: italic;
+}
+
+/* SIDEBAR */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 76px;
+}
+
+.sideCard {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sideCard h3 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+  color: var(--navy);
+}
+
+.sideCard p {
+  font-size: 14px;
+  color: var(--slate);
+  line-height: 1.5;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar { position: static; }
+}

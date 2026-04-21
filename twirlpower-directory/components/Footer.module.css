@@ -1,0 +1,74 @@
+.footer {
+  background: var(--navy);
+  color: var(--slate-light);
+  margin-top: 80px;
+}
+
+.inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 56px 24px 40px;
+  display: flex;
+  gap: 64px;
+  flex-wrap: wrap;
+}
+
+.brand { flex: 1; min-width: 200px; }
+
+.logoTwirl {
+  font-family: 'DM Serif Display', serif;
+  font-size: 24px;
+  color: #fff;
+}
+.logoPower {
+  font-family: 'DM Serif Display', serif;
+  font-size: 24px;
+  color: var(--pink);
+}
+
+.tagline {
+  font-size: 14px;
+  color: var(--slate-light);
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.links {
+  display: flex;
+  gap: 48px;
+  flex-wrap: wrap;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 120px;
+}
+
+.col a {
+  font-size: 14px;
+  color: var(--slate-light);
+  text-decoration: none;
+  transition: color .15s;
+}
+.col a:hover { color: #fff; }
+
+.colHead {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.bottom {
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding: 20px 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--slate-light);
+  max-width: 1120px;
+  margin: 0 auto;
+}

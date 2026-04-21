@@ -1,0 +1,156 @@
+.section { margin-top: 48px; }
+
+.sectionHeader { margin-bottom: 20px; }
+
+.sectionTitle {
+  font-family: 'DM Serif Display', serif;
+  font-size: 24px;
+  color: var(--navy);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--teal);
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 99px;
+}
+
+.sectionSub {
+  font-size: 14px;
+  color: var(--slate);
+  margin: 0;
+  max-width: 560px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  overflow: hidden;
+  transition: box-shadow .2s, transform .2s;
+  position: relative;
+}
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+.cardUnclaimed {
+  opacity: .8;
+}
+.cardUnclaimed:hover { opacity: 1; }
+
+.cardAccent {
+  height: 3px;
+  background: linear-gradient(90deg, var(--teal), var(--teal-dark));
+}
+
+.cardBody {
+  padding: 20px 20px 14px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.claimedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--teal);
+  background: var(--teal-light);
+  padding: 3px 10px;
+  border-radius: 99px;
+  width: fit-content;
+}
+
+.unclaimedBadge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--slate);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  border-radius: 99px;
+  width: fit-content;
+}
+
+.clubName {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+  color: var(--navy);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.location {
+  font-size: 13px;
+  color: var(--slate);
+  margin: 0;
+}
+
+.cardFooter {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.viewLink {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--teal);
+}
+
+.claimBtn {
+  display: block;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pink);
+  text-decoration: none;
+  transition: color .15s;
+}
+.claimBtn:hover { color: #be185d; }
+
+.ctaBanner {
+  background: var(--navy);
+  border-radius: var(--radius);
+  padding: 48px 40px;
+  text-align: center;
+  margin: 64px 0 0;
+  position: relative;
+  overflow: hidden;
+}
+.ctaBanner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 75% 50%, rgba(225,29,106,.2) 0%, transparent 60%);
+  pointer-events: none;
+}
+.ctaBanner h2 { color: #fff; font-size: 28px; margin-bottom: 10px; position: relative; }
+.ctaBanner p  { color: var(--slate-light); font-size: 15px; margin-bottom: 24px; position: relative; }

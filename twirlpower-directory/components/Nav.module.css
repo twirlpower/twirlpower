@@ -1,0 +1,97 @@
+.header {
+  background: var(--navy);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  position: sticky;
+  top: 0;
+  z-index: 200;
+}
+
+.inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.logo {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.logoTwirl {
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px;
+  color: #fff;
+}
+
+.logoPower {
+  font-family: 'DM Serif Display', serif;
+  font-size: 20px;
+  color: var(--pink);
+}
+
+.logoSub {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate-light);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 99px;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.navLink {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--slate-light);
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: color .15s, background .15s;
+}
+
+.navLink:hover {
+  color: #fff;
+  background: rgba(255,255,255,.07);
+}
+
+.navLink.active {
+  color: var(--teal);
+  background: rgba(13,148,136,.12);
+}
+
+.cta {
+  margin-left: auto;
+  background: var(--teal);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 8px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .15s;
+  flex-shrink: 0;
+}
+
+.cta:hover { background: var(--teal-dark); color: #fff; }
+
+@media (max-width: 640px) {
+  .nav { display: none; }
+  .logoSub { display: none; }
+}

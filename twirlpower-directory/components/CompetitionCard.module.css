@@ -1,0 +1,115 @@
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow .2s, transform .2s;
+  position: relative;
+}
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+.past { opacity: .75; }
+.past:hover { opacity: 1; }
+
+.accent {
+  height: 3px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 20px 14px;
+}
+
+.name {
+  font-family: 'DM Serif Display', serif;
+  font-size: 18px;
+  color: var(--navy);
+  line-height: 1.25;
+  margin: 0;
+}
+
+.orgBadge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 99px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: .04em;
+}
+
+.meta {
+  padding: 0 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--slate);
+}
+
+.icon { width: 16px; text-align: center; flex-shrink: 0; }
+
+.footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btnApp {
+  flex: 1;
+  text-align: center;
+  background: var(--teal);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: background .15s;
+  white-space: nowrap;
+}
+.btnApp:hover { background: var(--teal-dark); color: #fff; }
+
+.btnReg {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pink);
+  border: 1px solid var(--pink);
+  padding: 9px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: background .15s;
+  white-space: nowrap;
+}
+.btnReg:hover { background: var(--pink-light); }
+
+.pastTag {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--slate);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  border-radius: 99px;
+}

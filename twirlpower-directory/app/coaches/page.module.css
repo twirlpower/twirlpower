@@ -1,0 +1,37 @@
+.resultCount {
+  font-size: 14px;
+  color: var(--slate);
+  margin: 0 0 20px;
+}
+
+.ctaBanner {
+  background: var(--navy);
+  border-radius: var(--radius);
+  padding: 48px 40px;
+  text-align: center;
+  margin: 64px 0 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.ctaBanner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 75% 50%, rgba(13,148,136,.25) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+.ctaBanner h2 {
+  color: #fff;
+  font-size: 28px;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.ctaBanner p {
+  color: var(--slate-light);
+  font-size: 15px;
+  margin-bottom: 24px;
+  position: relative;
+}
