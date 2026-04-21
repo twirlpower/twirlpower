@@ -1131,10 +1131,12 @@ export default function App() {
         const userEmail = authUserData?.user?.email;
         if (userEmail) {
           // Use SECURITY DEFINER function to bypass RLS and find linked family
-          const { data: guardianRows } = await supabase
+          const { data: guardianRows, error: rpcError } = await supabase
             .rpc('get_guardian_family', { guardian_email: userEmail.toLowerCase() });
+          console.log('get_guardian_family result:', { guardianRows, rpcError, userEmail });
 
           const linkedFamily = (guardianRows || []).find(f => f.id !== fa.id) || null;
+          console.log('linkedFamily:', linkedFamily?.id, 'fa.id:', fa.id);
           if (linkedFamily) {
             // Check if own account is empty (no twirlers)
             const { data: ownTwirlers } = await supabase.from('twirlers').select('id').eq('family_id', fa.id);
