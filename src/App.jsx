@@ -1359,8 +1359,13 @@ export default function App() {
         ...c, orgId: c.org_id, hostId: c.host_id,
       })));
 
+      // Check admin status inline (can't rely on isAdmin state — may not be set yet)
+      const { data: adminRow } = await supabase.from('admins').select('user_id').eq('user_id', userId).single();
+      const userIsAdmin = !!adminRow;
+      setIsAdmin(userIsAdmin);
+
       // Load competition hosts (all for admin, own for regular users)
-      const hostQuery = isAdmin
+      const hostQuery = userIsAdmin
         ? supabase.from('competition_hosts').select('*').order('created_at', { ascending: false })
         : supabase.from('competition_hosts').select('*').eq('user_id', userId);
       const { data: hosts } = await hostQuery;
@@ -1368,8 +1373,8 @@ export default function App() {
         ...h, createdAt: h.created_at,
       })));
 
-      // Load pending club claims count for admin badge (only if admin)
-      if (isAdmin) {
+      // Load pending club claims count for admin badge
+      if (userIsAdmin) {
         const { count } = await supabase
           .from('clubs').select('id', { count: 'exact', head: true })
           .eq('status', 'pending_claim');
@@ -1638,9 +1643,11 @@ export default function App() {
   const pendingCoachLinks = coachLinks.filter(l => l.status === 'pending');
 
   // All pending notifications combined
+  const pendingDirectorApprovals = isAdmin ? (competitionHosts || []).filter(h => !h.approved) : [];
   const allNotifications = [
     ...pendingInvites.map(i => ({ ...i, notifType: 'competition_invite' })),
     ...pendingCoachLinks.map(l => ({ ...l, notifType: 'coach_link' })),
+    ...pendingDirectorApprovals.map(h => ({ ...h, notifType: 'director_approval' })),
   ];
 
   // Pass resolved id as the canonical activeTwirlerId throughout the app
@@ -2476,7 +2483,7 @@ export default function App() {
           {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} authUser={authUser} supabase={supabase} />}
           {page === "coaches" && <CoachesPage {...pageProps} supabase={supabase} />}
           {page === "openqs" && isAdmin && <OpenQuestionsPage />}
-          {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} />}
+          {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} isAdmin={isAdmin} />}
           {page === "privacy" && <PrivacyPolicyPage onClose={() => setPage("home")} />}
           {page === "terms" && <TermsOfServicePage onClose={() => setPage("home")} />}
           {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} />}
@@ -9473,7 +9480,9 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
 
 // ─── NOTIFICATIONS PAGE ───────────────────────────────────────────────────────
 
-function NotificationsPage({ allNotifications, pendingInvites, pendingCoachLinks, respondToInvite, respondToCoachLink, twirlers, coachCompetitions, setPage }) {
+function NotificationsPage({ allNotifications, pendingInvites, pendingCoachLinks, respondToInvite, respondToCoachLink, twirlers, coachCompetitions, setPage, competitionHosts, approveHost, isAdmin }) {
+
+  const pendingDirectors = isAdmin ? (competitionHosts || []).filter(h => !h.approved) : [];
 
   const notifications = [
     ...(pendingCoachLinks || []).map(l => ({
@@ -9497,6 +9506,14 @@ function NotificationsPage({ allNotifications, pendingInvites, pendingCoachLinks
         raw: i,
       };
     }),
+    ...pendingDirectors.map(h => ({
+      id: h.id,
+      type: 'director_approval',
+      title: `${h.name} requested Competition Director access`,
+      sub: [h.organization, h.state, h.email].filter(Boolean).join(" · "),
+      date: h.createdAt || h.created_at,
+      raw: h,
+    })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   return (
@@ -9518,9 +9535,9 @@ function NotificationsPage({ allNotifications, pendingInvites, pendingCoachLinks
         <div key={n.id} className="card mb-3">
           <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
             <div style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
-              background: n.type === 'coach_link' ? "#e0e7ff" : "#dbeafe",
+              background: n.type === 'coach_link' ? "#e0e7ff" : n.type === 'director_approval' ? "#fef3c7" : "#dbeafe",
               display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-              {n.type === 'coach_link' ? "🎓" : "🏆"}
+              {n.type === 'coach_link' ? "🎓" : n.type === 'director_approval' ? "🏆" : "📋"}
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 2 }}>
@@ -9544,6 +9561,23 @@ function NotificationsPage({ allNotifications, pendingInvites, pendingCoachLinks
                 <button className="btn btn-secondary btn-sm"
                   onClick={() => respondToCoachLink(n.id, false)}>
                   Decline
+                </button>
+              </>
+            ) : n.type === 'director_approval' ? (
+              <>
+                <button className="btn btn-primary btn-sm"
+                  onClick={() => { approveHost(n.id); }}>
+                  ✓ Approve Director
+                </button>
+                {n.raw?.document_url && (
+                  <a href={n.raw.document_url} target="_blank" rel="noreferrer"
+                    className="btn btn-secondary btn-sm">
+                    📎 View Document
+                  </a>
+                )}
+                <button className="btn btn-ghost btn-sm"
+                  onClick={() => setPage("admin")}>
+                  Review in Admin
                 </button>
               </>
             ) : (
