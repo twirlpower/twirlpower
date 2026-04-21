@@ -5987,11 +5987,15 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
               </div>
             </div>
             <div className="form-row">
-              <div className="form-group"><label className="label">Email</label><input className="input" type="email" value={guardianForm.email} onChange={e => setGF(p => ({...p, email: e.target.value}))} /></div>
+              <div className="form-group"><label className="label">Email</label><input className="input" type="email" value={guardianForm.email} onChange={e => setGF(p => ({...p, email: e.target.value}))} placeholder="guardian@email.com" />
+                {guardianForm.email && !guardianForm.email.includes('@') && (
+                  <div style={{ fontSize: 11, color: "var(--red)", marginTop: 3 }}>Please enter a valid email address</div>
+                )}
+              </div>
               <div className="form-group"><label className="label">Phone</label><input className="input" type="tel" value={guardianForm.phone} onChange={e => setGF(p => ({...p, phone: e.target.value}))} /></div>
             </div>
             <div className="flex gap-2">
-              <button className="btn btn-primary btn-sm" disabled={!guardianForm.name} onClick={saveGuardian}>Add Guardian</button>
+              <button className="btn btn-primary btn-sm" disabled={!guardianForm.name || (guardianForm.email && !guardianForm.email.includes('@'))} onClick={saveGuardian}>Add Guardian</button>
               <button className="btn btn-secondary btn-sm" onClick={() => setShowAddGuardian(false)}>Cancel</button>
             </div>
           </div>
