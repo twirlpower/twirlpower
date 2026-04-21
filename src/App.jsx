@@ -1141,6 +1141,24 @@ export default function App() {
         return;
       }
 
+      // If host/director — load host data and return
+      if (role === 'host') {
+        const { data: hosts } = await supabase
+          .from('competition_hosts').select('*').eq('user_id', userId);
+        setCompetitionHosts((hosts || []).map(h => ({ ...h, createdAt: h.created_at })));
+
+        // Also load public competitions and attendees for the host dashboard
+        const { data: pubComps } = await supabase
+          .from('public_competitions').select('*').order('date', { ascending: true });
+        setPublicCompetitions((pubComps || []).map(c => ({ ...c, orgId: c.org_id, hostId: c.host_id })));
+
+        const { data: att } = await supabase.from('attendees').select('*');
+        setAttendees(att || []);
+
+        setDataLoading(false);
+        return;
+      }
+
       // Load family account
       const { data: fa } = await supabase
         .from('family_accounts').select('*').eq('user_id', userId).single();
@@ -1472,8 +1490,6 @@ export default function App() {
   };
   const closeModal = (name) => setModals(m => ({ ...m, [name]: { ...m[name], open: false } }));
 
-  const [hostMode, setHostMode] = useState(null); // null | host object — set when logging in as host
-
   async function loadCoachData(coachId) {
     // Load twirlers linked to this coach
     const { data: links } = await supabase
@@ -1599,7 +1615,6 @@ export default function App() {
     await supabase.auth.signOut();
     setFamilyAccount(null);
     setActiveTwirlerId(null);
-    setHostMode(null);
     setPage("home");
     setSidebarOpen(false);
     setAuthUser(null);
@@ -2321,7 +2336,6 @@ export default function App() {
           setFamilyAccount({ ...inserted, parentName: inserted.parent_name, additionalGuardians: [] });
           setPage("home");
         }}
-        onHostPath={host => setHostMode(host)}
         competitionHosts={competitionHosts}
         registerHost={registerHost}
         authUser={authUser}
@@ -2331,8 +2345,8 @@ export default function App() {
     );
   }
 
-  // Host mode — bypass family account UI, go directly to host dashboard
-  if (hostMode) {
+  // Host mode — dedicated director UI
+  if (userRole === 'host') {
     return (
       <>
         <style>{css}</style>
@@ -2356,7 +2370,7 @@ export default function App() {
                 publicCompetitions={publicCompetitions}
                 attendees={attendees}
                 twirlers={twirlers}
-                familyAccount={{ email: hostMode.email }}
+                familyAccount={{ email: authUser?.email }}
                 registerHost={registerHost}
                 createPublicCompetition={createPublicCompetition}
                 deletePublicCompetition={deletePublicCompetition}
@@ -2368,9 +2382,7 @@ export default function App() {
     );
   }
 
-  const isHost = competitionHosts.some(h => h.email?.toLowerCase() === authUser?.email?.toLowerCase()) || authUser?.user_metadata?.role === 'host';
-
-  if (twirlers.length === 0 && !guardianMode && !dataLoading && familyAccount && !hostMode && !isHost) {
+  if (twirlers.length === 0 && !guardianMode && !dataLoading && familyAccount) {
     return (
       <>
         <style>{css}</style>
@@ -2387,12 +2399,6 @@ export default function App() {
             <button className="btn btn-primary w-full" onClick={() => openModal("addTwirler")}>
               <Icon name="plus" size={16} /> Add Twirler Profile
             </button>
-            <div style={{ margin: "16px 0 0", paddingTop: 16, borderTop: "1px solid var(--border)" }}>
-              <button className="btn btn-ghost w-full" style={{ fontSize: 13 }}
-                onClick={() => setHostMode({ email: authUser?.email, id: null })}>
-                🏆 I'm a Competition Director
-              </button>
-            </div>
             <button className="btn btn-ghost w-full" style={{ marginTop: 10, fontSize: 13 }} onClick={signOut}>
               Sign out
             </button>
@@ -4313,26 +4319,10 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
   );
 }
 
-function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, authUser, onSignOut, isInvite }) {
-  const metaRole = authUser?.user_metadata?.role;
-  const defaultType = isInvite ? "family" : metaRole === "host" ? "host" : null;
-  const [accountType, setAccountType] = useState(defaultType); // null | "family" | "host"
+function SetupScreen({ onComplete, competitionHosts, registerHost, authUser, onSignOut, isInvite }) {
+  const [accountType, setAccountType] = useState(isInvite ? "family" : null); // null | "family" | "coach"
   const [form, setForm] = useState({ parentName: "", email: authUser?.email || "", phone: "", state: "" });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
-
-  // Host login — check if already registered
-  const [hostEmail, setHostEmail] = useState("");
-  const [hostLookupResult, setHostLookupResult] = useState(null); // null | "found" | "not_found"
-
-  function lookupHost() {
-    const found = competitionHosts.find(h => h.email?.toLowerCase() === hostEmail.toLowerCase());
-    if (found) {
-      setHostLookupResult("found");
-      onHostPath(found);
-    } else {
-      setHostLookupResult("not_found");
-    }
-  }
 
   const Logo = () => (
     <div style={{ textAlign: "center", marginBottom: 28 }}>
@@ -4381,15 +4371,6 @@ function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, a
                 onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "white"; }}>
                 <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 3 }}>🎓 Coach / Club Owner</div>
                 <div style={{ fontSize: 13, color: "var(--slate)" }}>Manage your twirlers, send competition invites, and manage your studio or club</div>
-              </button>
-              <button onClick={() => setAccountType("host")}
-                style={{ padding: "16px 20px", border: "2px solid var(--border)", borderRadius: 12,
-                  background: "white", cursor: "pointer", textAlign: "left", fontFamily: "inherit",
-                  transition: "all 0.15s" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.background = "var(--brand-light)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "white"; }}>
-                <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)", marginBottom: 3 }}>🏆 Competition Director</div>
-                <div style={{ fontSize: 13, color: "var(--slate)" }}>Post competition listings for twirlers and coaches to discover</div>
               </button>
             </div>
             <div style={{ marginTop: 20, textAlign: "center", borderTop: "1px solid var(--border)", paddingTop: 16 }}>
@@ -4459,187 +4440,9 @@ function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, a
           </div>
         )}
 
-        {/* Director login / access */}
-        {accountType === "host" && (
-          <HostAccessPanel
-            competitionHosts={competitionHosts}
-            registerHost={registerHost}
-            onHostPath={onHostPath}
-            onBack={() => setAccountType(null)}
-          />
-        )}
-
       </div>
     </>
   );
-}
-
-// ─── HOST ACCESS PANEL ───────────────────────────────────────────────────────
-// Shown on the setup screen when user selects "Competition Director".
-// Handles both returning host login (email lookup) and new host registration,
-// with no family account required.
-
-function HostAccessPanel({ competitionHosts, registerHost, onHostPath, onBack }) {
-  const [step, setStep] = useState("lookup"); // "lookup" | "register"
-  const [email, setEmail] = useState("");
-  const [notFound, setNotFound] = useState(false);
-  const [form, setForm] = useState({ name: "", organization: "", email: "", phone: "", state: "", notes: "" });
-  const [submitted, setSubmitted] = useState(false);
-  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
-
-  function lookup() {
-    const found = competitionHosts.find(h => h.email?.toLowerCase() === email.toLowerCase());
-    if (found) {
-      onHostPath(found);
-    } else {
-      setNotFound(true);
-    }
-  }
-
-  function submitRegistration() {
-    registerHost({ ...form });
-    setSubmitted(true);
-  }
-
-  // ── Returning host lookup ──
-  if (step === "lookup") {
-    return (
-      <div className="card" style={{ maxWidth: 440, width: "100%", padding: "40px 36px" }}>
-        <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>🏆</div>
-          <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: "var(--navy)", marginBottom: 4 }}>
-            Competition Director Access
-          </div>
-          <p style={{ fontSize: 13, color: "var(--slate)", lineHeight: 1.6 }}>
-            Return to your host dashboard, or register as a new host.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-          <div className="card-sm" style={{ background: "#f8fafc" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", marginBottom: 10 }}>
-              Already registered? Sign in with your email
-            </div>
-            <div className="flex gap-2">
-              <input className="input" type="email" value={email}
-                onChange={e => { setEmail(e.target.value); setNotFound(false); }}
-                placeholder="your@email.com"
-                onKeyDown={e => e.key === "Enter" && email && lookup()} />
-              <button className="btn btn-primary btn-sm" disabled={!email} onClick={lookup}>
-                Go
-              </button>
-            </div>
-            {notFound && (
-              <div style={{ fontSize: 12, color: "var(--red)", marginTop: 8 }}>
-                No host account found for that email. Register below.
-              </div>
-            )}
-          </div>
-
-          <div style={{ textAlign: "center", fontSize: 12, color: "var(--muted)" }}>— or —</div>
-
-          <button className="btn btn-secondary w-full" onClick={() => setStep("register")}>
-            Register as a new Competition Director
-          </button>
-        </div>
-
-        <button className="btn btn-ghost w-full" onClick={onBack}>← Back</button>
-      </div>
-    );
-  }
-
-  // ── New host registration ──
-  if (step === "register") {
-    if (submitted) {
-      return (
-        <div className="card" style={{ maxWidth: 440, width: "100%", padding: "40px 36px", textAlign: "center" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-          <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: "var(--navy)", marginBottom: 8 }}>
-            Registration submitted
-          </h2>
-          <p style={{ fontSize: 14, color: "var(--slate)", lineHeight: 1.7, marginBottom: 20 }}>
-            A TwirlPower admin will review your registration and approve your account. This is a one-time process — once approved you can post competitions anytime.
-          </p>
-          <div className="alert alert-info" style={{ textAlign: "left", marginBottom: 20 }}>
-            <Icon name="info" size={15} color="var(--brand)" />
-            <span style={{ fontSize: 13 }}>
-              <strong>Phase 2:</strong> You'll receive an email confirmation and approval notification. The admin can reach out to verify credentials before approving.
-            </span>
-          </div>
-          <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            Come back and sign in with <strong>{form.email}</strong> once your account is approved.
-          </p>
-          <button className="btn btn-ghost w-full" style={{ marginTop: 16 }} onClick={onBack}>← Back to start</button>
-        </div>
-      );
-    }
-
-    return (
-      <div className="card" style={{ maxWidth: 480, width: "100%", padding: "36px" }}>
-        <button className="btn btn-ghost btn-sm" style={{ marginBottom: 16 }} onClick={() => setStep("lookup")}>
-          ← Back
-        </button>
-        <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 20, color: "var(--navy)", marginBottom: 4 }}>
-          Create Your Director Profile
-        </div>
-        <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20, lineHeight: 1.6 }}>
-          No family account needed. Fill in your details and a TwirlPower admin will review and approve your account before it goes live.
-        </p>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="label">Your name</label>
-            <input className="input" value={form.name} onChange={e => f("name", e.target.value)} placeholder="Full name" autoFocus />
-          </div>
-          <div className="form-group">
-            <label className="label">State</label>
-            <select className="select" value={form.state} onChange={e => f("state", e.target.value)}>
-              <option value="">Select state</option>
-              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="label">Email</label>
-            <input className="input" type="email" value={form.email} onChange={e => f("email", e.target.value)} placeholder="your@email.com" />
-          </div>
-          <div className="form-group">
-            <label className="label">Phone</label>
-            <input className="input" type="tel" value={form.phone} onChange={e => f("phone", e.target.value)} placeholder="(555) 555-5555" />
-          </div>
-        </div>
-        <div className="form-group">
-          <label className="label">Organization / affiliation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-          <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)} placeholder="e.g. USTA Ohio Regional Council, ABC Twirling Club" />
-        </div>
-        <div className="form-group">
-          <label className="label">Notes for admin <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-          <textarea className="textarea" rows={2} value={form.notes} onChange={e => f("notes", e.target.value)}
-            placeholder="Any context about your role or why you're registering..." />
-        </div>
-        <div className="form-group">
-          <label className="label">Supporting document <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-          <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-            onChange={e => f("file", e.target.files?.[0])}
-            style={{ fontSize: 12, color: "var(--slate)" }} />
-          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Organization credentials, event flyer, or other supporting documentation</div>
-        </div>
-        <div className="alert alert-info mb-4">
-          <Icon name="info" size={15} color="var(--brand)" />
-          <div style={{ fontSize: 12 }}>
-            Your registration is reviewed by a TwirlPower admin before activation. Once approved, your access is permanent — no need to re-register.
-          </div>
-        </div>
-        <button className="btn btn-primary w-full"
-          disabled={!form.name || !form.email}
-          onClick={submitRegistration}>
-          Create Profile
-        </button>
-      </div>
-    );
-  }
-
-  return null;
 }
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────
