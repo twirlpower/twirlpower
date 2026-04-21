@@ -7517,9 +7517,9 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
           <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
             {[
               { id: "family", label: `Families (${familyOnlyAccounts.length})` },
+              { id: "twirlers", label: `Twirlers (${allTwirlers.length})` },
               { id: "coach", label: `Coaches (${coachAccounts.length})` },
               { id: "host", label: `Directors (${hostAccounts.length})` },
-              { id: "twirlers", label: `Twirlers (${allTwirlers.length})` },
             ].map(t => (
               <button key={t.id} onClick={() => { setAccountType(t.id); setSearch(""); setExpandedId(null); }}
                 style={{ padding: "6px 10px", fontSize: 11, fontWeight: 500, cursor: "pointer", border: "none",
@@ -7626,42 +7626,41 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
             c.email?.toLowerCase().includes(search.toLowerCase()) ||
             c.club?.toLowerCase().includes(search.toLowerCase())
           ).map(c => (
-            <div key={c.id} style={{ border: "1px solid var(--border)", borderRadius: 8, marginBottom: 6,
-              background: "var(--card)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+            <div key={c.id} className="card-sm mb-2">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0,
                   background: clubOwnerIds.has(c.id) ? "#fef3c7" : "#ede9fe",
                   color: clubOwnerIds.has(c.id) ? "#92400e" : "#6d28d9" }}>
                   {initials(c.name || c.email || "?")}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>
                     {c.name || "—"}
-                    {clubOwnerIds.has(c.id) && (
-                      <span className="badge badge-amber" style={{ fontSize: 9 }}>👑 Club Owner</span>
-                    )}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {c.email}{c.club ? ` · ${c.club}` : ""}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                  {c.organizations?.length > 0 && c.organizations.map(o => (
-                    <span key={o} className="badge" style={{ fontSize: 9, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>
-                  ))}
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(c.created_at)}</span>
-                  <button className="btn btn-danger btn-sm"
-                    onClick={() => {
-                      if (window.confirm(`Delete coach account for ${c.name || c.email}? This cannot be undone.`)) {
-                        supabase.from("coach_accounts").delete().eq("id", c.id).then(() => {
-                          setCoachAccounts(prev => prev.filter(x => x.id !== c.id));
-                        });
-                      }
-                    }}
-                    style={{ fontSize: 10, padding: "2px 8px" }}>
-                    Delete
-                  </button>
-                </div>
+              </div>
+              <div className="flex gap-2 items-center" style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
+                {clubOwnerIds.has(c.id) && (
+                  <span className="badge badge-amber" style={{ fontSize: 9 }}>👑 Club Owner</span>
+                )}
+                {c.organizations?.length > 0 && c.organizations.map(o => (
+                  <span key={o} className="badge" style={{ fontSize: 9, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>
+                ))}
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(c.created_at)}</span>
+                <button className="btn btn-danger btn-sm"
+                  onClick={() => {
+                    if (window.confirm(`Delete coach account for ${c.name || c.email}? This cannot be undone.`)) {
+                      supabase.from("coach_accounts").delete().eq("id", c.id).then(() => {
+                        setCoachAccounts(prev => prev.filter(x => x.id !== c.id));
+                      });
+                    }
+                  }}
+                  style={{ fontSize: 10, padding: "2px 8px", marginLeft: "auto" }}>
+                  Delete
+                </button>
               </div>
             </div>
           ))}
@@ -7695,26 +7694,27 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
             h.email?.toLowerCase().includes(search.toLowerCase()) ||
             h.organization?.toLowerCase().includes(search.toLowerCase())
           ).map(h => (
-            <div key={h.id} style={{ border: "1px solid var(--border)", borderRadius: 8, marginBottom: 6,
-              background: "var(--card)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+            <div key={h.id} className="card-sm mb-2">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, flexShrink: 0,
                   background: h.approved ? "#dcfce7" : "#fef9c3", color: h.approved ? "#166534" : "#854d0e" }}>
                   {initials(h.name || "?")}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>
                     {h.name || "—"}
-                    <span className={`badge ${h.approved ? "badge-green" : "badge-amber"}`} style={{ fontSize: 9 }}>
-                      {h.approved ? "Approved" : "Pending"}
-                    </span>
                   </div>
                   <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {[h.email, h.organization, h.state].filter(Boolean).join(" · ")}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(h.created_at)}</span>
+              </div>
+              <div className="flex gap-2 items-center" style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
+                <span className={`badge ${h.approved ? "badge-green" : "badge-amber"}`} style={{ fontSize: 9 }}>
+                  {h.approved ? "Approved" : "Pending"}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(h.created_at)}</span>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
                   {h.approved ? (
                     <button className="btn btn-secondary btn-sm"
                       onClick={() => {
