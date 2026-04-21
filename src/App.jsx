@@ -1083,8 +1083,8 @@ export default function App() {
                 setInvites((inv || []).map(i => ({ ...i, twirlerId: i.twirler_id, coachId: i.coach_id,
                   competitionId: i.competition_id, respondedAt: i.responded_at, createdAt: i.created_at })));
                 setCoachLinks((cl || []).map(l => ({ ...l, twirlerId: l.twirler_id, coachId: l.coach_id,
-                  familyId: l.family_id, coachName: l.coach_accounts?.name, coachEmail: l.coach_accounts?.email,
-                  coachStudio: l.coach_accounts?.studio, coachOrgs: l.coach_accounts?.organizations || [],
+                  familyId: l.family_id, coachName: l.coach_name, coachEmail: l.coach_email,
+                  coachStudio: l.coach_studio, coachOrgs: l.coach_organizations || [],
                   createdAt: l.created_at, type: 'coach_link' })));
               }
               setDataLoading(false);
@@ -1288,8 +1288,8 @@ export default function App() {
               setInvites((inv || []).map(i => ({ ...i, twirlerId: i.twirler_id, coachId: i.coach_id,
                 competitionId: i.competition_id, respondedAt: i.responded_at, createdAt: i.created_at })));
               setCoachLinks((cl || []).map(l => ({ ...l, twirlerId: l.twirler_id, coachId: l.coach_id,
-                familyId: l.family_id, coachName: l.coach_accounts?.name, coachEmail: l.coach_accounts?.email,
-                coachStudio: l.coach_accounts?.studio, coachOrgs: l.coach_accounts?.organizations || [],
+                familyId: l.family_id, coachName: l.coach_name, coachEmail: l.coach_email,
+                coachStudio: l.coach_studio, coachOrgs: l.coach_organizations || [],
                 createdAt: l.created_at, type: 'coach_link' })));
             }
             setDataLoading(false);
