@@ -1348,7 +1348,7 @@ export default function App() {
           if (linkedFamily) {
             const guardian = (linkedFamily.additional_guardians || [])
               .find(g => g.email?.toLowerCase() === userEmail.toLowerCase());
-            const rel = guardian?.relationship || "Other";
+            const rel = guardian?.relationship || "Parent"; // default to Parent if not found
             const isCoGuardian = ["Parent", "Guardian", "Co-Guardian"].includes(rel);
             setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
 
@@ -2253,7 +2253,7 @@ export default function App() {
     );
   }
 
-  if (twirlers.length === 0 && !guardianMode && !dataLoading) {
+  if (twirlers.length === 0 && !guardianMode && !dataLoading && familyAccount) {
     return (
       <>
         <style>{css}</style>
