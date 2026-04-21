@@ -1421,7 +1421,7 @@ export default function App() {
 
   const [guardianMode, setGuardianMode] = useState(null); // null | 'co-guardian' | 'viewer'
   const [activeTwirlerId, setActiveTwirlerId] = useLocalStorage("tp_active_twirler", null);
-  const [page, setPage] = useState("home");
+  const [page, setPage] = useLocalStorage("tp_page", "home");
   const [modals, setModals] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useLocalStorage('tp_dark_mode', false);
