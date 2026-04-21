@@ -3832,13 +3832,15 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
     setPendingLinks(links || []);
 
     // Also load family_invites for new families not yet on TwirlPower
-    const { data: famInvites } = await supabase
+    const { data: famInvites, error: famErr } = await supabase
       .from('family_invites')
       .select('*')
       .eq('coach_id', coachAccount.id)
       .eq('invite_type', 'coach')
       .is('accepted_at', null)
       .order('created_at', { ascending: false });
+    console.log('[DEBUG loadPending] coachAccount.id:', coachAccount.id);
+    console.log('[DEBUG loadPending] famInvites:', famInvites, 'error:', famErr);
     setPendingFamilyInvites(famInvites || []);
     setLoadingPending(false);
   }
