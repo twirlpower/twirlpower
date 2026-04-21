@@ -2087,6 +2087,7 @@ export default function App() {
         competitionHosts={competitionHosts}
         registerHost={registerHost}
         authUser={authUser}
+        onSignOut={signOut}
       />
     );
   }
@@ -3845,7 +3846,7 @@ function InviteAthletePage({ coachAccount, supabase, setPage, loadCoachData }) {
   );
 }
 
-function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, authUser }) {
+function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, authUser, onSignOut }) {
   const [accountType, setAccountType] = useState(null); // null | "family" | "host"
   const [form, setForm] = useState({ parentName: "", email: authUser?.email || "", phone: "", state: "" });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -3922,10 +3923,16 @@ function SetupScreen({ onComplete, onHostPath, competitionHosts, registerHost, a
                 <div style={{ fontSize: 13, color: "var(--slate)" }}>Post competition listings for twirlers and coaches to discover</div>
               </button>
             </div>
+            <div style={{ marginTop: 20, textAlign: "center", borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+              <span style={{ fontSize: 13, color: "var(--muted)" }}>Already have an account? </span>
+              <button onClick={onSignOut}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13,
+                  color: "var(--brand)", fontWeight: 600, fontFamily: "inherit", padding: 0 }}>
+                Sign out and sign in
+              </button>
+            </div>
           </div>
         )}
-
-        {/* Coach setup — redirect to coach signup flow */}
         {accountType === "coach" && (
           <div className="card" style={{ maxWidth: 440, width: "100%", padding: "40px 36px", textAlign: "center" }}>
             <Logo />
