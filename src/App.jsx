@@ -2230,7 +2230,8 @@ export default function App() {
       <SetupScreen
         onComplete={async data => {
           // Ensure user_roles row exists first
-          await supabase.from('user_roles').upsert({ user_id: authUser.id, role: 'family' });
+          const { error: roleErr } = await supabase.from('user_roles').upsert({ user_id: authUser.id, role: 'family' });
+          console.log('[DEBUG Setup] user_roles upsert:', roleErr ? `ERROR: ${roleErr.message}` : 'OK');
           setUserRole('family');
 
           // Check if they already have a family account (co-guardian who signed up before being linked)
@@ -2254,6 +2255,8 @@ export default function App() {
             relationship: data.relationship || 'Parent / Guardian',
             additional_guardians: [],
           }).select().single();
+
+          console.log('[DEBUG Setup] family_accounts insert:', error ? `ERROR: ${error.message}` : 'OK', inserted);
 
           if (error) {
             // Insert failed (likely duplicate) — reload fresh
