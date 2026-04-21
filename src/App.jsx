@@ -2355,7 +2355,9 @@ export default function App() {
     );
   }
 
-  if (twirlers.length === 0 && !guardianMode && !dataLoading && familyAccount) {
+  const isHost = competitionHosts.some(h => h.email?.toLowerCase() === authUser?.email?.toLowerCase());
+
+  if (twirlers.length === 0 && !guardianMode && !dataLoading && familyAccount && !hostMode && !isHost) {
     return (
       <>
         <style>{css}</style>
