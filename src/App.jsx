@@ -2236,7 +2236,7 @@ export default function App() {
           {page === "history" && <HistoryPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
           {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} authUser={authUser} supabase={supabase} />}
-          {page === "coaches" && <CoachesPage {...pageProps} />}
+          {page === "coaches" && <CoachesPage {...pageProps} supabase={supabase} />}
           {page === "openqs" && isAdmin && <OpenQuestionsPage />}
           {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} />}
           {page === "privacy" && <PrivacyPolicyPage onClose={() => setPage("home")} />}
@@ -7534,307 +7534,315 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
   );
 }
 
-function CoachesPage({ coaches, twirlers, activeTwirler, addCoach, linkCoach, unlinkCoach, familyAccount, coachCompetitions, invites, coachCreateCompetition, coachLinks, respondToCoachLink, setPage }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [showCreateComp, setShowCreateComp] = useState(null);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", specialization: "", organizations: [] });
-  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+function CoachesPage({ coaches, twirlers, activeTwirler, familyAccount, coachLinks, respondToCoachLink, supabase }) {
+  const [tab, setTab] = useState('linked'); // 'linked' | 'find' | 'invite'
+  // Find tab
+  const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [requestSent, setRequestSent] = useState({}); // coachId -> true
+  const [requesting, setRequesting] = useState({});
+  // Invite tab
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '' });
+  const [inviteSent, setInviteSent] = useState(false);
+  const [sendingInvite, setSendingInvite] = useState(false);
 
-  const allGuardians = [
-    { name: familyAccount?.parentName, email: familyAccount?.email, phone: familyAccount?.phone, relationship: familyAccount?.relationship || "Parent" },
-    ...(familyAccount?.additionalGuardians || [])
-  ].filter(g => g.name);
-
-  // Real coach accounts linked via coach_athlete_links
   const realCoachLinks = (coachLinks || []).filter(l => l.status === 'accepted');
   const pendingCoachLinks = (coachLinks || []).filter(l => l.status === 'pending');
 
+  async function doSearch() {
+    if (search.length < 2) return;
+    setSearching(true);
+    const { data } = await supabase
+      .from('coach_accounts')
+      .select('id, name, studio, state, organizations, bio')
+      .or(`name.ilike.%${search}%,studio.ilike.%${search}%,state.ilike.%${search}%`)
+      .limit(10);
+    setSearchResults(data || []);
+    setSearching(false);
+  }
+
+  async function requestCoach(coach) {
+    setRequesting(p => ({ ...p, [coach.id]: true }));
+    // Create pending link for all twirlers
+    const links = (activeTwirler ? [activeTwirler] : twirlers).map(t => ({
+      coach_id: coach.id,
+      twirler_id: t.id,
+      family_id: familyAccount?.id,
+      status: 'pending',
+      invited_by: 'family',
+    }));
+    await supabase.from('coach_athlete_links').upsert(links, { onConflict: 'coach_id,twirler_id', ignoreDuplicates: true });
+    // Email the coach
+    await sendEmail('coach_link_request', coach.email, {
+      coachName: coach.name,
+      familyName: familyAccount?.parentName,
+      athleteName: (activeTwirler ? [activeTwirler] : twirlers).map(t => t.firstName).join(', '),
+    });
+    setRequestSent(p => ({ ...p, [coach.id]: true }));
+    setRequesting(p => ({ ...p, [coach.id]: false }));
+  }
+
+  async function sendInvite() {
+    if (!inviteForm.email) return;
+    setSendingInvite(true);
+    await sendEmail('coach_invite_new_family', inviteForm.email, {
+      coachName: inviteForm.name || 'there',
+      familyName: familyAccount?.parentName,
+      athleteName: (activeTwirler ? [activeTwirler] : twirlers).map(t => t.firstName).join(', '),
+    });
+    setInviteSent(true);
+    setSendingInvite(false);
+  }
+
   return (
     <div>
-      <div className="page-header flex items-center justify-between">
-        <div>
-          <h1 className="page-title">Coaches</h1>
-          <p className="page-sub">Manage coaches and their access to your twirlers</p>
-        </div>
-        <button className="btn btn-secondary" onClick={() => setShowAdd(true)}><Icon name="plus" size={15} /> Add Legacy Coach</button>
+      <div className="page-header">
+        <h1 className="page-title">Coaches</h1>
+        <p className="page-sub">Manage coaches and their access to your twirlers</p>
       </div>
 
-      <div className="alert alert-info mb-4">
-        <Icon name="info" size={16} color="var(--blue)" />
-        <div>
-          <strong>How coach access works:</strong> Coaches with a TwirlPower account can link directly and send competition invites. You can also add a coach manually by name and contact info for reference.
-        </div>
+      {/* Tab switcher */}
+      <div className="flex gap-2 mb-6">
+        {[
+          { id: 'linked', label: `My Coaches${realCoachLinks.length ? ` (${realCoachLinks.length})` : ''}` },
+          { id: 'find', label: '🔍 Find a Coach' },
+          { id: 'invite', label: '✉️ Invite a Coach' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`btn ${tab === t.id ? 'btn-primary' : 'btn-secondary'}`}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* ── REAL COACH ACCOUNTS ── */}
-      {realCoachLinks.length > 0 && (
-        <div className="mb-4">
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-            TwirlPower Coaches ({realCoachLinks.length})
-          </div>
-          {realCoachLinks.map(l => {
-            const twirler = twirlers.find(t => t.id === l.twirlerId);
-            return (
-              <div key={l.id} className="card mb-3">
-                <div className="flex items-start gap-4">
-                  <div className="avatar avatar-lg" style={{ background: "#ede9fe", color: "#6d28d9" }}>
-                    {initials(l.coachName || "?")}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2 }}>{l.coachName || "—"}</div>
-                    {l.coachEmail && <div style={{ fontSize: 13, color: "var(--slate)" }}>📧 {l.coachEmail}</div>}
-                    {l.coachStudio && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {l.coachStudio}</div>}
-                    {l.coachOrgs?.length > 0 && (
-                      <div className="flex gap-1 mt-1">
-                        {l.coachOrgs.map(o => (
-                          <span key={o} className="badge" style={{ background: orgColor(o) + "15", color: orgColor(o), fontSize: 10 }}>{o}</span>
-                        ))}
-                      </div>
-                    )}
-                    {twirler && (
-                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
-                        Linked to: <strong>{twirler.firstName}</strong>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-2" style={{ alignItems: "flex-end" }}>
-                    <span className="badge badge-green" style={{ fontSize: 10 }}>Active</span>
-                    <button className="btn btn-danger btn-sm"
-                      onClick={() => { if (window.confirm(`Remove ${l.coachName} as coach for ${twirler?.firstName}?`)) respondToCoachLink(l.id, false); }}
-                      style={{ fontSize: 11 }}>
-                      Remove
-                    </button>
-                  </div>
-                </div>
+      {/* ── MY COACHES TAB ── */}
+      {tab === 'linked' && (
+        <div>
+          {/* Pending requests */}
+          {pendingCoachLinks.length > 0 && (
+            <div className="mb-4">
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--amber)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                Pending Requests ({pendingCoachLinks.length})
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── PENDING REQUESTS ── */}
-      {pendingCoachLinks.length > 0 && (
-        <div className="mb-4">
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--amber)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-            Pending Requests ({pendingCoachLinks.length})
-          </div>
-          {pendingCoachLinks.map(l => (
-            <div key={l.id} className="card-sm mb-2" style={{ border: "1px solid #fed7aa", background: "#fff7ed" }}>
-              <div className="flex items-center gap-3">
-                <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(l.coachName || "?")}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, fontSize: 14 }}>{l.coachName}</div>
-                  <div style={{ fontSize: 12, color: "var(--slate)" }}>{l.coachEmail}</div>
+              {pendingCoachLinks.map(l => (
+                <div key={l.id} className="card-sm mb-2" style={{ border: "1px solid #fed7aa", background: "#fff7ed" }}>
+                  <div className="flex items-center gap-3">
+                    <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(l.coachName || "?")}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 500, fontSize: 14 }}>{l.coachName || "Coach"}</div>
+                      <div style={{ fontSize: 12, color: "var(--slate)" }}>{l.coachEmail}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                        {l.invitedBy === 'family' ? 'Request sent — awaiting coach approval' : 'Coach requested to link — awaiting your approval'}
+                      </div>
+                    </div>
+                    {l.invitedBy !== 'family' && (
+                      <div className="flex gap-2">
+                        <button className="btn btn-primary btn-sm" onClick={() => respondToCoachLink(l.id, true)}>✓ Accept</button>
+                        <button className="btn btn-secondary btn-sm" onClick={() => respondToCoachLink(l.id, false)}>Decline</button>
+                      </div>
+                    )}
+                    {l.invitedBy === 'family' && (
+                      <span className="badge badge-amber" style={{ fontSize: 10 }}>Awaiting coach</span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button className="btn btn-primary btn-sm" onClick={() => respondToCoachLink(l.id, true)}>✓ Accept</button>
-                  <button className="btn btn-secondary btn-sm" onClick={() => respondToCoachLink(l.id, false)}>Decline</button>
+              ))}
+            </div>
+          )}
+
+          {/* Linked coaches */}
+          {realCoachLinks.length > 0 ? (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                Linked Coaches ({realCoachLinks.length})
+              </div>
+              {realCoachLinks.map(l => {
+                const twirler = twirlers.find(t => t.id === l.twirlerId);
+                return (
+                  <div key={l.id} className="card mb-3">
+                    <div className="flex items-start gap-4">
+                      <div className="avatar avatar-lg" style={{ background: "#ede9fe", color: "#6d28d9" }}>
+                        {initials(l.coachName || "?")}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2 }}>{l.coachName || "—"}</div>
+                        {l.coachEmail && <div style={{ fontSize: 13, color: "var(--slate)" }}>📧 {l.coachEmail}</div>}
+                        {l.coachStudio && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {l.coachStudio}</div>}
+                        {l.coachOrgs?.length > 0 && (
+                          <div className="flex gap-1 mt-1">
+                            {l.coachOrgs.map(o => (
+                              <span key={o} className="badge" style={{ background: orgColor(o) + "15", color: orgColor(o), fontSize: 10 }}>{o}</span>
+                            ))}
+                          </div>
+                        )}
+                        {twirler && (
+                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
+                            Linked to: <strong>{twirler.firstName}</strong>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2" style={{ alignItems: "flex-end" }}>
+                        <span className="badge badge-green" style={{ fontSize: 10 }}>Active</span>
+                        <button className="btn btn-danger btn-sm"
+                          onClick={() => { if (window.confirm(`Remove ${l.coachName} as coach?`)) respondToCoachLink(l.id, false); }}
+                          style={{ fontSize: 11 }}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : pendingCoachLinks.length === 0 ? (
+            <div className="card">
+              <div className="empty-state">
+                <div style={{ fontSize: 36, marginBottom: 12 }}>🎓</div>
+                <h3>No coaches linked yet</h3>
+                <p>Search for a coach on TwirlPower or invite one by email.</p>
+                <div className="flex gap-2" style={{ justifyContent: "center", marginTop: 16 }}>
+                  <button className="btn btn-primary btn-sm" onClick={() => setTab('find')}>Find a Coach</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setTab('invite')}>Invite by Email</button>
                 </div>
               </div>
             </div>
-          ))}
+          ) : null}
         </div>
       )}
 
-      {/* ── LEGACY COACHES ── */}
-      {coaches.length > 0 && (
-        <div className="mb-4">
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-            Manually Added Coaches ({coaches.length})
+      {/* ── FIND A COACH TAB ── */}
+      {tab === 'find' && (
+        <div>
+          <div className="card mb-4">
+            <div className="section-header">
+              <span className="section-title">Search TwirlPower Coaches</span>
+            </div>
+            <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16 }}>
+              Search by name, studio, or state. View bios and send a link request — the coach will approve before being added.
+            </p>
+            <div className="flex gap-2">
+              <input className="input" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Coach name, studio, or state..." autoFocus
+                onKeyDown={e => e.key === 'Enter' && doSearch()} />
+              <button className="btn btn-primary btn-sm" disabled={search.length < 2 || searching} onClick={doSearch}>
+                {searching ? '...' : 'Search'}
+              </button>
+            </div>
           </div>
-          <div className="flex-col gap-3">
-          {coaches.map(coach => {
-            const linked = coach.linkedTwirlers || [];
-            const coachComps = (coachCompetitions || []).filter(c => c.createdByCoach === coach.id);
+
+          {searchResults.length === 0 && search.length >= 2 && !searching && (
+            <div className="card mb-4">
+              <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", padding: "16px 0" }}>
+                No coaches found matching "{search}". Try a different name or state, or invite them by email.
+              </p>
+              <div style={{ textAlign: "center" }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setTab('invite')}>Invite by Email →</button>
+              </div>
+            </div>
+          )}
+
+          {searchResults.map(coach => {
+            const alreadyLinked = realCoachLinks.some(l => l.coachId === coach.id) ||
+              pendingCoachLinks.some(l => l.coachId === coach.id);
+            const sent = requestSent[coach.id];
             return (
-              <div key={coach.id} className="card">
+              <div key={coach.id} className="card mb-3">
                 <div className="flex items-start gap-4">
-                  <div className="avatar avatar-lg" style={{ background: "#ede9fe", color: "#6d28d9" }}>{initials(coach.name)}</div>
+                  <div className="avatar avatar-lg" style={{ background: "#ede9fe", color: "#6d28d9" }}>
+                    {initials(coach.name)}
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 2 }}>{coach.name}</div>
-                    {coach.email && <div style={{ fontSize: 13, color: "var(--slate)" }}>📧 {coach.email}</div>}
-                    {coach.phone && <div style={{ fontSize: 13, color: "var(--slate)" }}>📞 {coach.phone}</div>}
-                    {coach.specialization && <div style={{ fontSize: 13, color: "var(--slate)" }}>🎀 {coach.specialization}</div>}
-                    {(coach.organizations||[]).length > 0 && (
+                    {coach.studio && <div style={{ fontSize: 13, color: "var(--slate)" }}>🏫 {coach.studio}</div>}
+                    {coach.state && <div style={{ fontSize: 13, color: "var(--slate)" }}>📍 {coach.state}</div>}
+                    {coach.organizations?.length > 0 && (
                       <div className="flex gap-1 mt-1">
-                        {(coach.organizations||[]).map(o => (
+                        {coach.organizations.map(o => (
                           <span key={o} className="badge" style={{ background: orgColor(o) + "15", color: orgColor(o), fontSize: 10 }}>{o}</span>
                         ))}
                       </div>
                     )}
-
-                    <div className="divider" />
-
-                    {/* Twirler access */}
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>Twirler access — click to toggle</div>
-                    <div className="flex gap-2 flex-wrap mb-2">
-                      {twirlers.map(t => {
-                        const isLinked = linked.includes(t.id);
-                        return (
-                          <button key={t.id} className={`chip ${isLinked ? "selected" : ""}`}
-                            onClick={() => isLinked ? unlinkCoach(coach.id, t.id) : linkCoach(coach.id, t.id)}>
-                            {isLinked ? "✓ " : ""}{t.firstName}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {linked.length === 0 && (
-                      <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic", marginBottom: 8 }}>No twirlers linked — this coach cannot view any profiles yet.</div>
+                    {coach.bio && (
+                      <p style={{ fontSize: 13, color: "var(--slate)", marginTop: 8, lineHeight: 1.5, fontStyle: "italic" }}>
+                        "{coach.bio}"
+                      </p>
                     )}
-
-                    {linked.length > 0 && (
-                      <div className="card-sm mt-2 mb-3" style={{ background: "#f8fafc" }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                          Contact info visible to {coach.name}
-                        </div>
-                        {allGuardians.map((g, i) => (
-                          <div key={i} className="flex items-center gap-2 mb-1">
-                            <div className="avatar" style={{ width: 24, height: 24, fontSize: 10, background: "#dbeafe", color: "#1d4ed8" }}>{initials(g.name)}</div>
-                            <span style={{ fontSize: 13, fontWeight: 500 }}>{g.name}</span>
-                            <span style={{ fontSize: 12, color: "var(--slate)" }}>({g.relationship})</span>
-                            {g.email && <span style={{ fontSize: 12, color: "var(--slate)" }}>📧 {g.email}</span>}
-                            {g.phone && <span style={{ fontSize: 12, color: "var(--slate)" }}>📞 {g.phone}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="divider" />
-
-                    {/* Competition invites section */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                        Competitions & invites
-                      </div>
-                      {linked.length > 0 && (
-                        <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
-                          onClick={() => setShowCreateComp(coach.id)}>
-                          <Icon name="plus" size={12} /> Create competition invite
-                        </button>
-                      )}
-                    </div>
-
-                    {coachComps.length === 0 ? (
-                      <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>
-                        No competitions created by this coach yet.
-                        {linked.length > 0 && " Use the button above to create one and invite twirlers."}
-                      </div>
+                  </div>
+                  <div style={{ flexShrink: 0 }}>
+                    {alreadyLinked ? (
+                      <span className="badge badge-green" style={{ fontSize: 10 }}>
+                        {realCoachLinks.some(l => l.coachId === coach.id) ? 'Linked' : 'Pending'}
+                      </span>
+                    ) : sent ? (
+                      <span className="badge badge-green" style={{ fontSize: 11 }}>✓ Request sent</span>
                     ) : (
-                      <div className="flex-col gap-2">
-                        {coachComps.map(comp => {
-                          const compInvites = (invites || []).filter(i => i.competitionId === comp.id);
-                          const accepted = compInvites.filter(i => i.status === "accepted");
-                          const pending = compInvites.filter(i => i.status === "pending");
-                          const declined = compInvites.filter(i => i.status === "declined");
-                          return (
-                            <div key={comp.id} className="card-sm" style={{ background: "#f8fafc" }}>
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <div style={{ fontWeight: 600, fontSize: 14 }}>{comp.name}</div>
-                                  <div style={{ fontSize: 12, color: "var(--slate)" }}>
-                                    {fmtDate(comp.date)}{comp.location ? ` · ${comp.location}` : ""}
-                                    {comp.orgId && <span className="badge" style={{ marginLeft: 6, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
-                                  </div>
-                                </div>
-                              </div>
-                              {/* Invite status per twirler */}
-                              {compInvites.length > 0 && (
-                                <div style={{ marginTop: 10 }}>
-                                  <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Invite status</div>
-                                  <div className="flex gap-2 flex-wrap">
-                                    {compInvites.map(invite => {
-                                      const twirler = twirlers.find(t => t.id === invite.twirlerId);
-                                      const statusColor = invite.status === "accepted" ? "#15803d" : invite.status === "declined" ? "#b91c1c" : "#b45309";
-                                      const statusBg = invite.status === "accepted" ? "#dcfce7" : invite.status === "declined" ? "#fee2e2" : "#fef3c7";
-                                      const statusIcon = invite.status === "accepted" ? "✓" : invite.status === "declined" ? "✕" : "⏳";
-                                      return (
-                                        <div key={invite.id} style={{ display: "flex", alignItems: "center", gap: 5, background: statusBg, borderRadius: 20, padding: "3px 10px", fontSize: 12 }}>
-                                          <span style={{ color: statusColor }}>{statusIcon}</span>
-                                          <span style={{ color: statusColor, fontWeight: 500 }}>{twirler?.firstName || "Unknown"}</span>
-                                          <span style={{ color: statusColor, opacity: 0.7 }}>{invite.status}</span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>
-                                    {accepted.length} accepted · {pending.length} pending · {declined.length} declined
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <button className="btn btn-primary btn-sm"
+                        disabled={requesting[coach.id]}
+                        onClick={() => requestCoach(coach)}>
+                        {requesting[coach.id] ? '...' : 'Request to Link'}
+                      </button>
                     )}
                   </div>
                 </div>
               </div>
             );
           })}
-          </div>
         </div>
       )}
 
-      {/* Empty state when no coaches at all */}
-      {realCoachLinks.length === 0 && pendingCoachLinks.length === 0 && coaches.length === 0 && (
-        <div className="card">
-          <div className="empty-state">
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🎓</div>
-            <h3>No coaches yet</h3>
-            <p>Coaches with a TwirlPower account can send you a link request. You'll see it in your notifications. You can also add a coach manually for reference.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Add Coach Modal */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Coach"
-        footer={<>
-          <button className="btn btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
-          <button className="btn btn-primary" disabled={!form.name} onClick={() => {
-            addCoach(form);
-            setForm({ name: "", email: "", phone: "", specialization: "" });
-            setShowAdd(false);
-          }}>Add Coach</button>
-        </>}>
-        <div className="alert alert-info mb-3">
-          <Icon name="info" size={15} color="var(--blue)" />
-          <span>After adding a coach, use the toggle chips to select which athletes they can view and invite to competitions.</span>
-        </div>
-        <div className="form-group"><label className="label">Coach name</label><input className="input" value={form.name} onChange={e => f("name", e.target.value)} placeholder="Full name" autoFocus /></div>
-        <div className="form-row">
-          <div className="form-group"><label className="label">Email</label><input className="input" type="email" value={form.email} onChange={e => f("email", e.target.value)} placeholder="coach@example.com" /></div>
-          <div className="form-group"><label className="label">Phone</label><input className="input" type="tel" value={form.phone} onChange={e => f("phone", e.target.value)} placeholder="(555) 555-5555" /></div>
-        </div>
-        <div className="form-group"><label className="label">Specialization <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-          <input className="input" value={form.specialization} onChange={e => f("specialization", e.target.value)} placeholder="e.g. USTA Solo, NBTA teams" />
-        </div>
-        <div className="form-group">
-          <label className="label">Organizations <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional — informational)</span></label>
-          <div className="chip-group">
-            {Object.keys(ORGS).map(orgId => (
-              <div key={orgId} className={`chip ${(form.organizations||[]).includes(orgId) ? "selected" : ""}`}
-                onClick={() => f("organizations", (form.organizations||[]).includes(orgId)
-                  ? (form.organizations||[]).filter(o => o !== orgId)
-                  : [...(form.organizations||[]), orgId])}>
-                {orgId}
+      {/* ── INVITE A COACH TAB ── */}
+      {tab === 'invite' && (
+        <div>
+          {inviteSent ? (
+            <div className="card" style={{ textAlign: "center", padding: "40px 32px" }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+              <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: "var(--navy)", marginBottom: 8 }}>
+                Invite sent!
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--slate)", marginBottom: 20 }}>
+                {inviteForm.name || inviteForm.email} will receive an email inviting them to join TwirlPower. Once they sign up as a coach, find them using the "Find a Coach" tab and send a link request.
+              </p>
+              <div className="flex gap-2" style={{ justifyContent: "center" }}>
+                <button className="btn btn-primary btn-sm" onClick={() => { setInviteSent(false); setInviteForm({ name: '', email: '' }); }}>
+                  Invite Another
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={() => setTab('find')}>Find a Coach</button>
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="section-header">
+                <span className="section-title">Invite a Coach by Email</span>
+              </div>
+              <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 20, lineHeight: 1.6 }}>
+                Know a coach who isn't on TwirlPower yet? Send them an email invite. Once they create a coach account, use "Find a Coach" to send a link request.
+              </p>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="label">Coach name <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+                  <input className="input" value={inviteForm.name} onChange={e => setInviteForm(p => ({ ...p, name: e.target.value }))}
+                    placeholder="Coach's full name" />
+                </div>
+                <div className="form-group">
+                  <label className="label">Email address <span style={{ color: "var(--red)" }}>*</span></label>
+                  <input className="input" type="email" value={inviteForm.email}
+                    onChange={e => setInviteForm(p => ({ ...p, email: e.target.value }))}
+                    placeholder="coach@email.com" autoFocus />
+                </div>
+              </div>
+              <div className="alert alert-info mb-4">
+                <Icon name="info" size={14} color="var(--brand)" />
+                <span style={{ fontSize: 12 }}>
+                  The email will mention {familyAccount?.parentName || 'your family'} and {(activeTwirler ? [activeTwirler] : twirlers).map(t => t.firstName).join(', ')} so the coach knows who's reaching out.
+                </span>
+              </div>
+              <button className="btn btn-primary" disabled={!inviteForm.email || sendingInvite} onClick={sendInvite}>
+                {sendingInvite ? 'Sending...' : 'Send Invite Email'}
+              </button>
+            </div>
+          )}
         </div>
-      </Modal>
-
-      {/* Coach Create Competition Modal */}
-      {showCreateComp && (
-        <CoachCreateCompModal
-          open={!!showCreateComp}
-          onClose={() => setShowCreateComp(null)}
-          coach={coaches.find(c => c.id === showCreateComp)}
-          twirlers={twirlers.filter(t => (coaches.find(c => c.id === showCreateComp)?.linkedTwirlers || []).includes(t.id))}
-          onSave={(compData, invitedIds) => {
-            coachCreateCompetition(showCreateComp, compData, invitedIds);
-            setShowCreateComp(null);
-          }}
-        />
       )}
     </div>
   );
