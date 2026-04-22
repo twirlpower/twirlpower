@@ -2290,61 +2290,7 @@ export default function App() {
 
     // Show invite screen after first setup
     if (showCoachInviteScreen) {
-      const inviteUrl = `https://app.twirlpower.com?ref=coach_${coachAccount?.id?.slice(0, 8)}`;
-      return (
-        <>
-          <style>{css}</style>
-          <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", padding: 20 }}>
-            <div className="card" style={{ maxWidth: 520, width: "100%", padding: "40px 32px", textAlign: "center" }}>
-              <div style={{ marginBottom: 16, display: "flex", justifyContent: "center" }}>
-                <div style={{ width: 64, height: 64, background: "var(--navy)", borderRadius: 16,
-                  display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <BatonIcon size={40} />
-                </div>
-              </div>
-              <h2 className="serif" style={{ fontSize: 24, marginBottom: 8, color: "var(--navy)" }}>Invite Your Athletes</h2>
-              <p style={{ color: "var(--slate)", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
-                Have your athletes track their competitions so you can monitor their progress.
-              </p>
-
-              <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 20px", marginBottom: 16, textAlign: "left" }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Your personal invite link</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input className="input" value={inviteUrl} readOnly style={{ fontSize: 12, flex: 1, background: "white" }}
-                    onClick={e => e.target.select()} />
-                  <button className="btn btn-primary btn-sm" onClick={() => { navigator.clipboard.writeText(inviteUrl); }}>
-                    Copy
-                  </button>
-                </div>
-              </div>
-
-              <button className="btn btn-secondary w-full" style={{ marginBottom: 10 }}
-                onClick={() => {
-                  const msg = `Hey! I'm using TwirlPower to track competition results this season. Please create a profile and log your competitions so I can keep track of your progress.\n\n${inviteUrl}\n\nFor more information visit https://twirlpower.com`;
-                  if (navigator.share) {
-                    navigator.share({ title: "Join TwirlPower", text: msg }).catch(() => {});
-                  } else {
-                    window.open(`sms:?body=${encodeURIComponent(msg)}`, '_blank');
-                  }
-                }}>
-                📱 Share via text
-              </button>
-
-              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 20 }}>Send this to your team or parents</p>
-
-              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-                <button className="btn btn-primary w-full" onClick={() => setShowCoachInviteScreen(false)}>
-                  Continue to Dashboard →
-                </button>
-                <button className="btn btn-ghost w-full" style={{ marginTop: 8, fontSize: 13 }}
-                  onClick={() => setShowCoachInviteScreen(false)}>
-                  Skip for now
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
-      );
+      return <CoachPostSignupInvite coachAccount={coachAccount} supabase={supabase} onContinue={() => setShowCoachInviteScreen(false)} />;
     }
     return (
       <CoachApp
@@ -4555,6 +4501,159 @@ function SetupScreen({ onComplete, competitionHosts, registerHost, authUser, onS
           </div>
         )}
 
+      </div>
+    </>
+  );
+}
+
+// ─── COACH POST-SIGNUP INVITE SCREEN ─────────────────────────────────────────
+
+function CoachPostSignupInvite({ coachAccount, supabase, onContinue }) {
+  const [emailInput, setEmailInput] = useState('');
+  const [emails, setEmails] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [sentCount, setSentCount] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const inviteUrl = `https://app.twirlpower.com?ref=coach_${coachAccount?.id?.slice(0, 8)}`;
+
+  function addEmails() {
+    const parsed = emailInput.split(/[\s,;]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@'));
+    const unique = parsed.filter(e => !emails.includes(e));
+    if (unique.length) setEmails(prev => [...prev, ...unique]);
+    setEmailInput('');
+  }
+
+  async function sendInvites() {
+    if (!emails.length) return;
+    setSending(true);
+    for (const email of emails) {
+      try {
+        const { data: invite } = await supabase.from('family_invites').insert({
+          guardian_email: email,
+          coach_id: coachAccount.id,
+          invite_type: 'coach',
+          relationship: 'Parent',
+        }).select('token').single();
+        const url = invite?.token ? `https://app.twirlpower.com?invite=${invite.token}` : inviteUrl;
+        await sendEmail('coach_invite_new_family', email, {
+          coachName: coachAccount.name, coachStudio: coachAccount.studio,
+          coachOrgs: coachAccount.organizations, inviteUrl: url,
+        });
+      } catch (err) { console.warn('invite error:', err); }
+    }
+    setSentCount(emails.length);
+    setSent(true);
+    setSending(false);
+    setEmails([]);
+  }
+
+  function copyLink() {
+    navigator.clipboard.writeText(inviteUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const shareMsg = `Hey! I'm using TwirlPower to track competition results this season. Please create a profile and log your competitions so I can keep track of your progress.\n\n${inviteUrl}\n\nFor more information visit https://twirlpower.com`;
+
+  return (
+    <>
+      <style>{css}</style>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", padding: 20 }}>
+        <div className="card" style={{ maxWidth: 540, width: "100%", padding: "40px 32px" }}>
+          <div style={{ textAlign: "center", marginBottom: 24 }}>
+            <div style={{ marginBottom: 16, display: "flex", justifyContent: "center" }}>
+              <div style={{ width: 64, height: 64, background: "var(--navy)", borderRadius: 16,
+                display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <BatonIcon size={40} />
+              </div>
+            </div>
+            <h2 className="serif" style={{ fontSize: 24, marginBottom: 8, color: "var(--navy)" }}>Invite Your Athletes</h2>
+            <p style={{ color: "var(--slate)", fontSize: 14, lineHeight: 1.6 }}>
+              Have your athletes track their competitions so you can monitor their progress.
+            </p>
+          </div>
+
+          {sent ? (
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div className="alert alert-success">
+                <Icon name="check" size={15} color="var(--green)" />
+                <span>Invites sent to {sentCount} email{sentCount !== 1 ? 's' : ''}!</span>
+              </div>
+              <button className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} onClick={() => setSent(false)}>
+                Send more invites
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", marginBottom: 6 }}>
+                Send invites by email
+              </div>
+              <div className="flex gap-2" style={{ marginBottom: 8 }}>
+                <input className="input" value={emailInput} onChange={e => setEmailInput(e.target.value)}
+                  placeholder="parent@email.com" style={{ flex: 1 }}
+                  onKeyDown={e => (e.key === 'Enter' || e.key === ',') && (e.preventDefault(), addEmails())} />
+                <button className="btn btn-secondary btn-sm" onClick={addEmails} disabled={!emailInput.trim()}>Add</button>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>
+                Enter emails one at a time or paste a comma-separated list
+              </div>
+
+              {emails.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {emails.map(e => (
+                      <span key={e} style={{ display: "inline-flex", alignItems: "center", gap: 6,
+                        padding: "4px 10px", background: "var(--bg)", borderRadius: 20,
+                        border: "1px solid var(--border)", fontSize: 12 }}>
+                        {e}
+                        <button onClick={() => setEmails(prev => prev.filter(x => x !== e))}
+                          style={{ background: "none", border: "none", cursor: "pointer",
+                            color: "var(--muted)", fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button className="btn btn-primary w-full" disabled={!emails.length || sending} onClick={sendInvites}>
+                {sending ? 'Sending...' : `Send ${emails.length ? `${emails.length} ` : ''}Invite${emails.length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          )}
+
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", marginBottom: 8 }}>
+              Or share your invite link
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+              <input className="input" value={inviteUrl} readOnly style={{ fontSize: 12, flex: 1, background: "var(--bg)" }}
+                onClick={e => e.target.select()} />
+              <button className="btn btn-secondary btn-sm" onClick={copyLink}>
+                {copied ? "✓ Copied" : "Copy"}
+              </button>
+            </div>
+            <button className="btn btn-secondary w-full" style={{ fontSize: 13 }}
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({ title: "Join TwirlPower", text: shareMsg }).catch(() => {});
+                } else {
+                  window.open(`sms:?body=${encodeURIComponent(shareMsg)}`, '_blank');
+                }
+              }}>
+              📱 Share via text
+            </button>
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+            <button className="btn btn-primary w-full" onClick={onContinue}>
+              Continue to Dashboard →
+            </button>
+            <button className="btn btn-ghost w-full" style={{ marginTop: 8, fontSize: 13 }} onClick={onContinue}>
+              Skip for now
+            </button>
+          </div>
+        </div>
       </div>
     </>
   );
