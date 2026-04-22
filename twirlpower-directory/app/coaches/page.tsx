@@ -26,9 +26,9 @@ type SearchParams = { org?: string; state?: string; search?: string };
 export default async function CoachesPage({
   searchParams,
 }: {
-  searchParams: SearchParams;
+  searchParams: Promise<SearchParams>;
 }) {
-  const { org, state, search } = searchParams;
+  const { org, state, search } = await searchParams;
 
   const coaches = await getCoaches({ org, state, search, limit: 200 });
 

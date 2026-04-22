@@ -21,7 +21,7 @@ function formatDeadline(dateStr: string) {
 type Props = { competition: Competition; isPast?: boolean };
 
 export default function CompetitionCard({ competition: c, isPast = false }: Props) {
-  const orgColor = ORG_COLORS[c.org ?? ''] ?? '#475569';
+  const orgColor = ORG_COLORS[c.org_id ?? ''] ?? '#475569';
   const location = [c.city, c.state].filter(Boolean).join(', ');
   const appUrl   = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.twirlpower.com';
 
@@ -31,18 +31,18 @@ export default function CompetitionCard({ competition: c, isPast = false }: Prop
 
       <div className={styles.header}>
         <h3 className={styles.name}>{c.name}</h3>
-        {c.org && (
+        {c.org_id && (
           <span className={styles.orgBadge} style={{ background: orgColor }}>
-            {c.org}
+            {c.org_id}
           </span>
         )}
       </div>
 
       <div className={styles.meta}>
-        {c.competition_date && (
+        {c.date && (
           <div className={styles.metaRow}>
             <span className={styles.icon}>📅</span>
-            <time dateTime={c.competition_date}>{formatDate(c.competition_date)}</time>
+            <time dateTime={c.date}>{formatDate(c.date)}</time>
           </div>
         )}
         {location && (

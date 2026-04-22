@@ -22,16 +22,16 @@ const US_STATES = [
 
 type SearchParams = { org?: string; state?: string; past?: string };
 
-export default async function CompetitionsPage({ searchParams }: { searchParams: SearchParams }) {
-  const { org, state } = searchParams;
-  const showPast = searchParams.past === '1';
+export default async function CompetitionsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { org, state, past } = await searchParams;
+  const showPast = past === '1';
 
-  const [upcoming, past] = await Promise.all([
+  const [upcoming, pastComps] = await Promise.all([
     showPast ? Promise.resolve([]) : getCompetitions({ org, state, past: false, limit: 200 }),
     showPast ? getCompetitions({ org, state, past: true, limit: 100 }) : Promise.resolve([]),
   ]);
 
-  const competitions = showPast ? past : upcoming;
+  const competitions = showPast ? pastComps : upcoming;
 
   const filterConfig = [
     {
@@ -128,12 +128,12 @@ export default async function CompetitionsPage({ searchParams }: { searchParams:
               item: {
                 '@type': 'Event',
                 name: c.name,
-                startDate: c.competition_date,
+                startDate: c.date,
                 location: {
                   '@type': 'Place',
                   name: [c.venue, c.city, c.state].filter(Boolean).join(', '),
                 },
-                organizer: { '@type': 'Organization', name: c.org ?? 'TwirlPower' },
+                organizer: { '@type': 'Organization', name: c.org_id ?? 'TwirlPower' },
                 url: `https://app.twirlpower.com`,
               },
             })),

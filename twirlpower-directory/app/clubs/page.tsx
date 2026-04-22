@@ -21,8 +21,8 @@ const US_STATES = [
 
 type SearchParams = { state?: string };
 
-export default async function ClubsPage({ searchParams }: { searchParams: SearchParams }) {
-  const { state } = searchParams;
+export default async function ClubsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { state } = await searchParams;
   const clubs = await getClubs({ state, includeUnclaimed: true, limit: 200 });
 
   const claimed   = clubs.filter(c => c.status === 'claimed');

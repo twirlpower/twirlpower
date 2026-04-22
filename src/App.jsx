@@ -2036,6 +2036,7 @@ export default function App() {
       info: data.info || null,
       sanctioned: data.sanctioned !== false,
       approved: true,
+      show_on_marketing_site: true,
     }).select().single();
     if (error) { console.error('createPublicCompetition:', error); return; }
     const c = { ...inserted, orgId: inserted.org_id, hostId: inserted.host_id };
@@ -2054,6 +2055,7 @@ export default function App() {
       name: data.name, date: data.date, org_id: data.orgId,
       state: data.state, address: data.address, info: data.info,
       sanctioned: data.sanctioned,
+      show_on_marketing_site: true,
     };
     setPublicCompetitions(prev => prev.map(c => c.id === compId ? { ...c, ...data } : c));
     await supabase.from('public_competitions').update(dbData).eq('id', compId);
@@ -3748,6 +3750,7 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
         organizations: form.organizations || [],
         bio: form.bio,
         state: form.state || null,
+        show_in_directory: form.show_in_directory !== false,
       })
       .eq('id', coachAccount.id)
       .select().single();
@@ -3816,6 +3819,25 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
             </div>
             <div className="form-group"><label className="label">Bio</label>
               <textarea className="textarea" value={form.bio || ""} onChange={e => f("bio", e.target.value)} rows={2} /></div>
+            <div className="form-group">
+              <label className="label">Directory Visibility</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8 }}>
+                <input
+                  type="checkbox"
+                  id="show_in_directory"
+                  checked={form.show_in_directory !== false}
+                  onChange={e => f("show_in_directory", e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: "var(--brand)", cursor: "pointer" }}
+                />
+                <label htmlFor="show_in_directory" style={{ fontSize: 13, color: "var(--navy)", cursor: "pointer" }}>
+                  Show my profile in the TwirlPower public directory
+                </label>
+              </div>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                When enabled, your name, studio, state, and organizations appear at directory.twirlpower.com
+              </p>
+            </div>
           </div>
         ) : (
           <div>

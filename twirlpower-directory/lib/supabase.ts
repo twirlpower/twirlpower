@@ -11,11 +11,11 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 export type Competition = {
   id: string;
   name: string;
-  competition_date: string;
+  date: string;
   city: string | null;
   state: string | null;
   venue: string | null;
-  org: string | null;
+  org_id: string | null;
   registration_url: string | null;
   registration_deadline: string | null;
   show_on_marketing_site: boolean;
@@ -59,17 +59,17 @@ export async function getCompetitions({
 
   let query = supabase
     .from('public_competitions')
-    .select('id,name,competition_date,city,state,venue,org,registration_url,registration_deadline,show_on_marketing_site')
+    .select('id,name,date,city,state,venue,org_id,registration_url,registration_deadline,show_on_marketing_site')
     .eq('show_on_marketing_site', true)
     .limit(limit);
 
   if (past) {
-    query = query.lt('competition_date', today).order('competition_date', { ascending: false });
+    query = query.lt('date', today).order('date', { ascending: false });
   } else {
-    query = query.gte('competition_date', today).order('competition_date', { ascending: true });
+    query = query.gte('date', today).order('date', { ascending: true });
   }
 
-  if (org)   query = query.eq('org', org);
+  if (org)   query = query.eq('org_id', org);
   if (state) query = query.eq('state', state.toUpperCase());
 
   const { data, error } = await query;
@@ -138,6 +138,7 @@ export async function getCoaches({
   let query = supabase
     .from('coach_accounts')
     .select('id,name,studio,state,organizations,bio')
+    .eq('show_in_directory', true)
     .order('name', { ascending: true })
     .limit(limit);
 
