@@ -199,26 +199,29 @@ export default async function handler(req, res) {
     // Two sub-types: coach inviting a family, or family inviting a coach
     if (coachName && !familyName) {
       // Coach invited a new family
-      subject = `${coachName} invited you to TwirlPower`;
+      subject = `${coachName} wants you on TwirlPower`;
       html = `
         <div style="${baseStyle}">
           ${header}
           <div style="padding: 32px;">
             <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 12px;">
-              You've been invited to TwirlPower!
+              You're invited to TwirlPower!
             </h2>
             <p style="font-size: 15px; color: #475569; line-height: 1.7; margin: 0 0 20px;">
-              <strong>${coachName}</strong>${coachStudio ? ` from <strong>${coachStudio}</strong>` : ''} has invited you to connect on TwirlPower — a platform for tracking baton twirling classifications and competition history.
+              Hey! ${coachName}${coachStudio ? ` from ${coachStudio}` : ''} is using TwirlPower to track competition results this season. Please create a profile and log your competitions so they can keep track of your progress.
             </p>
-            <div style="background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; font-size: 14px; color: #0f172a; line-height: 1.6;">
-              <strong>Click the button below</strong> to create your free account. Once you add your twirler, you'll be automatically connected to ${coachName}.
-            </div>
             <div style="text-align: center; margin: 28px 0;">
               <a href="${linkUrl}" style="display: inline-block; background: #0d9488; color: white; font-size: 15px; font-weight: 600; padding: 14px 32px; border-radius: 8px; text-decoration: none;">
-                Accept Invitation →
+                Create Your Free Account →
               </a>
             </div>
-            <p style="font-size: 12px; color: #94a3b8; margin: 0; text-align: center;">
+            <p style="font-size: 13px; color: #64748b; text-align: center; margin: 0 0 8px;">
+              Once you add your twirler, you'll be automatically connected to ${coachName}.
+            </p>
+            <p style="font-size: 13px; color: #64748b; text-align: center; margin: 0;">
+              For more information visit <a href="https://twirlpower.com" style="color: #0d9488;">twirlpower.com</a>
+            </p>
+            <p style="font-size: 12px; color: #94a3b8; margin: 20px 0 0; text-align: center;">
               If you weren't expecting this, you can safely ignore this email.
             </p>
           </div>
@@ -540,7 +543,7 @@ export default async function handler(req, res) {
   }
 
   else if (type === 'coach_verification_request') {
-    const { coachName, coachEmail, coachOrgs, hasDocument } = data;
+    const { coachName, coachEmail, coachOrgs, hasDocument, details } = data;
     subject = `Coach verification request: ${coachName}`;
     html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
       <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">Coach Verification Request</h2>
@@ -552,6 +555,7 @@ export default async function handler(req, res) {
         <strong>Email:</strong> ${coachEmail}<br/>
         ${coachOrgs?.length ? `<strong>Organizations:</strong> ${coachOrgs.join(', ')}<br/>` : ''}
         <strong>Document uploaded:</strong> ${hasDocument ? 'Yes' : 'No'}
+        ${details ? `<br/><strong>Details:</strong> ${details}` : ''}
       </div>
       <div style="text-align:center;margin:28px 0;">
         <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">Review in Admin</a>

@@ -1474,6 +1474,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useLocalStorage('tp_dark_mode', false);
   const [previewRole, setPreviewRole] = useState(null); // null = own role, 'family'|'coach'|'host'
+  const [showCoachInviteScreen, setShowCoachInviteScreen] = useState(false);
 
   useEffect(() => {
     document.body.classList.toggle('dark', darkMode);
@@ -2281,8 +2282,68 @@ export default function App() {
             }).select().single();
             if (error) { console.error('coach setup:', error); return; }
             setCoachAccount({ ...inserted, organizations: inserted.organizations || [] });
+            setShowCoachInviteScreen(true);
           }}
         />
+      );
+    }
+
+    // Show invite screen after first setup
+    if (showCoachInviteScreen) {
+      const inviteUrl = `https://app.twirlpower.com?ref=coach_${coachAccount?.id?.slice(0, 8)}`;
+      return (
+        <>
+          <style>{css}</style>
+          <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", padding: 20 }}>
+            <div className="card" style={{ maxWidth: 520, width: "100%", padding: "40px 32px", textAlign: "center" }}>
+              <div style={{ marginBottom: 16, display: "flex", justifyContent: "center" }}>
+                <div style={{ width: 64, height: 64, background: "var(--navy)", borderRadius: 16,
+                  display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <BatonIcon size={40} />
+                </div>
+              </div>
+              <h2 className="serif" style={{ fontSize: 24, marginBottom: 8, color: "var(--navy)" }}>Invite Your Athletes</h2>
+              <p style={{ color: "var(--slate)", fontSize: 14, marginBottom: 24, lineHeight: 1.6 }}>
+                Have your athletes track their competitions so you can monitor their progress.
+              </p>
+
+              <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 20px", marginBottom: 16, textAlign: "left" }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Your personal invite link</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input className="input" value={inviteUrl} readOnly style={{ fontSize: 12, flex: 1, background: "white" }}
+                    onClick={e => e.target.select()} />
+                  <button className="btn btn-primary btn-sm" onClick={() => { navigator.clipboard.writeText(inviteUrl); }}>
+                    Copy
+                  </button>
+                </div>
+              </div>
+
+              <button className="btn btn-secondary w-full" style={{ marginBottom: 10 }}
+                onClick={() => {
+                  const msg = `Hey! I'm using TwirlPower to track competition results this season. Please create a profile and log your competitions so I can keep track of your progress.\n\n${inviteUrl}\n\nFor more information visit https://twirlpower.com`;
+                  if (navigator.share) {
+                    navigator.share({ title: "Join TwirlPower", text: msg }).catch(() => {});
+                  } else {
+                    window.open(`sms:?body=${encodeURIComponent(msg)}`, '_blank');
+                  }
+                }}>
+                📱 Share via text
+              </button>
+
+              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 20 }}>Send this to your team or parents</p>
+
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+                <button className="btn btn-primary w-full" onClick={() => setShowCoachInviteScreen(false)}>
+                  Continue to Dashboard →
+                </button>
+                <button className="btn btn-ghost w-full" style={{ marginTop: 8, fontSize: 13 }}
+                  onClick={() => setShowCoachInviteScreen(false)}>
+                  Skip for now
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       );
     }
     return (
@@ -4505,6 +4566,7 @@ function CoachVerificationCard({ coachAccount, setCoachAccount, supabase }) {
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
+  const [details, setDetails] = useState("");
 
   const status = coachAccount?.verification_status || "none"; // "none" | "pending" | "verified" | "denied"
 
@@ -4522,8 +4584,9 @@ function CoachVerificationCard({ coachAccount, setCoachAccount, supabase }) {
     await supabase.from('coach_accounts').update({
       verification_status: 'pending',
       verification_document_url: docUrl,
+      verification_details: details || null,
     }).eq('id', coachAccount.id);
-    setCoachAccount(prev => ({ ...prev, verification_status: 'pending', verification_document_url: docUrl }));
+    setCoachAccount(prev => ({ ...prev, verification_status: 'pending', verification_document_url: docUrl, verification_details: details }));
 
     // Notify admin
     await sendEmail('coach_verification_request', 'tye@twirlpower.com', {
@@ -4531,11 +4594,13 @@ function CoachVerificationCard({ coachAccount, setCoachAccount, supabase }) {
       coachEmail: coachAccount.email,
       coachOrgs: coachAccount.organizations,
       hasDocument: !!docUrl,
+      details: details,
     });
 
     setUploading(false);
     setFile(null);
     setFileName("");
+    setDetails("");
   }
 
   if (coachAccount?.verified) {
@@ -4593,6 +4658,11 @@ function CoachVerificationCard({ coachAccount, setCoachAccount, supabase }) {
             Remove
           </button>
         )}
+      </div>
+      <div className="form-group">
+        <label className="label">Coaching details <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+        <textarea className="textarea" value={details} onChange={e => setDetails(e.target.value)} rows={3}
+          placeholder="Years of experience, certifications, organizations you're affiliated with, notable achievements..." />
       </div>
       <button className="btn btn-primary btn-sm" disabled={!file || uploading} onClick={submitVerification}>
         {uploading ? "Submitting..." : "Submit for Verification"}
