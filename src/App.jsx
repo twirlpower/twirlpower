@@ -873,8 +873,13 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('invite');
     if (token) {
-      // Store in sessionStorage and clean URL
       sessionStorage.setItem('tp_invite_token', token);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    // Also capture coach referral link
+    const coachRef = params.get('coach');
+    if (coachRef) {
+      sessionStorage.setItem('tp_pending_coach_id', coachRef);
       window.history.replaceState({}, '', window.location.pathname);
     }
     return token || sessionStorage.getItem('tp_invite_token') || null;
@@ -2256,7 +2261,7 @@ export default function App() {
         onAuth={user => setAuthUser(user)}
         authError={authError}
         setAuthError={setAuthError}
-        hasInvite={!!pendingInviteToken}
+        hasInvite={!!pendingInviteToken || !!sessionStorage.getItem('tp_pending_coach_id')}
         inviteEmail={inviteEmail}
       />
     );
@@ -3250,6 +3255,8 @@ function ClubRosterPage({ twirlers, progress, coachAccount, coachClubs, setPage,
   const [filterOrg, setFilterOrg] = useState("");
   const [filterClub, setFilterClub] = useState("");
   const [search, setSearch] = useState("");
+  const [showShareLink, setShowShareLink] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const filtered = twirlers
     .filter(t => !search || t.firstName?.toLowerCase().includes(search.toLowerCase()) || t.familyName?.toLowerCase().includes(search.toLowerCase()))
@@ -3298,7 +3305,10 @@ function ClubRosterPage({ twirlers, progress, coachAccount, coachClubs, setPage,
           <h1 className="page-title">My Roster</h1>
           <p className="page-sub">{twirlers.length} athlete{twirlers.length !== 1 ? "s" : ""} · all classifications at a glance</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowShareLink(true)}>
+            🔗 Share Link
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={exportRoster}>
             <Icon name="export" size={13} /> Export CSV
           </button>
@@ -3307,6 +3317,40 @@ function ClubRosterPage({ twirlers, progress, coachAccount, coachClubs, setPage,
           </button>
         </div>
       </div>
+
+      {/* Share invite link modal */}
+      {showShareLink && (() => {
+        const inviteUrl = `https://app.twirlpower.com?coach=${coachAccount?.id}`;
+        const shareMsg = `Hey! I'm using TwirlPower to track competition results this season. Please create a profile and log your competitions so I can keep track of your progress.\n\n${inviteUrl}\n\nFor more information visit https://twirlpower.com`;
+        return (
+          <div className="card mb-4" style={{ borderTop: "3px solid var(--brand)" }}>
+            <div className="section-header" style={{ marginBottom: 12 }}>
+              <span className="section-title">Your Invite Link</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowShareLink(false)} style={{ fontSize: 12 }}>✕ Close</button>
+            </div>
+            <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 12, lineHeight: 1.6 }}>
+              Share this link with athletes and parents. Anyone who signs up through it will be automatically linked to you.
+            </p>
+            <div className="flex gap-2" style={{ marginBottom: 12, alignItems: "center" }}>
+              <input className="input" value={inviteUrl} readOnly style={{ fontSize: 12, flex: 1, background: "var(--bg)" }}
+                onClick={e => e.target.select()} />
+              <button className="btn btn-primary btn-sm" onClick={() => { navigator.clipboard.writeText(inviteUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+                {copied ? "✓ Copied" : "Copy"}
+              </button>
+            </div>
+            <button className="btn btn-secondary btn-sm"
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({ title: "Join TwirlPower", text: shareMsg }).catch(() => {});
+                } else {
+                  window.open(`sms:?body=${encodeURIComponent(shareMsg)}`, '_blank');
+                }
+              }}>
+              📱 Share via text
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Filters */}
       <div className="filter-bar mb-4">
@@ -3862,6 +3906,9 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
 
       {/* Verification */}
       <CoachVerificationCard coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} />
+
+      {/* Invite link */}
+      <CoachInviteLinkCard coachId={coachAccount?.id} coachName={coachAccount?.name} />
 
       {/* Linked athletes */}
       <div className="card">
@@ -4506,6 +4553,44 @@ function SetupScreen({ onComplete, competitionHosts, registerHost, authUser, onS
   );
 }
 
+// ─── COACH INVITE LINK CARD ──────────────────────────────────────────────────
+
+function CoachInviteLinkCard({ coachId, coachName }) {
+  const [copied, setCopied] = useState(false);
+  const inviteUrl = `https://app.twirlpower.com?coach=${coachId}`;
+  const shareMsg = `Hey! I'm using TwirlPower to track competition results this season. Please create a profile and log your competitions so I can keep track of your progress.\n\n${inviteUrl}\n\nFor more information visit https://twirlpower.com`;
+
+  return (
+    <div className="card mb-4">
+      <div className="section-header" style={{ marginBottom: 12 }}>
+        <span className="section-title">Your Invite Link</span>
+      </div>
+      <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 12, lineHeight: 1.6 }}>
+        Share this link on social media or with parents. Anyone who signs up through it will be automatically linked to you.
+      </p>
+      <div className="flex gap-2" style={{ marginBottom: 10, alignItems: "center" }}>
+        <input className="input" value={inviteUrl} readOnly style={{ fontSize: 12, flex: 1, background: "var(--bg)" }}
+          onClick={e => e.target.select()} />
+        <button className="btn btn-primary btn-sm" onClick={() => { navigator.clipboard.writeText(inviteUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+          {copied ? "✓ Copied" : "Copy"}
+        </button>
+      </div>
+      <div className="flex gap-2">
+        <button className="btn btn-secondary btn-sm"
+          onClick={() => {
+            if (navigator.share) {
+              navigator.share({ title: "Join TwirlPower", text: shareMsg }).catch(() => {});
+            } else {
+              window.open(`sms:?body=${encodeURIComponent(shareMsg)}`, '_blank');
+            }
+          }}>
+          📱 Share via text
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── COACH POST-SIGNUP INVITE SCREEN ─────────────────────────────────────────
 
 function CoachPostSignupInvite({ coachAccount, supabase, onContinue }) {
@@ -4515,7 +4600,7 @@ function CoachPostSignupInvite({ coachAccount, supabase, onContinue }) {
   const [sent, setSent] = useState(false);
   const [sentCount, setSentCount] = useState(0);
   const [copied, setCopied] = useState(false);
-  const inviteUrl = `https://app.twirlpower.com?ref=coach_${coachAccount?.id?.slice(0, 8)}`;
+  const inviteUrl = `https://app.twirlpower.com?coach=${coachAccount?.id}`;
 
   function addEmails() {
     const parsed = emailInput.split(/[\s,;]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@'));
