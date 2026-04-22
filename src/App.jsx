@@ -1485,6 +1485,32 @@ export default function App() {
     document.body.classList.toggle('dark', darkMode);
   }, [darkMode]);
 
+  // Process ?coach= referral link for existing logged-in users
+  useEffect(() => {
+    if (dataLoading || !authUser || !familyAccount || twirlers.length === 0) return;
+    const pendingCoachId = sessionStorage.getItem('tp_pending_coach_id');
+    if (!pendingCoachId) return;
+    // Check if this is a coach referral (not from an invite token flow)
+    const inviteToken = sessionStorage.getItem('tp_invite_token');
+    if (inviteToken) return; // let the invite flow handle it
+    // Create pending coach_athlete_links for each twirler
+    (async () => {
+      for (const t of twirlers) {
+        await supabase.from('coach_athlete_links').upsert({
+          coach_id: pendingCoachId,
+          twirler_id: t.id,
+          family_id: familyAccount.id,
+          status: 'pending',
+          invited_by: 'coach',
+        }, { onConflict: 'coach_id,twirler_id', ignoreDuplicates: true });
+      }
+      sessionStorage.removeItem('tp_pending_coach_id');
+      // Reload to pick up the new pending links as notifications
+      loadedForUserRef.current = null;
+      loadAllData(authUser.id);
+    })();
+  }, [dataLoading, twirlers.length]);
+
   // Always ensure a valid selection — if stored id is stale or null, pick first twirler
   const resolvedActiveTwirlerId = twirlers.find(t => t.id === activeTwirlerId)
     ? activeTwirlerId
