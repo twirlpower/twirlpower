@@ -2371,22 +2371,34 @@ export default function App() {
 
   // Host mode — dedicated director UI
   if (userRole === 'host') {
+    const myHostRecord = competitionHosts.find(h => h.email?.toLowerCase() === authUser?.email?.toLowerCase());
     return (
       <>
         <style>{css}</style>
         <div className="app">
           <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-            <div style={{ background: "var(--navy)", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "2px solid var(--brand)" }}>
+            <div style={{ background: "var(--navy)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "2px solid var(--brand)", flexWrap: "wrap", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <BatonIcon size={28} />
                 <span style={{ fontFamily: "'DM Serif Display', serif", color: "white", fontSize: 18 }}>
                   Twirl<span style={{ color: "#e11d6a" }}>Power</span>
-                  <span style={{ color: "var(--muted)", fontSize: 13, fontFamily: "'DM Sans', sans-serif", fontWeight: 400, marginLeft: 10 }}>Director Dashboard</span>
                 </span>
               </div>
-              <button onClick={signOut} style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 14px", color: "var(--muted)", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
-                Sign out
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {myHostRecord && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>{myHostRecord.name}</span>
+                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, fontWeight: 600,
+                      background: myHostRecord.approved ? "rgba(34,197,94,0.2)" : "rgba(245,158,11,0.2)",
+                      color: myHostRecord.approved ? "#86efac" : "#fcd34d" }}>
+                      {myHostRecord.approved ? "✓ Approved" : "⏳ Pending"}
+                    </span>
+                  </div>
+                )}
+                <button onClick={signOut} style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 14px", color: "var(--muted)", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
+                  Sign out
+                </button>
+              </div>
             </div>
             <div className="main">
               <HostDashboardPage
@@ -9331,17 +9343,20 @@ function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, tw
             <Icon name="alert" size={16} color="var(--amber)" />
             <div>
               <strong>Your account is pending approval.</strong>
-              <div style={{ fontSize: 13, marginTop: 4 }}>A TwirlPower admin will review your registration and approve your account. Once approved you can create competition listings. This is a one-time process — once approved you retain host access permanently.</div>
-              <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 6 }}>Phase 2: The admin will receive an email notification and can approve you via the admin dashboard.</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>A TwirlPower admin will review your registration and approve your account. Once approved you can create competition listings.</div>
             </div>
           </div>
-          <div className="card">
-            <div style={{ fontSize: 14, marginBottom: 8, fontWeight: 600 }}>Your registration</div>
-            <div style={{ fontSize: 13, color: "var(--slate)" }}>Name: {myHost.name}</div>
-            {myHost.organization && <div style={{ fontSize: 13, color: "var(--slate)" }}>Organization: {myHost.organization}</div>}
-            {myHost.email && <div style={{ fontSize: 13, color: "var(--slate)" }}>Email: {myHost.email}</div>}
-            {myHost.state && <div style={{ fontSize: 13, color: "var(--slate)" }}>State: {myHost.state}</div>}
+          <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: 20 }}>
+            <button onClick={() => setTab("profile")}
+              style={{ padding: "8px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", border: "none",
+                background: "none", fontFamily: "inherit",
+                color: tab === "profile" ? "var(--brand)" : "var(--slate)",
+                borderBottom: tab === "profile" ? "2px solid var(--brand)" : "2px solid transparent",
+                marginBottom: -1 }}>
+              👤 My Profile
+            </button>
           </div>
+          <HostProfileView host={myHost} supabase={supabase} setCompetitionHosts={setCompetitionHosts} />
         </div>
       )}
 
@@ -9476,11 +9491,14 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
   const [editingComp, setEditingComp] = useState(null);
   const [editForm, setEditForm] = useState({});
   const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
+  const [successMsg, setSuccessMsg] = useState(null);
 
   function save() {
     onCreateComp({ ...form, approved: true });
+    setSuccessMsg(`"${form.name}" has been published!`);
     setForm({ name: "", date: "", orgId: "", state: host.state || "", address: "", info: "", sanctioned: true });
     setShowCreate(false);
+    setTimeout(() => setSuccessMsg(null), 4000);
   }
 
   const [dismissedApproval, setDismissedApproval] = useState(() => localStorage.getItem('tp_host_approved_dismissed') === 'true');
@@ -9498,12 +9516,30 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
         </div>
       )}
 
+      {successMsg && (
+        <div className="alert alert-success mb-4">
+          <Icon name="check" size={15} color="var(--green)" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <div style={{ fontSize: 15, fontWeight: 600 }}>Your competitions ({publicCompetitions.length})</div>
         <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(v => !v)}>
           <Icon name="plus" size={13} /> {showCreate ? "Cancel" : "New Competition"}
         </button>
       </div>
+
+      {/* Total attendee summary */}
+      {publicCompetitions.length > 0 && (
+        <div className="card-sm mb-4" style={{ background: "var(--brand-light)", border: "1px solid rgba(13,148,136,0.2)" }}>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13 }}>
+            <span><strong>{publicCompetitions.length}</strong> competition{publicCompetitions.length !== 1 ? "s" : ""} listed</span>
+            <span><strong>{attendees.filter(a => publicCompetitions.some(c => c.id === a.competitionId)).length}</strong> total attendees</span>
+            <span><strong>{publicCompetitions.filter(c => c.date >= new Date().toISOString().slice(0, 10)).length}</strong> upcoming</span>
+          </div>
+        </div>
+      )}
 
       {showCreate && (
         <div className="card mb-4" style={{ borderTop: "3px solid var(--brand)" }}>
@@ -9558,14 +9594,18 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
         </div>
       )}
 
-      {publicCompetitions.length === 0 ? (
-        <div className="card">
-          <div className="empty-state" style={{ padding: "32px 0" }}>
-            <h3>No competitions posted yet</h3>
-            <p>Create your first competition listing above.</p>
-          </div>
+      {publicCompetitions.length === 0 && !showCreate ? (
+        <div className="card" style={{ textAlign: "center", padding: "40px 24px" }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🏆</div>
+          <h3 style={{ fontSize: 18, fontWeight: 600, color: "var(--navy)", marginBottom: 8 }}>Welcome, {host.name}!</h3>
+          <p style={{ fontSize: 14, color: "var(--slate)", marginBottom: 20, lineHeight: 1.6 }}>
+            You're all set to post competitions. Twirlers and coaches across TwirlPower will be able to see your listings and add them to their schedules.
+          </p>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+            <Icon name="plus" size={15} /> Create Your First Competition
+          </button>
         </div>
-      ) : (
+      ) : publicCompetitions.length === 0 && showCreate ? null : (
         <div className="flex-col gap-3">
           {publicCompetitions.sort((a, b) => a.date.localeCompare(b.date)).map(comp => {
             const compAttendees = attendees.filter(a => a.competitionId === comp.id);
@@ -9580,6 +9620,8 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                     <div style={{ fontSize: 12, color: "var(--slate)" }}>
                       {fmtDate(comp.date)}{comp.state ? ` · ${comp.state}` : ""}
                       {comp.orgId && <span className="badge" style={{ marginLeft: 8, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId), fontSize: 10 }}>{comp.orgId}</span>}
+                      {comp.sanctioned !== false && <span className="badge badge-green" style={{ marginLeft: 4, fontSize: 9 }}>Sanctioned</span>}
+                      {comp.sanctioned === false && <span className="badge badge-warn" style={{ marginLeft: 4, fontSize: 9 }}>Unsanctioned</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
