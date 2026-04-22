@@ -298,7 +298,7 @@ class TpCompetitions extends HTMLElement {
       const params = {
         select: 'id,name,competition_date,city,state,org,registration_url',
         show_on_marketing_site: 'eq.true',
-        'competition_date': `gte.${today}`,
+        'date': `gte.${today}`,
         order: 'competition_date.asc',
         limit: String(this._limit),
       };
