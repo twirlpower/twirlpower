@@ -3333,7 +3333,7 @@ function ClubRosterPage({ twirlers, progress, coachAccount, coachClubs, setPage,
         </div>
         <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowShareLink(true)}>
-            🔗 Share Link
+            🔗 Share Invite Link
           </button>
           <button className="btn btn-secondary btn-sm" onClick={exportRoster}>
             <Icon name="export" size={13} /> Export CSV
@@ -3351,7 +3351,7 @@ function ClubRosterPage({ twirlers, progress, coachAccount, coachClubs, setPage,
         return (
           <div className="card mb-4" style={{ borderTop: "3px solid var(--brand)" }}>
             <div className="section-header" style={{ marginBottom: 12 }}>
-              <span className="section-title">Your Invite Link</span>
+              <span className="section-title">My Invite Link</span>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowShareLink(false)} style={{ fontSize: 12 }}>✕ Close</button>
             </div>
             <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 12, lineHeight: 1.6 }}>
@@ -4589,7 +4589,7 @@ function CoachInviteLinkCard({ coachId, coachName }) {
   return (
     <div className="card mb-4">
       <div className="section-header" style={{ marginBottom: 12 }}>
-        <span className="section-title">Your Invite Link</span>
+        <span className="section-title">My Invite Link</span>
       </div>
       <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 12, lineHeight: 1.6 }}>
         Share this link on social media or with parents. Anyone who signs up through it will be automatically linked to you.
