@@ -296,14 +296,14 @@ class TpCompetitions extends HTMLElement {
     try {
       const today  = new Date().toISOString().split('T')[0];
       const params = {
-        select: 'id,name,competition_date,city,state,org,registration_url',
+        select: 'id,name,date,city,state,org_id,registration_url',
         show_on_marketing_site: 'eq.true',
         'date': `gte.${today}`,
-        order: 'competition_date.asc',
+        order: 'date.asc',
         limit: String(this._limit),
       };
-      if (this._org)   params.org   = `eq.${this._org}`;
-      if (this._state) params.state = `eq.${this._state}`;
+      if (this._org)   params.org_id = `eq.${this._org}`;
+      if (this._state) params.state  = `eq.${this._state}`;
 
       const data = await supabaseFetch('public_competitions', params);
 
@@ -324,9 +324,9 @@ class TpCompetitions extends HTMLElement {
   }
 
   renderCard(c) {
-    const color    = ORG_COLORS[c.org] ?? '#475569';
+    const color    = ORG_COLORS[c.org_id] ?? '#475569';
     const location = [c.city, c.state].filter(Boolean).join(', ');
-    const date     = c.competition_date ? formatDate(c.competition_date) : 'Date TBD';
+    const date     = c.date ? formatDate(c.date) : 'Date TBD';
 
     return `
       <div class="card">
@@ -334,7 +334,7 @@ class TpCompetitions extends HTMLElement {
         <div class="card-body">
           <div class="card-top">
             <span class="card-name">${c.name}</span>
-            ${c.org ? `<span class="org-badge" style="background:${color}">${c.org}</span>` : ''}
+            ${c.org_id ? `<span class="org-badge" style="background:${color}">${c.org_id}</span>` : ''}
           </div>
           <div class="card-meta">
             <span class="meta-item">📅 ${date}</span>
