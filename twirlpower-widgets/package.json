@@ -1,0 +1,18 @@
+{
+  "name": "twirlpower-widgets",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:competitions": "vite serve --config vite.competitions.js",
+    "dev:stats": "vite serve --config vite.stats.js",
+    "dev:clubs": "vite serve --config vite.clubs.js",
+    "build": "npm run build:competitions && npm run build:stats && npm run build:clubs",
+    "build:competitions": "vite build --config vite.competitions.js",
+    "build:stats": "vite build --config vite.stats.js",
+    "build:clubs": "vite build --config vite.clubs.js",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^5.2.0"
+  }
+}

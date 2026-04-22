@@ -39,7 +39,7 @@ export type Coach = {
   state: string | null;
   organizations: string[] | null;
   bio: string | null;
-  email: string | null;
+  email?: string | null;
 };
 
 // ── DATA FETCHERS ─────────────────────────────────────────────────────────────
