@@ -2036,7 +2036,6 @@ export default function App() {
       info: data.info || null,
       sanctioned: data.sanctioned !== false,
       approved: true,
-      show_on_marketing_site: true,
     }).select().single();
     if (error) { console.error('createPublicCompetition:', error); return; }
     const c = { ...inserted, orgId: inserted.org_id, hostId: inserted.host_id };
@@ -2055,7 +2054,6 @@ export default function App() {
       name: data.name, date: data.date, org_id: data.orgId,
       state: data.state, address: data.address, info: data.info,
       sanctioned: data.sanctioned,
-      show_on_marketing_site: true,
     };
     setPublicCompetitions(prev => prev.map(c => c.id === compId ? { ...c, ...data } : c));
     await supabase.from('public_competitions').update(dbData).eq('id', compId);
@@ -3132,7 +3130,10 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
 
         {/* Footer */}
         <div style={{ marginTop: "auto", padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 2 }}>{coachAccount?.name}</div>
+          <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+            {coachAccount?.name}
+            {coachAccount?.verified && <span style={{ fontSize: 9, color: "#0d9488", fontWeight: 700 }}>✓</span>}
+          </div>
           <div style={{ fontSize: 11, color: "var(--navy3)", marginBottom: 10 }}>Coach Account</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <span style={{ fontSize: 12, color: "var(--slate)" }}>{darkMode ? "Dark mode" : "Light mode"}</span>
@@ -3750,7 +3751,6 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
         organizations: form.organizations || [],
         bio: form.bio,
         state: form.state || null,
-        show_in_directory: form.show_in_directory !== false,
       })
       .eq('id', coachAccount.id)
       .select().single();
@@ -3819,25 +3819,6 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
             </div>
             <div className="form-group"><label className="label">Bio</label>
               <textarea className="textarea" value={form.bio || ""} onChange={e => f("bio", e.target.value)} rows={2} /></div>
-            <div className="form-group">
-              <label className="label">Directory Visibility</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-                background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8 }}>
-                <input
-                  type="checkbox"
-                  id="show_in_directory"
-                  checked={form.show_in_directory !== false}
-                  onChange={e => f("show_in_directory", e.target.checked)}
-                  style={{ width: 16, height: 16, accentColor: "var(--brand)", cursor: "pointer" }}
-                />
-                <label htmlFor="show_in_directory" style={{ fontSize: 13, color: "var(--navy)", cursor: "pointer" }}>
-                  Show my profile in the TwirlPower public directory
-                </label>
-              </div>
-              <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-                When enabled, your name, studio, state, and organizations appear at directory.twirlpower.com
-              </p>
-            </div>
           </div>
         ) : (
           <div>
@@ -3846,7 +3827,14 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
                 {initials(coachAccount?.name || "?")}
               </div>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "var(--navy)" }}>{coachAccount?.name}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "var(--navy)", display: "flex", alignItems: "center", gap: 8 }}>
+                  {coachAccount?.name}
+                  {coachAccount?.verified && (
+                    <span title="Verified Coach" style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 600, color: "#0d9488", background: "#f0fdfa", border: "1px solid #99f6e4", borderRadius: 12, padding: "2px 8px" }}>
+                      ✓ Verified
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: 13, color: "var(--slate)" }}>{coachAccount?.email}</div>
                 {coachAccount?.club && <div style={{ fontSize: 13, color: "var(--slate)" }}>{coachAccount.club}</div>}
               </div>
@@ -3864,6 +3852,9 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
           </div>
         )}
       </div>
+
+      {/* Verification */}
+      <CoachVerificationCard coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} />
 
       {/* Linked athletes */}
       <div className="card">
@@ -4505,6 +4496,108 @@ function SetupScreen({ onComplete, competitionHosts, registerHost, authUser, onS
 
       </div>
     </>
+  );
+}
+
+// ─── COACH VERIFICATION CARD ─────────────────────────────────────────────────
+
+function CoachVerificationCard({ coachAccount, setCoachAccount, supabase }) {
+  const [uploading, setUploading] = useState(false);
+  const [file, setFile] = useState(null);
+  const [fileName, setFileName] = useState("");
+
+  const status = coachAccount?.verification_status || "none"; // "none" | "pending" | "verified" | "denied"
+
+  async function submitVerification() {
+    if (!file) return;
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `${coachAccount.id}/coach_verification_${Date.now()}.${ext}`;
+    const { data: upload } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
+    let docUrl = null;
+    if (upload) {
+      const { data: { publicUrl } } = supabase.storage.from("documents").getPublicUrl(path);
+      docUrl = publicUrl;
+    }
+    await supabase.from('coach_accounts').update({
+      verification_status: 'pending',
+      verification_document_url: docUrl,
+    }).eq('id', coachAccount.id);
+    setCoachAccount(prev => ({ ...prev, verification_status: 'pending', verification_document_url: docUrl }));
+
+    // Notify admin
+    await sendEmail('coach_verification_request', 'tye@twirlpower.com', {
+      coachName: coachAccount.name,
+      coachEmail: coachAccount.email,
+      coachOrgs: coachAccount.organizations,
+      hasDocument: !!docUrl,
+    });
+
+    setUploading(false);
+    setFile(null);
+    setFileName("");
+  }
+
+  if (coachAccount?.verified) {
+    return (
+      <div className="card mb-4" style={{ background: "#f0fdfa", border: "1px solid #99f6e4" }}>
+        <div className="flex items-center gap-3">
+          <div style={{ fontSize: 24 }}>✓</div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: "#0d9488" }}>Verified Coach</div>
+            <div style={{ fontSize: 12, color: "var(--slate)" }}>Your credentials have been reviewed and verified by TwirlPower.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "pending") {
+    return (
+      <div className="card mb-4" style={{ background: "#fefce8", border: "1px solid #fde68a" }}>
+        <div className="flex items-center gap-3">
+          <div style={{ fontSize: 24 }}>⏳</div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: "#854d0e" }}>Verification Pending</div>
+            <div style={{ fontSize: 12, color: "var(--slate)" }}>Your documentation is being reviewed by a TwirlPower admin. You'll be notified when approved.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card mb-4">
+      <div className="section-header" style={{ marginBottom: 12 }}>
+        <span className="section-title">Get Verified</span>
+        <span className="badge badge-gray" style={{ fontSize: 10 }}>Optional</span>
+      </div>
+      <p style={{ fontSize: 13, color: "var(--slate)", lineHeight: 1.6, marginBottom: 16 }}>
+        Verified coaches get a badge on their profile visible to families. Upload documentation such as a coaching certification, org membership, or club affiliation letter.
+      </p>
+      <div className="form-group">
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px",
+          background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8,
+          cursor: "pointer", fontSize: 13, color: "var(--slate)" }}>
+          <Icon name="export" size={14} />
+          {fileName || "Choose file..."}
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{ display: "none" }}
+            onChange={e => {
+              const f = e.target.files?.[0];
+              if (f) { setFile(f); setFileName(f.name); }
+            }} />
+        </label>
+        {fileName && (
+          <button onClick={() => { setFile(null); setFileName(""); }}
+            style={{ marginLeft: 8, background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>
+            Remove
+          </button>
+        )}
+      </div>
+      <button className="btn btn-primary btn-sm" disabled={!file || uploading} onClick={submitVerification}>
+        {uploading ? "Submitting..." : "Submit for Verification"}
+      </button>
+    </div>
   );
 }
 
@@ -7682,11 +7775,45 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                 {clubOwnerIds.has(c.id) && (
                   <span className="badge badge-amber" style={{ fontSize: 9 }}>👑 Club Owner</span>
                 )}
+                {c.verified && (
+                  <span className="badge" style={{ fontSize: 9, background: "#f0fdfa", color: "#0d9488", border: "1px solid #99f6e4" }}>✓ Verified</span>
+                )}
+                {c.verification_status === 'pending' && (
+                  <span className="badge badge-amber" style={{ fontSize: 9 }}>⏳ Verification Pending</span>
+                )}
                 {c.organizations?.length > 0 && c.organizations.map(o => (
                   <span key={o} className="badge" style={{ fontSize: 9, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>
                 ))}
                 <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(c.created_at)}</span>
-                <button className="btn btn-danger btn-sm"
+                <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                  {c.verification_status === 'pending' && (
+                    <>
+                      <button className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          supabase.from("coach_accounts").update({ verified: true, verification_status: 'verified' }).eq("id", c.id).then(() => {
+                            setCoachAccounts(prev => prev.map(x => x.id === c.id ? { ...x, verified: true, verification_status: 'verified' } : x));
+                          });
+                          sendEmail('coach_verification_approved', c.email, { coachName: c.name });
+                        }}
+                        style={{ fontSize: 10, padding: "2px 8px" }}>✓ Verify</button>
+                      {c.verification_document_url && (
+                        <a href={c.verification_document_url} target="_blank" rel="noreferrer"
+                          className="btn btn-secondary btn-sm" style={{ fontSize: 10, padding: "2px 8px" }}>📎 Doc</a>
+                      )}
+                    </>
+                  )}
+                  {c.verified && (
+                    <button className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        if (window.confirm(`Revoke verified status for ${c.name}?`)) {
+                          supabase.from("coach_accounts").update({ verified: false, verification_status: 'none' }).eq("id", c.id).then(() => {
+                            setCoachAccounts(prev => prev.map(x => x.id === c.id ? { ...x, verified: false, verification_status: 'none' } : x));
+                          });
+                        }
+                      }}
+                      style={{ fontSize: 10, padding: "2px 8px" }}>Revoke</button>
+                  )}
+                  <button className="btn btn-danger btn-sm"
                   onClick={() => {
                     if (window.confirm(`Delete coach account for ${c.name || c.email}? This cannot be undone.`)) {
                       supabase.from("coach_accounts").delete().eq("id", c.id).then(() => {
@@ -7694,9 +7821,10 @@ function AccountsTab({ supabase, currentFamilyAccount, twirlers }) {
                       });
                     }
                   }}
-                  style={{ fontSize: 10, padding: "2px 8px", marginLeft: "auto" }}>
+                  style={{ fontSize: 10, padding: "2px 8px" }}>
                   Delete
                 </button>
+                </div>
               </div>
             </div>
           ))}

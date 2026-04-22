@@ -539,6 +539,40 @@ export default async function handler(req, res) {
     </div>${footer}</div>`;
   }
 
+  else if (type === 'coach_verification_request') {
+    const { coachName, coachEmail, coachOrgs, hasDocument } = data;
+    subject = `Coach verification request: ${coachName}`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">Coach Verification Request</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        <strong>${coachName}</strong> (${coachEmail}) has submitted documentation for coach verification.
+      </p>
+      <div style="background:#f1f5f9;border-radius:10px;padding:16px 20px;margin-bottom:20px;font-size:14px;color:#0f172a;line-height:1.8;">
+        <strong>Coach:</strong> ${coachName}<br/>
+        <strong>Email:</strong> ${coachEmail}<br/>
+        ${coachOrgs?.length ? `<strong>Organizations:</strong> ${coachOrgs.join(', ')}<br/>` : ''}
+        <strong>Document uploaded:</strong> ${hasDocument ? 'Yes' : 'No'}
+      </div>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">Review in Admin</a>
+      </div>
+    </div>${footer}</div>`;
+  }
+
+  else if (type === 'coach_verification_approved') {
+    const { coachName } = data;
+    subject = `You're verified on TwirlPower!`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">You're Verified! ✓</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        Congratulations ${coachName}! Your coach credentials have been reviewed and verified. A verified badge now appears on your profile.
+      </p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">View Your Profile</a>
+      </div>
+    </div>${footer}</div>`;
+  }
+
   else {
     return res.status(400).json({ error: `Unknown email type: ${type}` });
   }
