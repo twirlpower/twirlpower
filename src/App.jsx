@@ -1994,8 +1994,10 @@ export default function App() {
       name: data.name,
       email: data.email || null,
       phone: data.phone || null,
+      organizations: data.organizations || [],
       organization: data.organization || null,
       state: data.state || null,
+      bio: data.bio || null,
       notes: data.notes || null,
       document_url: docUrl,
       approved: false,
@@ -9397,15 +9399,18 @@ function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, tw
 function HostRegisterView({ onRegister, familyAccount }) {
   const [form, setForm] = useState({
     name: familyAccount?.parentName || familyAccount?.parent_name || "",
+    organizations: [],
     organization: "",
     email: familyAccount?.email || "",
     phone: familyAccount?.phone || "",
     state: familyAccount?.state || "",
+    bio: "",
     notes: "",
     file: null
   });
   const [fileName, setFileName] = useState("");
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const toggleOrg = (orgId) => setForm(p => ({ ...p, organizations: p.organizations.includes(orgId) ? p.organizations.filter(o => o !== orgId) : [...p.organizations, orgId] }));
 
   return (
     <div>
@@ -9440,8 +9445,20 @@ function HostRegisterView({ onRegister, familyAccount }) {
           <div className="form-group"><label className="label">Phone</label><input className="input" type="tel" value={form.phone} onChange={e => f("phone", e.target.value)} placeholder="(555) 555-5555" /></div>
         </div>
         <div className="form-group">
-          <label className="label">Organization / affiliation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+          <label className="label">Organizations</label>
+          <div className="chip-group">
+            {Object.keys(ORGS).map(orgId => (
+              <div key={orgId} className={`chip ${form.organizations.includes(orgId) ? "selected" : ""}`} onClick={() => toggleOrg(orgId)}>{orgId}</div>
+            ))}
+          </div>
+        </div>
+        <div className="form-group">
+          <label className="label">Affiliation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(regional council, club, etc. — optional)</span></label>
           <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)} placeholder="e.g. USTA Ohio Regional Council, ABC Twirling Club" />
+        </div>
+        <div className="form-group">
+          <label className="label">Bio <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+          <textarea className="textarea" value={form.bio} onChange={e => f("bio", e.target.value)} rows={2} placeholder="Tell twirlers and coaches about yourself and your competitions..." />
         </div>
         <div className="form-group">
           <label className="label">Supporting documentation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(recommended)</span></label>
@@ -9716,6 +9733,15 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                           }}>
                             <Icon name="edit" size={13} /> Edit
                           </button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => {
+                            const nextYear = String(parseInt(comp.date?.slice(0, 4) || new Date().getFullYear()) + 1);
+                            const newName = comp.name?.replace(/20\d{2}/, nextYear) || comp.name;
+                            setForm({ name: newName, date: "", orgId: comp.orgId || "", state: comp.state || "", address: comp.address || "", info: comp.info || "", sanctioned: comp.sanctioned !== false });
+                            setShowCreate(true);
+                            setExpandedComp(null);
+                          }}>
+                            <Icon name="copy" size={13} /> Duplicate
+                          </button>
                           <button className="btn btn-danger btn-sm" onClick={() => onDeleteComp(comp.id)}>
                             <Icon name="trash" size={13} /> Delete
                           </button>
@@ -9739,18 +9765,21 @@ function HostProfileView({ host, supabase, setCompetitionHosts }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     name: host.name || "", email: host.email || "", phone: host.phone || "",
-    organization: host.organization || "", state: host.state || "",
+    organizations: host.organizations || [], affiliation: host.organization || "",
+    state: host.state || "", bio: host.bio || "",
   });
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const toggleOrg = (orgId) => setForm(p => ({ ...p, organizations: p.organizations.includes(orgId) ? p.organizations.filter(o => o !== orgId) : [...p.organizations, orgId] }));
   const [saving, setSaving] = useState(false);
 
   async function save() {
     setSaving(true);
     await supabase.from('competition_hosts').update({
       name: form.name, email: form.email, phone: form.phone,
-      organization: form.organization, state: form.state,
+      organizations: form.organizations, organization: form.affiliation,
+      state: form.state, bio: form.bio,
     }).eq('id', host.id);
-    setCompetitionHosts(prev => prev.map(h => h.id === host.id ? { ...h, ...form } : h));
+    setCompetitionHosts(prev => prev.map(h => h.id === host.id ? { ...h, ...form, organization: form.affiliation } : h));
     setSaving(false);
     setEditing(false);
   }
@@ -9784,14 +9813,26 @@ function HostProfileView({ host, supabase, setCompetitionHosts }) {
               </div>
             </div>
             <div className="form-group">
-              <label className="label">Organization / affiliation</label>
-              <input className="input" value={form.organization} onChange={e => f("organization", e.target.value)} />
+              <label className="label">Organizations</label>
+              <div className="chip-group">
+                {Object.keys(ORGS).map(orgId => (
+                  <div key={orgId} className={`chip ${form.organizations.includes(orgId) ? "selected" : ""}`} onClick={() => toggleOrg(orgId)}>{orgId}</div>
+                ))}
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="label">Affiliation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(regional council, club, etc.)</span></label>
+              <input className="input" value={form.affiliation} onChange={e => f("affiliation", e.target.value)} placeholder="e.g. USTA Ohio Regional Council" />
+            </div>
+            <div className="form-group">
+              <label className="label">Bio</label>
+              <textarea className="textarea" value={form.bio} onChange={e => f("bio", e.target.value)} rows={3} placeholder="Tell twirlers and coaches a bit about yourself and your competitions..." />
             </div>
             <div className="flex gap-2">
               <button className="btn btn-primary btn-sm" disabled={saving || !form.name} onClick={save}>
                 {saving ? "Saving..." : "Save Changes"}
               </button>
-              <button className="btn btn-secondary btn-sm" onClick={() => { setEditing(false); setForm({ name: host.name || "", email: host.email || "", phone: host.phone || "", organization: host.organization || "", state: host.state || "" }); }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => { setEditing(false); setForm({ name: host.name || "", email: host.email || "", phone: host.phone || "", organizations: host.organizations || [], affiliation: host.organization || "", state: host.state || "", bio: host.bio || "" }); }}>
                 Cancel
               </button>
             </div>
@@ -9802,7 +9843,21 @@ function HostProfileView({ host, supabase, setCompetitionHosts }) {
             <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Email:</span>{host.email || "—"}</div>
             <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Phone:</span>{host.phone || "—"}</div>
             <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>State:</span>{host.state || "—"}</div>
-            <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Organization:</span>{host.organization || "—"}</div>
+            <div style={{ fontSize: 14 }}>
+              <span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Organizations:</span>
+              {(host.organizations || []).length > 0 ? (
+                <span className="flex gap-2" style={{ display: "inline-flex" }}>
+                  {host.organizations.map(o => <span key={o} className="badge" style={{ fontSize: 10, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>)}
+                </span>
+              ) : "—"}
+            </div>
+            <div style={{ fontSize: 14 }}><span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Affiliation:</span>{host.organization || "—"}</div>
+            {host.bio && (
+              <div style={{ fontSize: 14, marginTop: 4 }}>
+                <span style={{ fontWeight: 600, color: "var(--navy)", display: "block", marginBottom: 4 }}>Bio:</span>
+                <div style={{ color: "var(--slate)", lineHeight: 1.6, background: "var(--bg)", padding: "10px 14px", borderRadius: 8 }}>{host.bio}</div>
+              </div>
+            )}
             {host.document_url && (
               <div style={{ fontSize: 14 }}>
                 <span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 8 }}>Document:</span>
