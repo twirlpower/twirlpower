@@ -1902,7 +1902,7 @@ export default function App() {
       state: data.state || null,
       start_time: data.startTime || null,
       org_id: data.orgId || null,
-      sanctioned: data.sanctioned !== false,
+      sanctioned: false,
       notes: data.notes || null,
     }).select().single();
     if (error) { console.error('addCompetition:', error); return; }
@@ -3448,7 +3448,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
           {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} coachClubs={coachClubs} />}
           {page === "invite-athlete" && <InviteAthletePage coachAccount={coachAccount} supabase={supabase} setPage={setPage} loadCoachData={loadCoachData} />}
           {page === "create-competition" && <CreateCompetitionPage coachAccount={coachAccount} twirlers={twirlers} supabase={supabase} setPage={setPage} coachCreateCompetition={coachCreateCompetition} />}
-          {page === "admin" && isAdmin && <AdminPage twirlers={twirlers} competitions={[]} results={[]} coaches={[]} familyAccount={null} competitionHosts={[]} approveHost={() => {}} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={null} setPreviewRole={() => {}} />}
+          {page === "admin" && isAdmin && <AdminPage twirlers={twirlers} competitions={[]} results={[]} coaches={[]} familyAccount={null} competitionHosts={competitionHosts || []} approveHost={() => {}} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={null} setPreviewRole={() => {}} publicCompetitions={publicCompetitions || []} deletePublicCompetition={() => {}} updatePublicCompetition={() => {}} approveCompetitionClaim={() => {}} denyCompetitionClaim={() => {}} unclaimCompetition={() => {}} />}
         </div>
       </div>
     </>
@@ -6337,9 +6337,12 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
             </div>
             <div className="flex items-center gap-2">
               <span className="badge" style={{ background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>
-              {comp.sanctioned === false
-                ? <span className="badge badge-warn" title="Wins may not count toward advancement">Unsanctioned ⚠</span>
-                : <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
+              {comp.fromPublic || comp.from_public
+                ? (comp.sanctioned !== false
+                    ? <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>
+                    : <span className="badge badge-warn" title="Wins may not count toward advancement">Unsanctioned ⚠</span>)
+                : <span className="badge badge-gray" style={{ fontSize: 10 }} title="Created by a TwirlPower user, not an official listing">User-reported</span>
+              }
               {wins > 0 && <span className="badge badge-amber">{wins} win{wins !== 1 ? "s" : ""}</span>}
               <span className="badge badge-gray">{compResults.length} event{compResults.length !== 1 ? "s" : ""}</span>
               {publicCompetitions?.find(p => p.id === comp.id) && setActiveCompetitionId && (
@@ -7640,7 +7643,18 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
 // ─── ADMIN PAGE ──────────────────────────────────────────────────────────────
 
 function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole, publicCompetitions, deletePublicCompetition, updatePublicCompetition, approveCompetitionClaim, denyCompetitionClaim, unclaimCompetition }) {
-  const [tab, setTab] = useState("competitions");
+  const [tab, setTabRaw] = useState("competitions");
+  const [adminSubTab, setAdminSubTab] = useState(null);
+  const setTab = (val) => {
+    if (val && val.includes(":")) {
+      const [main, sub] = val.split(":");
+      setTabRaw(main);
+      setAdminSubTab(sub);
+    } else {
+      setTabRaw(val);
+      setAdminSubTab(null);
+    }
+  };
   const [competitionClaims, setCompetitionClaims] = useState([]);
 
   // Load competition claims
@@ -7730,6 +7744,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
             supabase={supabase}
             competitionHosts={competitionHosts}
             setPage={setPage}
+            initialSubTab={adminSubTab}
           />
         )}
 
@@ -7830,8 +7845,8 @@ function AdminDirectorsTab({ competitionHosts, pendingHosts, approvedHosts, appr
 
 // ─── ADMIN ACCOUNTS TAB ──────────────────────────────────────────────────────
 
-function AdminAccountsTab({ familyAccount, twirlers, coaches, supabase, competitionHosts, setPage }) {
-  const [subTab, setSubTab] = useState("families");
+function AdminAccountsTab({ familyAccount, twirlers, coaches, supabase, competitionHosts, setPage, initialSubTab }) {
+  const [subTab, setSubTab] = useState(initialSubTab || "families");
   const [familyAccounts, setFamilyAccounts] = useState([]);
   const [allTwirlers, setAllTwirlers] = useState([]);
   const [coachAccounts, setCoachAccounts] = useState([]);
@@ -8003,9 +8018,9 @@ function AdminDataOverviewTab({ supabase, competitionHosts, publicCompetitions, 
   if (loading) return <div style={{ fontSize: 13, color: "var(--muted)" }}>Loading data...</div>;
 
   const statCards = [
-    { emoji: "👨‍👩‍👧", label: "FAMILY ACCOUNTS", value: stats.families, action: () => setTab("accounts") },
-    { emoji: "🧑", label: "TWIRLERS", value: stats.twirlers, action: () => setTab("accounts") },
-    { emoji: "👤", label: "COACH ACCOUNTS", value: stats.coaches, action: () => setTab("accounts") },
+    { emoji: "👨‍👩‍👧", label: "FAMILY ACCOUNTS", value: stats.families, action: () => setTab("accounts:families") },
+    { emoji: "🧑", label: "TWIRLERS", value: stats.twirlers, action: () => setTab("accounts:twirlers") },
+    { emoji: "👤", label: "COACH ACCOUNTS", value: stats.coaches, action: () => setTab("accounts:coaches") },
     { emoji: "🏆", label: "COMPETITIONS", value: stats.competitions, action: () => setTab("competitions") },
     { emoji: "🏛", label: "DIRECTORS (TOTAL)", value: totalHosts, action: () => setTab("directors") },
     { emoji: "⏳", label: "DIRECTORS (PENDING)", value: pendingHosts, action: () => setTab("directors"), highlight: pendingHosts > 0 },
@@ -10768,23 +10783,26 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
                   </div>
                 </div>
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-                  {activeTwirler ? (
+                  {familyAccount && activeTwirler ? (
                     attending ? (
                       <div className="flex items-center gap-3">
                         <span className="badge badge-green">✓ Added to my competitions</span>
                         <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
-                          onClick={() => removeAttendee(comp.id, activeTwirler.id)}>
+                          onClick={(e) => { e.stopPropagation(); removeAttendee(comp.id, activeTwirler.id); }}>
                           Remove
                         </button>
                       </div>
                     ) : (
                       <button className="btn btn-primary btn-sm"
-                        onClick={() => addAttendee(comp.id, activeTwirler.id)}>
+                        onClick={(e) => { e.stopPropagation(); addAttendee(comp.id, activeTwirler.id); }}>
                         + Add to my competitions
                       </button>
                     )
                   ) : (
-                    <span style={{ fontSize: 12, color: "var(--muted)" }}>No twirler selected</span>
+                    <button className="btn btn-secondary btn-sm"
+                      onClick={(e) => { e.stopPropagation(); setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
+                      View Details →
+                    </button>
                   )}
                 </div>
               </div>
@@ -12394,22 +12412,8 @@ function AddCompetitionModal({ open, onClose, onSave, activeTwirler, competition
           </div>
           <div className="form-group">
             <label className="label">Sanctioned status</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              {[{ val: true, label: "Sanctioned", desc: "Official sanctioned competition" },
-                { val: false, label: "Unsanctioned", desc: "Practice meet, invitational, or non-sanctioned" }
-              ].map(opt => (
-                <div key={String(opt.val)}
-                  onClick={() => cf("sanctioned", opt.val)}
-                  style={{ flex: 1, padding: "10px 14px", borderRadius: 8, cursor: "pointer",
-                    border: `2px solid ${compForm.sanctioned === opt.val ? "var(--brand)" : "var(--border)"}`,
-                    background: compForm.sanctioned === opt.val ? "var(--brand-light)" : "#f8fafc",
-                    transition: "all 0.15s" }}>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: compForm.sanctioned === opt.val ? "var(--brand2)" : "var(--navy)" }}>
-                    {compForm.sanctioned === opt.val ? "✓ " : ""}{opt.label}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--slate)", marginTop: 2 }}>{opt.desc}</div>
-                </div>
-              ))}
+            <div style={{ padding: "10px 14px", background: "#f8fafc", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--slate)", lineHeight: 1.6 }}>
+              Competitions added by families are marked as <strong>user-reported</strong>. Only verified competition directors can mark events as officially sanctioned.
             </div>
           </div>
           <div className="form-group">
