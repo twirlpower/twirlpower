@@ -16,6 +16,7 @@ export type Competition = {
   state: string | null;
   venue: string | null;
   org_id: string | null;
+  host_id: string | null;
   registration_url: string | null;
   registration_deadline: string | null;
   show_on_marketing_site: boolean;
@@ -59,7 +60,7 @@ export async function getCompetitions({
 
   let query = supabase
     .from('public_competitions')
-    .select('id,name,date,city,state,venue,org_id,registration_url,registration_deadline,show_on_marketing_site')
+    .select('id,name,date,city,state,venue,org_id,host_id,registration_url,registration_deadline,show_on_marketing_site')
     .eq('show_on_marketing_site', true)
     .limit(limit);
 

@@ -67,7 +67,7 @@ export default function CompetitionCard({ competition: c, isPast = false }: Prop
 
       <div className={styles.footer}>
         <a
-          href={appUrl}
+          href={`${appUrl}?comp=${c.id}`}
           className={styles.btnApp}
           target="_blank"
           rel="noopener"
@@ -82,6 +82,16 @@ export default function CompetitionCard({ competition: c, isPast = false }: Prop
             rel="noopener"
           >
             Register
+          </a>
+        )}
+        {!c.host_id && !isPast && (
+          <a
+            href={`${appUrl}?claim=${c.id}`}
+            className={styles.btnClaim}
+            target="_blank"
+            rel="noopener"
+          >
+            Claim →
           </a>
         )}
         {isPast && <span className={styles.pastTag}>Past</span>}

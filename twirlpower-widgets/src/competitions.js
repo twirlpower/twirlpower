@@ -168,6 +168,18 @@ const STYLES = `
   }
   .btn-add:hover { background: var(--teal-dark); color: #fff; }
 
+  .btn-claim {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--slate);
+    text-decoration: none;
+    text-align: center;
+    transition: color .15s;
+  }
+  .btn-claim:hover { color: var(--teal); }
+
   .loading {
     text-align: center;
     padding: 32px;
@@ -296,7 +308,7 @@ class TpCompetitions extends HTMLElement {
     try {
       const today  = new Date().toISOString().split('T')[0];
       const params = {
-        select: 'id,name,date,city,state,org_id,registration_url',
+        select: 'id,name,date,city,state,org_id,host_id,registration_url',
         show_on_marketing_site: 'eq.true',
         'date': `gte.${today}`,
         order: 'date.asc',
@@ -342,9 +354,10 @@ class TpCompetitions extends HTMLElement {
           </div>
         </div>
         <div class="card-action">
-          <a class="btn-add" href="${this._appUrl}" target="_blank" rel="noopener">
+          <a class="btn-add" href="${this._appUrl}?comp=${c.id}" target="_blank" rel="noopener">
             Add to TwirlPower
           </a>
+          ${!c.host_id ? `<a class="btn-claim" href="${this._appUrl}?claim=${c.id}" target="_blank" rel="noopener">Claim →</a>` : ''}
         </div>
       </div>
     `;

@@ -103,6 +103,19 @@
 }
 .btnReg:hover { background: var(--pink-light); }
 
+.btnClaim {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--slate);
+  border: 1px solid var(--border);
+  padding: 9px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: border-color .15s, color .15s;
+  white-space: nowrap;
+}
+.btnClaim:hover { border-color: var(--teal); color: var(--teal); }
+
 .pastTag {
   margin-left: auto;
   font-size: 11px;

@@ -163,6 +163,18 @@
   }
   .btn-add:hover { background: var(--teal-dark); color: #fff; }
 
+  .btn-claim {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--slate);
+    text-decoration: none;
+    text-align: center;
+    transition: color .15s;
+  }
+  .btn-claim:hover { color: var(--teal); }
+
   .loading {
     text-align: center;
     padding: 32px;
@@ -245,7 +257,7 @@
           </a>
         </div>
       </div>
-    `,this.shadowRoot.getElementById("org-filter").addEventListener("change",t=>{this._org=t.target.value,this.fetchAndDisplay()}),this.shadowRoot.getElementById("state-filter").addEventListener("change",t=>{this._state=t.target.value,this.fetchAndDisplay()})}async fetchAndDisplay(){const t=this.shadowRoot.getElementById("list-container");t.innerHTML='<div class="loading"><div class="spinner"></div>Loading…</div>';try{const i={select:"id,name,date,city,state,org_id,registration_url",show_on_marketing_site:"eq.true",date:`gte.${new Date().toISOString().split("T")[0]}`,order:"date.asc",limit:String(this._limit)};this._org&&(i.org_id=`eq.${this._org}`),this._state&&(i.state=`eq.${this._state}`);const r=await n("public_competitions",i);if(!r.length){t.innerHTML='<div class="empty">No upcoming competitions found. Check back soon!</div>';return}t.innerHTML=`
+    `,this.shadowRoot.getElementById("org-filter").addEventListener("change",t=>{this._org=t.target.value,this.fetchAndDisplay()}),this.shadowRoot.getElementById("state-filter").addEventListener("change",t=>{this._state=t.target.value,this.fetchAndDisplay()})}async fetchAndDisplay(){const t=this.shadowRoot.getElementById("list-container");t.innerHTML='<div class="loading"><div class="spinner"></div>Loading…</div>';try{const i={select:"id,name,date,city,state,org_id,host_id,registration_url",show_on_marketing_site:"eq.true",date:`gte.${new Date().toISOString().split("T")[0]}`,order:"date.asc",limit:String(this._limit)};this._org&&(i.org_id=`eq.${this._org}`),this._state&&(i.state=`eq.${this._state}`);const r=await n("public_competitions",i);if(!r.length){t.innerHTML='<div class="empty">No upcoming competitions found. Check back soon!</div>';return}t.innerHTML=`
         <div class="list">
           ${r.map(h=>this.renderCard(h)).join("")}
         </div>
@@ -263,9 +275,10 @@
           </div>
         </div>
         <div class="card-action">
-          <a class="btn-add" href="${this._appUrl}" target="_blank" rel="noopener">
+          <a class="btn-add" href="${this._appUrl}?comp=${t.id}" target="_blank" rel="noopener">
             Add to TwirlPower
           </a>
+          ${t.host_id?"":`<a class="btn-claim" href="${this._appUrl}?claim=${t.id}" target="_blank" rel="noopener">Claim →</a>`}
         </div>
       </div>
     `}}customElements.define("tp-competitions",g),document.querySelectorAll('#tp-competitions, [data-tp-widget="competitions"]').forEach(a=>{const t=document.createElement("tp-competitions");Object.keys(a.dataset).forEach(e=>t.dataset[e]=a.dataset[e]),a.replaceWith(t)})})();
