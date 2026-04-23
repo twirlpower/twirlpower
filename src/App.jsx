@@ -7673,11 +7673,11 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
   const pendingBadge = (count) => count > 0 ? ` (${count})` : "";
 
   const tabs = [
+    { id: "dashboard", label: "Dashboard" },
     { id: "competitions", label: `Competitions${pendingBadge(competitionClaims.length)}` },
     { id: "directors", label: `Directors${pendingBadge(pendingHosts.length)}` },
     { id: "clubs", label: "Clubs" },
     { id: "accounts", label: "Accounts" },
-    { id: "data", label: "Data Overview" },
   ];
 
   return (
@@ -7731,6 +7731,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
             approveHost={approveHost}
             publicCompetitions={publicCompetitions || []}
             supabase={supabase}
+            initialSubTab={adminSubTab}
           />
         )}
 
@@ -7753,7 +7754,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
         )}
 
         {/* ══ DATA OVERVIEW TAB ══ */}
-        {tab === "data" && (
+        {tab === "dashboard" && (
           <AdminDataOverviewTab supabase={supabase} competitionHosts={competitionHosts} publicCompetitions={publicCompetitions} twirlers={twirlers} coaches={coaches} setTab={setTab} />
         )}
       </div>
@@ -7763,8 +7764,8 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
 
 // ─── ADMIN DIRECTORS TAB ─────────────────────────────────────────────────────
 
-function AdminDirectorsTab({ competitionHosts, pendingHosts, approvedHosts, approveHost, publicCompetitions, supabase }) {
-  const [subTab, setSubTab] = useState(pendingHosts.length > 0 ? "pending" : "all");
+function AdminDirectorsTab({ competitionHosts, pendingHosts, approvedHosts, approveHost, publicCompetitions, supabase, initialSubTab }) {
+  const [subTab, setSubTab] = useState(initialSubTab || (pendingHosts.length > 0 ? "pending" : "all"));
   const [setCompetitionHosts] = [() => {}]; // placeholder — host state managed by parent
 
   return (
@@ -8027,7 +8028,7 @@ function AdminDataOverviewTab({ supabase, competitionHosts, publicCompetitions, 
     { emoji: "👤", label: "COACH ACCOUNTS", value: stats.coaches, action: () => setTab("accounts:coaches") },
     { emoji: "🏆", label: "COMPETITIONS", value: stats.competitions, action: () => setTab("competitions") },
     { emoji: "🏛", label: "DIRECTORS (TOTAL)", value: totalHosts, action: () => setTab("directors") },
-    { emoji: "⏳", label: "DIRECTORS (PENDING)", value: pendingHosts, action: () => setTab("directors"), highlight: pendingHosts > 0 },
+    { emoji: "⏳", label: "DIRECTORS (PENDING)", value: pendingHosts, action: () => setTab("directors:pending"), highlight: pendingHosts > 0 },
     { emoji: "🏠", label: "CLUBS", value: stats.clubs, action: () => setTab("clubs") },
     { emoji: "🐛", label: "BUG REPORTS", value: bugReports.length, highlight: bugReports.length > 0 },
     { emoji: "⭐", label: "BETA FEEDBACK", value: betaFeedback.length },
