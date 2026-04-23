@@ -3837,7 +3837,7 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
 
 // ─── COACH HISTORY PAGE ───────────────────────────────────────────────────────
 
-function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage, publicCompetitions, familyAccount, addAttendee, attendees, registerHost, initialTab }) {
+function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage, publicCompetitions, familyAccount, addAttendee, removeAttendee, attendees, registerHost, initialTab, competitionHosts, myCompetitionClaims, setActiveCompetitionId, setActiveDirectorId }) {
   const [tab, setTab] = useState(initialTab || 'history');
 
   return (
@@ -3861,7 +3861,7 @@ function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirl
         <CoachHistoryPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />
       )}
       {tab === 'upcoming' && (
-        <UpcomingCompetitionsPage publicCompetitions={publicCompetitions || []} familyAccount={familyAccount} addAttendee={addAttendee} attendees={attendees || []} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} registerHost={registerHost} addCompetition={() => {}} />
+        <UpcomingCompetitionsPage publicCompetitions={publicCompetitions || []} familyAccount={familyAccount} addAttendee={addAttendee} removeAttendee={removeAttendee || (() => {})} attendees={attendees || []} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} registerHost={registerHost} competitionHosts={competitionHosts || []} myCompetitionClaims={myCompetitionClaims || []} setActiveCompetitionId={setActiveCompetitionId || (() => {})} setActiveDirectorId={setActiveDirectorId || (() => {})} />
       )}
     </div>
   );
