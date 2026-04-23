@@ -2064,19 +2064,33 @@ export default function App() {
   }
 
   async function createPublicCompetition(hostId, data) {
+    const slug = (data.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + (data.date || "").slice(0, 4);
     const { data: inserted, error } = await supabase.from('public_competitions').insert({
       host_id: hostId,
       name: data.name,
       date: data.date || null,
+      end_date: data.endDate || null,
       org_id: data.orgId || null,
       state: data.state || null,
+      city: data.city || null,
       address: data.address || null,
       info: data.info || null,
       sanctioned: data.sanctioned !== false,
+      sanction_number: data.sanctionNumber || null,
+      contact_email: data.contactEmail || null,
+      contact_raw: data.contactRaw || null,
+      event_type: data.eventType || null,
+      category: data.category || null,
+      event_slug: slug || null,
+      is_multi_day: data.isMultiDay || false,
+      source: 'director',
       approved: true,
     }).select().single();
     if (error) { console.error('createPublicCompetition:', error); return; }
-    const c = { ...inserted, orgId: inserted.org_id, hostId: inserted.host_id };
+    const c = { ...inserted, orgId: inserted.org_id, hostId: inserted.host_id, endDate: inserted.end_date,
+      contactEmail: inserted.contact_email, contactRaw: inserted.contact_raw,
+      sanctionNumber: inserted.sanction_number, eventType: inserted.event_type,
+      isMultiDay: inserted.is_multi_day, eventSlug: inserted.event_slug };
     setPublicCompetitions(prev => [...prev, c]);
     return c;
   }
@@ -2089,9 +2103,13 @@ export default function App() {
 
   async function updatePublicCompetition(compId, data) {
     const dbData = {
-      name: data.name, date: data.date, org_id: data.orgId,
-      state: data.state, address: data.address, info: data.info,
-      sanctioned: data.sanctioned,
+      name: data.name, date: data.date, end_date: data.endDate || null,
+      org_id: data.orgId, state: data.state, city: data.city || null,
+      address: data.address, info: data.info, sanctioned: data.sanctioned,
+      sanction_number: data.sanctionNumber || null,
+      contact_email: data.contactEmail || null, contact_raw: data.contactRaw || null,
+      event_type: data.eventType || null, category: data.category || null,
+      is_multi_day: !!data.endDate,
     };
     setPublicCompetitions(prev => prev.map(c => c.id === compId ? { ...c, ...data } : c));
     await supabase.from('public_competitions').update(dbData).eq('id', compId);
@@ -5020,9 +5038,15 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
   function startEdit(comp) {
     setEditingId(comp.id);
     setEditForm({
-      name: comp.name, date: comp.date, orgId: comp.orgId || "",
-      state: comp.state || "", address: comp.address || "",
+      name: comp.name, date: comp.date, endDate: comp.end_date || comp.endDate || "",
+      orgId: comp.orgId || comp.org_id || "", state: comp.state || "",
+      city: comp.city || "", address: comp.address || "",
       info: comp.info || "", sanctioned: comp.sanctioned !== false,
+      sanctionNumber: comp.sanction_number || comp.sanctionNumber || "",
+      contactEmail: comp.contact_email || comp.contactEmail || "",
+      contactRaw: comp.contact_raw || comp.contactRaw || "",
+      eventType: comp.event_type || comp.eventType || "",
+      category: comp.category || "",
     });
   }
 
@@ -5036,7 +5060,10 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
           <div>
             <div className="form-group"><label className="label">Name</label><input className="input" value={editForm.name} onChange={e => ef("name", e.target.value)} /></div>
             <div className="form-row">
-              <div className="form-group"><label className="label">Date</label><input className="input" type="date" value={editForm.date} onChange={e => ef("date", e.target.value)} /></div>
+              <div className="form-group"><label className="label">Start date</label><input className="input" type="date" value={editForm.date} onChange={e => ef("date", e.target.value)} /></div>
+              <div className="form-group"><label className="label">End date</label><input className="input" type="date" value={editForm.endDate || ""} onChange={e => ef("endDate", e.target.value)} /></div>
+            </div>
+            <div className="form-row">
               <div className="form-group">
                 <label className="label">Organization</label>
                 <select className="select" value={editForm.orgId} onChange={e => ef("orgId", e.target.value)}>
@@ -5044,8 +5071,16 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
                   {Object.values(ORGS).map(o => <option key={o.id} value={o.id}>{o.id}</option>)}
                 </select>
               </div>
+              <div className="form-group">
+                <label className="label">Event type</label>
+                <select className="select" value={editForm.eventType || ""} onChange={e => ef("eventType", e.target.value)}>
+                  <option value="">Select</option>
+                  {["State", "Regional", "National", "Open", "Invitational", "Miss Majorette", "Camp", "Other"].map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
             </div>
             <div className="form-row">
+              <div className="form-group"><label className="label">City</label><input className="input" value={editForm.city || ""} onChange={e => ef("city", e.target.value)} /></div>
               <div className="form-group">
                 <label className="label">State</label>
                 <select className="select" value={editForm.state} onChange={e => ef("state", e.target.value)}>
@@ -5053,8 +5088,13 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
                   {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              <div className="form-group"><label className="label">Address</label><input className="input" value={editForm.address} onChange={e => ef("address", e.target.value)} /></div>
             </div>
+            <div className="form-group"><label className="label">Address</label><input className="input" value={editForm.address} onChange={e => ef("address", e.target.value)} /></div>
+            <div className="form-row">
+              <div className="form-group"><label className="label">Sanction #</label><input className="input" value={editForm.sanctionNumber || ""} onChange={e => ef("sanctionNumber", e.target.value)} /></div>
+              <div className="form-group"><label className="label">Contact email</label><input className="input" value={editForm.contactEmail || ""} onChange={e => ef("contactEmail", e.target.value)} /></div>
+            </div>
+            <div className="form-group"><label className="label">Contact info</label><input className="input" value={editForm.contactRaw || ""} onChange={e => ef("contactRaw", e.target.value)} /></div>
             <div className="form-group"><label className="label">Info</label><textarea className="textarea" value={editForm.info} onChange={e => ef("info", e.target.value)} rows={2} /></div>
             <div className="flex gap-2">
               <button className="btn btn-primary btn-sm" onClick={() => { updatePublicCompetition(comp.id, editForm); setEditingId(null); }}>Save</button>
@@ -10148,7 +10188,7 @@ function HostRegisterView({ onRegister, familyAccount, claimComp }) {
 
 function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreateComp, onDeleteComp, onEditComp }) {
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: "", date: "", orgId: "", state: host.state || "", address: "", info: "", sanctioned: true });
+  const [form, setForm] = useState({ name: "", date: "", endDate: "", orgId: "", state: host.state || "", city: "", address: "", info: "", sanctioned: true, contactEmail: "", contactRaw: "", sanctionNumber: "", eventType: "", category: "" });
   const cf = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const [expandedComp, setExpandedComp] = useState(null);
   const [editingComp, setEditingComp] = useState(null);
@@ -10156,10 +10196,12 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
   const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
   const [successMsg, setSuccessMsg] = useState(null);
 
+  const defaultForm = { name: "", date: "", endDate: "", orgId: "", state: host.state || "", city: "", address: "", info: "", sanctioned: true, contactEmail: "", contactRaw: "", sanctionNumber: "", eventType: "", category: "" };
+
   function save() {
-    onCreateComp({ ...form, approved: true });
+    onCreateComp({ ...form, approved: true, isMultiDay: !!form.endDate });
     setSuccessMsg(`"${form.name}" has been published!`);
-    setForm({ name: "", date: "", orgId: "", state: host.state || "", address: "", info: "", sanctioned: true });
+    setForm(defaultForm);
     setShowCreate(false);
     setTimeout(() => setSuccessMsg(null), 4000);
   }
@@ -10207,9 +10249,12 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
       {showCreate && (
         <div className="card mb-4" style={{ borderTop: "3px solid var(--brand)" }}>
           <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 16 }}>Create Competition Listing</div>
-          <div className="form-group"><label className="label">Competition name</label><input className="input" value={form.name} onChange={e => cf("name", e.target.value)} placeholder="e.g. 2025 Ohio State Championships" autoFocus /></div>
+          <div className="form-group"><label className="label">Competition name</label><input className="input" value={form.name} onChange={e => cf("name", e.target.value)} placeholder="e.g. 2026 Ohio State Championships" autoFocus /></div>
           <div className="form-row">
-            <div className="form-group"><label className="label">Date</label><input className="input" type="date" value={form.date} onChange={e => cf("date", e.target.value)} /></div>
+            <div className="form-group"><label className="label">Start date</label><input className="input" type="date" value={form.date} onChange={e => cf("date", e.target.value)} /></div>
+            <div className="form-group"><label className="label">End date <span style={{ fontWeight: 400, color: "var(--muted)" }}>(if multi-day)</span></label><input className="input" type="date" value={form.endDate} onChange={e => cf("endDate", e.target.value)} /></div>
+          </div>
+          <div className="form-row">
             <div className="form-group">
               <label className="label">Organization</label>
               <select className="select" value={form.orgId} onChange={e => cf("orgId", e.target.value)}>
@@ -10217,8 +10262,19 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                 {Object.values(ORGS).map(o => <option key={o.id} value={o.id}>{o.id} — {o.name}</option>)}
               </select>
             </div>
+            <div className="form-group">
+              <label className="label">Event type</label>
+              <select className="select" value={form.eventType} onChange={e => cf("eventType", e.target.value)}>
+                <option value="">Select type</option>
+                {["State", "Regional", "National", "Open", "Invitational", "Miss Majorette", "Camp", "Other"].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
           </div>
           <div className="form-row">
+            <div className="form-group">
+              <label className="label">City</label>
+              <input className="input" value={form.city} onChange={e => cf("city", e.target.value)} placeholder="e.g. Columbus" />
+            </div>
             <div className="form-group">
               <label className="label">State</label>
               <select className="select" value={form.state} onChange={e => cf("state", e.target.value)}>
@@ -10226,6 +10282,12 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                 {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
+          </div>
+          <div className="form-group">
+            <label className="label">Venue address</label>
+            <input className="input" value={form.address} onChange={e => cf("address", e.target.value)} placeholder="123 Main St, City, State 12345" />
+          </div>
+          <div className="form-row">
             <div className="form-group">
               <label className="label">Sanctioned status</label>
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -10241,14 +10303,15 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                 ))}
               </div>
             </div>
+            <div className="form-group"><label className="label">Sanction number <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label><input className="input" value={form.sanctionNumber} onChange={e => cf("sanctionNumber", e.target.value)} placeholder="e.g. 2026-OH-001" /></div>
           </div>
-          <div className="form-group">
-            <label className="label">Venue address</label>
-            <input className="input" value={form.address} onChange={e => cf("address", e.target.value)} placeholder="123 Main St, City, State 12345" />
+          <div className="form-row">
+            <div className="form-group"><label className="label">Contact email <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label><input className="input" type="email" value={form.contactEmail} onChange={e => cf("contactEmail", e.target.value)} placeholder="director@email.com" /></div>
+            <div className="form-group"><label className="label">Contact info <span style={{ fontWeight: 400, color: "var(--muted)" }}>(phone, website, etc.)</span></label><input className="input" value={form.contactRaw} onChange={e => cf("contactRaw", e.target.value)} placeholder="(555) 555-5555 or website URL" /></div>
           </div>
           <div className="form-group">
             <label className="label">Competition info / description</label>
-            <textarea className="textarea" value={form.info} onChange={e => cf("info", e.target.value)} rows={3} placeholder="Entry fees, age divisions, registration deadline, contact info, website, etc." />
+            <textarea className="textarea" value={form.info} onChange={e => cf("info", e.target.value)} rows={3} placeholder="Entry fees, age divisions, registration deadline, special notes..." />
           </div>
           <div className="flex gap-2">
             <button className="btn btn-primary" disabled={!form.name || !form.date} onClick={save}>Publish Competition</button>
@@ -10281,8 +10344,10 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{comp.name}</div>
                     <div style={{ fontSize: 12, color: "var(--slate)" }}>
-                      {fmtDate(comp.date)}{comp.state ? ` · ${comp.state}` : ""}
+                      {fmtDate(comp.date)}{(comp.end_date || comp.endDate) ? ` — ${fmtDate(comp.end_date || comp.endDate)}` : ""}
+                      {comp.city ? ` · ${comp.city}` : ""}{comp.state ? `, ${comp.state}` : comp.state ? ` · ${comp.state}` : ""}
                       {comp.orgId && <span className="badge" style={{ marginLeft: 8, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId), fontSize: 10 }}>{comp.orgId}</span>}
+                      {(comp.event_type || comp.eventType) && <span className="badge badge-gray" style={{ marginLeft: 4, fontSize: 9 }}>{comp.event_type || comp.eventType}</span>}
                       {comp.sanctioned !== false && <span className="badge badge-green" style={{ marginLeft: 4, fontSize: 9 }}>Sanctioned</span>}
                       {comp.sanctioned === false && <span className="badge badge-warn" style={{ marginLeft: 4, fontSize: 9 }}>Unsanctioned</span>}
                     </div>
@@ -10299,7 +10364,10 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                         <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Edit Competition</div>
                         <div className="form-group"><label className="label">Competition name</label><input className="input" value={editForm.name} onChange={e => ef("name", e.target.value)} /></div>
                         <div className="form-row">
-                          <div className="form-group"><label className="label">Date</label><input className="input" type="date" value={editForm.date} onChange={e => ef("date", e.target.value)} /></div>
+                          <div className="form-group"><label className="label">Start date</label><input className="input" type="date" value={editForm.date} onChange={e => ef("date", e.target.value)} /></div>
+                          <div className="form-group"><label className="label">End date</label><input className="input" type="date" value={editForm.endDate} onChange={e => ef("endDate", e.target.value)} /></div>
+                        </div>
+                        <div className="form-row">
                           <div className="form-group">
                             <label className="label">Organization</label>
                             <select className="select" value={editForm.orgId} onChange={e => ef("orgId", e.target.value)}>
@@ -10307,8 +10375,16 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                               {Object.values(ORGS).map(o => <option key={o.id} value={o.id}>{o.id} — {o.name}</option>)}
                             </select>
                           </div>
+                          <div className="form-group">
+                            <label className="label">Event type</label>
+                            <select className="select" value={editForm.eventType} onChange={e => ef("eventType", e.target.value)}>
+                              <option value="">Select type</option>
+                              {["State", "Regional", "National", "Open", "Invitational", "Miss Majorette", "Camp", "Other"].map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
                         </div>
                         <div className="form-row">
+                          <div className="form-group"><label className="label">City</label><input className="input" value={editForm.city || ""} onChange={e => ef("city", e.target.value)} /></div>
                           <div className="form-group">
                             <label className="label">State</label>
                             <select className="select" value={editForm.state} onChange={e => ef("state", e.target.value)}>
@@ -10316,8 +10392,10 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                           </div>
-                          <div className="form-group">
-                            <label className="label">Sanctioned</label>
+                        </div>
+                        <div className="form-group"><label className="label">Venue address</label><input className="input" value={editForm.address} onChange={e => ef("address", e.target.value)} /></div>
+                        <div className="form-row">
+                          <div className="form-group"><label className="label">Sanctioned</label>
                             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                               {[{ val: true, label: "Sanctioned" }, { val: false, label: "Unsanctioned" }].map(opt => (
                                 <div key={String(opt.val)} onClick={() => ef("sanctioned", opt.val)}
@@ -10331,8 +10409,12 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                               ))}
                             </div>
                           </div>
+                          <div className="form-group"><label className="label">Sanction number</label><input className="input" value={editForm.sanctionNumber || ""} onChange={e => ef("sanctionNumber", e.target.value)} /></div>
                         </div>
-                        <div className="form-group"><label className="label">Venue address</label><input className="input" value={editForm.address} onChange={e => ef("address", e.target.value)} /></div>
+                        <div className="form-row">
+                          <div className="form-group"><label className="label">Contact email</label><input className="input" type="email" value={editForm.contactEmail || ""} onChange={e => ef("contactEmail", e.target.value)} /></div>
+                          <div className="form-group"><label className="label">Contact info</label><input className="input" value={editForm.contactRaw || ""} onChange={e => ef("contactRaw", e.target.value)} /></div>
+                        </div>
                         <div className="form-group"><label className="label">Competition info</label><textarea className="textarea" value={editForm.info} onChange={e => ef("info", e.target.value)} rows={3} /></div>
                         <div className="flex gap-2">
                           <button className="btn btn-primary btn-sm" disabled={!editForm.name || !editForm.date}
@@ -10344,8 +10426,14 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                       </div>
                     ) : (
                       <>
+                        {(comp.end_date || comp.endDate) && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>📅 {fmtDate(comp.date)} — {fmtDate(comp.end_date || comp.endDate)}</div>}
+                        {comp.city && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>📍 {comp.city}{comp.state ? `, ${comp.state}` : ""}</div>}
                         {comp.address && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>🏛 {comp.address}</div>}
-                        {comp.info && <div style={{ fontSize: 13, color: "var(--navy)", marginBottom: 12, lineHeight: 1.6 }}>{comp.info}</div>}
+                        {(comp.event_type || comp.eventType) && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>🏆 {comp.event_type || comp.eventType}</div>}
+                        {(comp.sanction_number || comp.sanctionNumber) && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>📋 Sanction #: {comp.sanction_number || comp.sanctionNumber}</div>}
+                        {(comp.contact_email || comp.contactEmail) && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>📧 {comp.contact_email || comp.contactEmail}</div>}
+                        {(comp.contact_raw || comp.contactRaw) && <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>📞 {comp.contact_raw || comp.contactRaw}</div>}
+                        {comp.info && <div style={{ fontSize: 13, color: "var(--navy)", marginBottom: 12, lineHeight: 1.6, background: "#f8fafc", padding: "8px 12px", borderRadius: 6 }}>{comp.info}</div>}
                         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
                           Attendees ({compAttendees.length})
                         </div>
@@ -10372,9 +10460,15 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                           <button className="btn btn-secondary btn-sm" onClick={() => {
                             setEditingComp(comp.id);
                             setEditForm({
-                              name: comp.name, date: comp.date, orgId: comp.orgId || "",
-                              state: comp.state || "", address: comp.address || "",
+                              name: comp.name, date: comp.date, endDate: comp.end_date || comp.endDate || "",
+                              orgId: comp.orgId || comp.org_id || "", state: comp.state || "",
+                              city: comp.city || "", address: comp.address || "",
                               info: comp.info || "", sanctioned: comp.sanctioned !== false,
+                              sanctionNumber: comp.sanction_number || comp.sanctionNumber || "",
+                              contactEmail: comp.contact_email || comp.contactEmail || "",
+                              contactRaw: comp.contact_raw || comp.contactRaw || "",
+                              eventType: comp.event_type || comp.eventType || "",
+                              category: comp.category || "",
                             });
                           }}>
                             <Icon name="edit" size={13} /> Edit
@@ -10382,7 +10476,7 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                           <button className="btn btn-secondary btn-sm" onClick={() => {
                             const nextYear = String(parseInt(comp.date?.slice(0, 4) || new Date().getFullYear()) + 1);
                             const newName = comp.name?.replace(/20\d{2}/, nextYear) || comp.name;
-                            setForm({ name: newName, date: "", orgId: comp.orgId || "", state: comp.state || "", address: comp.address || "", info: comp.info || "", sanctioned: comp.sanctioned !== false });
+                            setForm({ ...defaultForm, name: newName, orgId: comp.orgId || comp.org_id || "", state: comp.state || "", city: comp.city || "", address: comp.address || "", info: comp.info || "", sanctioned: comp.sanctioned !== false, sanctionNumber: "", contactEmail: comp.contact_email || comp.contactEmail || "", contactRaw: comp.contact_raw || comp.contactRaw || "", eventType: comp.event_type || comp.eventType || "", category: comp.category || "" });
                             setShowCreate(true);
                             setExpandedComp(null);
                           }}>
