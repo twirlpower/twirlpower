@@ -7974,19 +7974,24 @@ function AdminDataOverviewTab({ supabase, competitionHosts, publicCompetitions, 
   const [bugReports, setBugReports] = useState([]);
   const [betaFeedback, setBetaFeedback] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showResolved, setShowResolved] = useState(false);
+  const [resolvedBugs, setResolvedBugs] = useState([]);
 
   useEffect(() => {
     (async () => {
-      const [{ count: famCount }, { count: twCount }, { count: coachCount }, { count: compCount }, { data: bugs }, { data: feedback }] = await Promise.all([
+      const [{ count: famCount }, { count: twCount }, { count: coachCount }, { count: compCount }, { count: clubCount }, { data: bugs }, { data: feedback }] = await Promise.all([
         supabase.from('family_accounts').select('id', { count: 'exact', head: true }),
         supabase.from('twirlers').select('id', { count: 'exact', head: true }),
         supabase.from('coach_accounts').select('id', { count: 'exact', head: true }),
         supabase.from('public_competitions').select('id', { count: 'exact', head: true }),
+        supabase.from('clubs').select('id', { count: 'exact', head: true }),
         supabase.from('bug_reports').select('*').order('created_at', { ascending: false }),
         supabase.from('beta_feedback').select('*').order('created_at', { ascending: false }),
       ]);
-      setStats({ families: famCount || 0, twirlers: twCount || 0, coaches: coachCount || 0, competitions: compCount || 0 });
-      setBugReports(bugs || []);
+      setStats({ families: famCount || 0, twirlers: twCount || 0, coaches: coachCount || 0, competitions: compCount || 0, clubs: clubCount || 0 });
+      // Split bugs into active vs resolved
+      setBugReports((bugs || []).filter(b => !b.resolved_at));
+      setResolvedBugs((bugs || []).filter(b => b.resolved_at));
       setBetaFeedback(feedback || []);
       setLoading(false);
     })();
@@ -7999,11 +8004,12 @@ function AdminDataOverviewTab({ supabase, competitionHosts, publicCompetitions, 
 
   const statCards = [
     { emoji: "👨‍👩‍👧", label: "FAMILY ACCOUNTS", value: stats.families, action: () => setTab("accounts") },
-    { emoji: "👤", label: "COACH ACCOUNTS", value: stats.coaches, action: () => setTab("accounts") },
     { emoji: "🧑", label: "TWIRLERS", value: stats.twirlers, action: () => setTab("accounts") },
+    { emoji: "👤", label: "COACH ACCOUNTS", value: stats.coaches, action: () => setTab("accounts") },
     { emoji: "🏆", label: "COMPETITIONS", value: stats.competitions, action: () => setTab("competitions") },
-    { emoji: "🏛", label: "HOSTS (TOTAL)", value: totalHosts, action: () => setTab("directors") },
-    { emoji: "⏳", label: "HOSTS (PENDING)", value: pendingHosts, action: () => setTab("directors"), highlight: pendingHosts > 0 },
+    { emoji: "🏛", label: "DIRECTORS (TOTAL)", value: totalHosts, action: () => setTab("directors") },
+    { emoji: "⏳", label: "DIRECTORS (PENDING)", value: pendingHosts, action: () => setTab("directors"), highlight: pendingHosts > 0 },
+    { emoji: "🏠", label: "CLUBS", value: stats.clubs, action: () => setTab("clubs") },
     { emoji: "🐛", label: "BUG REPORTS", value: bugReports.length, highlight: bugReports.length > 0 },
     { emoji: "⭐", label: "BETA FEEDBACK", value: betaFeedback.length },
   ];
@@ -8025,33 +8031,56 @@ function AdminDataOverviewTab({ supabase, competitionHosts, publicCompetitions, 
       </div>
 
       {/* Bug Reports */}
-      {bugReports.length > 0 && (
-        <div className="mb-4">
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-            🐛 Bug Reports ({bugReports.length})
+      <div className="mb-4">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            🐛 Active Bug Reports ({bugReports.length})
           </div>
-          <div className="flex-col gap-2">
-            {bugReports.map(b => (
-              <div key={b.id} className="card-sm">
-                <div className="flex items-start justify-between gap-2">
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6 }}>{b.message || b.description || "No description"}</div>
-                    {b.email && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>From: {b.email}</div>}
-                  </div>
-                  <div style={{ flexShrink: 0, textAlign: "right" }}>
-                    <div style={{ fontSize: 10, color: "var(--muted)" }}>{fmtDate(b.created_at)}</div>
-                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, marginTop: 4 }}
-                      onClick={async () => {
-                        await supabase.from('bug_reports').delete().eq('id', b.id);
-                        setBugReports(prev => prev.filter(x => x.id !== b.id));
-                      }}>✓ Resolve</button>
+          {resolvedBugs.length > 0 && (
+            <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
+              onClick={() => setShowResolved(!showResolved)}>
+              {showResolved ? "Hide" : "Show"} resolved ({resolvedBugs.length})
+            </button>
+          )}
+        </div>
+        {bugReports.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}>✓ No active bug reports.</div>}
+        <div className="flex-col gap-2">
+          {bugReports.map(b => (
+            <div key={b.id} className="card-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6 }}>{b.message || b.description || "No description"}</div>
+                  {b.email && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>From: {b.email}</div>}
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>Reported {fmtDate(b.created_at)}</div>
+                </div>
+                <button className="btn btn-primary btn-sm" style={{ fontSize: 10, flexShrink: 0 }}
+                  onClick={async () => {
+                    const now = new Date().toISOString();
+                    await supabase.from('bug_reports').update({ resolved_at: now, resolved_by: 'admin' }).eq('id', b.id);
+                    setBugReports(prev => prev.filter(x => x.id !== b.id));
+                    setResolvedBugs(prev => [{ ...b, resolved_at: now, resolved_by: 'admin' }, ...prev]);
+                  }}>✓ Resolve</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {showResolved && resolvedBugs.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>Resolved</div>
+            <div className="flex-col gap-2">
+              {resolvedBugs.map(b => (
+                <div key={b.id} className="card-sm" style={{ opacity: 0.6 }}>
+                  <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6 }}>{b.message || b.description || "No description"}</div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>
+                    Reported {fmtDate(b.created_at)} · Resolved {fmtDate(b.resolved_at)}{b.resolved_by ? ` by ${b.resolved_by}` : ""}
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Beta Feedback */}
       {betaFeedback.length > 0 && (
