@@ -18,15 +18,17 @@ export default function Footer() {
           </div>
           <div className={styles.col}>
             <span className={styles.colHead}>Organizations</span>
-            <a href="/organizations/usta">USTA</a>
-            <a href="/organizations/nbta">NBTA</a>
-            <a href="/organizations/tu">TU</a>
-            <a href="/organizations/dma">DMA</a>
+            <a href="https://www.ustwirling.com" target="_blank" rel="noopener">USTA</a>
+            <a href="https://www.nbta.us" target="_blank" rel="noopener">NBTA</a>
+            <a href="https://www.twirl.org" target="_blank" rel="noopener">TU</a>
+            <a href="https://www.dma.org" target="_blank" rel="noopener">DMA</a>
           </div>
           <div className={styles.col}>
             <span className={styles.colHead}>TwirlPower</span>
-            <a href="https://twirlpower.com" target="_blank" rel="noopener">Marketing Site</a>
-            <a href="https://app.twirlpower.com" target="_blank" rel="noopener">Open the App</a>
+            <a href="https://twirlpower.com/for-families">For Families</a>
+            <a href="https://twirlpower.com/for-coaches">For Coaches</a>
+            <a href="https://twirlpower.com/for-directors">For Directors</a>
+            <a href="https://app.twirlpower.com">Open the App</a>
           </div>
         </div>
       </div>

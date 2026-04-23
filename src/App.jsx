@@ -897,6 +897,11 @@ export default function App() {
       sessionStorage.setItem('tp_view_competition_id', compId);
       window.history.replaceState({}, '', window.location.pathname);
     }
+    const roleParam = params.get('role');
+    if (roleParam === 'host') {
+      sessionStorage.setItem('tp_signup_role', 'host');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     return token || sessionStorage.getItem('tp_invite_token') || null;
   });
   const [inviteEmail, setInviteEmail] = useState(sessionStorage.getItem('tp_invite_email') || '');
@@ -965,8 +970,6 @@ export default function App() {
   const [coachLinks, setCoachLinks] = useState([]);
   const [competitionHosts, setCompetitionHosts] = useState([]);
   const [pendingClubClaims, setPendingClubClaims] = useState(0);
-  const [pendingCompetitionClaims, setPendingCompetitionClaims] = useState(0);
-  const [myCompetitionClaims, setMyCompetitionClaims] = useState([]);
   const [publicCompetitions, setPublicCompetitions] = useState([]);
   const [attendees, setAttendees] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -1171,6 +1174,7 @@ export default function App() {
 
       // If host/director — load host data and return
       if (role === 'host') {
+        sessionStorage.removeItem('tp_signup_role');
         const { data: hosts } = await supabase
           .from('competition_hosts').select('*').eq('user_id', userId);
         setCompetitionHosts((hosts || []).map(h => ({ ...h, createdAt: h.created_at })));
@@ -1407,16 +1411,7 @@ export default function App() {
           .from('clubs').select('id', { count: 'exact', head: true })
           .eq('status', 'pending_claim');
         setPendingClubClaims(count || 0);
-
-        const { count: compClaimCount } = await supabase
-          .from('competition_claims').select('id', { count: 'exact', head: true })
-          .eq('status', 'pending');
-        setPendingCompetitionClaims(compClaimCount || 0);
       }
-
-      // Load user's own competition claims
-      const { data: myClaims } = await supabase.from('competition_claims').select('*').eq('user_id', userId);
-      setMyCompetitionClaims(myClaims || []);
 
       // If no own family account, check if this user is a guardian on another account
       if (!fa) {
@@ -1502,7 +1497,6 @@ export default function App() {
   const [activeTwirlerId, setActiveTwirlerId] = useLocalStorage("tp_active_twirler", null);
   const [page, setPage] = useLocalStorage("tp_page", "home");
   const [activeCompetitionId, setActiveCompetitionId] = useState(null);
-  const [activeDirectorId, setActiveDirectorId] = useState(null);
   const [modals, setModals] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useLocalStorage('tp_dark_mode', false);
@@ -1726,6 +1720,7 @@ export default function App() {
   const allNotifications = [
     ...pendingInvites.map(i => ({ ...i, notifType: 'competition_invite' })),
     ...pendingCoachLinks.map(l => ({ ...l, notifType: 'coach_link' })),
+    ...pendingDirectorApprovals.map(h => ({ ...h, notifType: 'director_approval' })),
   ];
 
   // Pass resolved id as the canonical activeTwirlerId throughout the app
@@ -1902,7 +1897,7 @@ export default function App() {
       state: data.state || null,
       start_time: data.startTime || null,
       org_id: data.orgId || null,
-      sanctioned: false,
+      sanctioned: data.sanctioned !== false,
       notes: data.notes || null,
     }).select().single();
     if (error) { console.error('addCompetition:', error); return; }
@@ -2211,13 +2206,12 @@ export default function App() {
 
     // Update claim status
     await supabase.from('competition_claims').update({ status: 'approved' }).eq('id', claimId);
-    setPendingCompetitionClaims(prev => Math.max(0, prev - 1));
 
     // Notify claimant
-    const claimantEmail = hostRecord?.email;
-    if (claimantEmail) {
+    const { data: claimUser } = await supabase.from('auth.users').select('email').eq('id', userId).single().catch(() => ({ data: null }));
+    if (claimUser?.email) {
       const comp = publicCompetitions.find(c => c.id === competitionId);
-      await sendEmail('competition_claim_approved', claimantEmail, {
+      await sendEmail('competition_claim_approved', claimUser.email, {
         competitionName: comp?.name || 'your competition',
       });
     }
@@ -2225,12 +2219,6 @@ export default function App() {
 
   async function denyCompetitionClaim(claimId) {
     await supabase.from('competition_claims').update({ status: 'denied' }).eq('id', claimId);
-    setPendingCompetitionClaims(prev => Math.max(0, prev - 1));
-  }
-
-  async function unclaimCompetition(competitionId) {
-    await supabase.from('public_competitions').update({ host_id: null, source: 'scraped' }).eq('id', competitionId);
-    setPublicCompetitions(prev => prev.map(c => c.id === competitionId ? { ...c, hostId: null, host_id: null, source: 'scraped' } : c));
   }
 
   async function addAttendee(competitionId, twirlerId) {
@@ -2431,6 +2419,7 @@ export default function App() {
         setAuthError={setAuthError}
         hasInvite={!!pendingInviteToken || !!sessionStorage.getItem('tp_pending_coach_id')}
         claimMode={!!sessionStorage.getItem('tp_claim_competition_id')}
+        hostMode={sessionStorage.getItem('tp_signup_role') === 'host'}
         inviteEmail={inviteEmail}
       />
     );
@@ -2497,11 +2486,6 @@ export default function App() {
         modals={modals}
         coachCreateCompetition={coachCreateCompetition}
         publicCompetitions={publicCompetitions}
-        competitionHosts={competitionHosts}
-        setActiveCompetitionId={setActiveCompetitionId}
-        setActiveDirectorId={setActiveDirectorId}
-        activeCompetitionId={activeCompetitionId}
-        activeDirectorId={activeDirectorId}
       />
     );
   }
@@ -2669,7 +2653,7 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage, myCompetitionClaims, setActiveDirectorId, activeDirectorId };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage };
 
   return (
     <>
@@ -2679,7 +2663,7 @@ export default function App() {
       <InstallBanner show={showInstallBanner && canShowInstall} onInstall={triggerInstall} onDismiss={dismissInstall} isIos={isIos} />
       <IosInstallModal show={showIosInstructions} onDone={markIosDone} onClose={() => setShowIosInstructions(false)} />
       <div className="app">
-        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} canShowInstall={canShowInstall} onInstallClick={triggerInstall} competitionHosts={competitionHosts} pendingClubClaims={pendingClubClaims} pendingCompetitionClaims={pendingCompetitionClaims} />
+        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} canShowInstall={canShowInstall} onInstallClick={triggerInstall} competitionHosts={competitionHosts} pendingClubClaims={pendingClubClaims} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="mobile-topbar">
@@ -2733,7 +2717,6 @@ export default function App() {
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
           {page === "competitions" && <CompetitionsPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
           {page === "competition-detail" && <CompetitionDetailPage {...pageProps} activeCompetitionId={activeCompetitionId} />}
-          {page === "director-profile" && <DirectorPublicProfile {...pageProps} activeDirectorId={activeDirectorId} />}
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
           {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} authUser={authUser} supabase={supabase} />}
           {page === "coaches" && <CoachesPage {...pageProps} supabase={supabase} />}
@@ -2741,7 +2724,7 @@ export default function App() {
           {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} isAdmin={isAdmin} />}
           {page === "privacy" && <PrivacyPolicyPage onClose={() => setPage("home")} />}
           {page === "terms" && <TermsOfServicePage onClose={() => setPage("home")} />}
-          {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} approveCompetitionClaim={approveCompetitionClaim} denyCompetitionClaim={denyCompetitionClaim} unclaimCompetition={unclaimCompetition} />}
+          {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} approveCompetitionClaim={approveCompetitionClaim} denyCompetitionClaim={denyCompetitionClaim} />}
           {page === "orgs" && <OrganizationsPage activeTwirler={activeTwirler} twirlerResults={twirlerResults} />}
           {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
           {page === "upcoming" && <CompetitionsPage {...pageProps} initialTab="upcoming" />}
@@ -2815,9 +2798,9 @@ function PasswordResetForm({ supabase, onDone }) {
   );
 }
 
-function AuthScreen({ onAuth, authError, setAuthError, hasInvite, inviteEmail, claimMode }) {
-  const [mode, setMode] = useState(hasInvite || claimMode ? "signup" : "login"); // "login" | "signup" | "coach-signup" | "reset"
-  const [signupRole, setSignupRole] = useState(hasInvite ? "family" : claimMode ? "host" : null); // null | "family" | "coach"
+function AuthScreen({ onAuth, authError, setAuthError, hasInvite, inviteEmail, claimMode, hostMode }) {
+  const [mode, setMode] = useState(hasInvite || claimMode || hostMode ? "signup" : "login");
+  const [signupRole, setSignupRole] = useState(hasInvite ? "family" : (claimMode || hostMode) ? "host" : null);
   const [email, setEmail] = useState(inviteEmail || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -3220,8 +3203,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
   coachClubs, setCoachClubs, coachClubClaims, setCoachClubClaims,
   pendingClubMembers, setPendingClubMembers,
   invites, progress, darkMode, setDarkMode, isAdmin, onSignOut, supabase, loadCoachData,
-  page, setPage, openModal, closeModal, modals, coachCreateCompetition, publicCompetitions,
-  competitionHosts, setActiveCompetitionId, setActiveDirectorId, activeCompetitionId, activeDirectorId }) {
+  page, setPage, openModal, closeModal, modals, coachCreateCompetition, publicCompetitions }) {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTwirlerId, setActiveTwirlerId] = useState(twirlers[0]?.id || null);
@@ -3443,16 +3425,14 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
             coachClubClaims={coachClubClaims} setCoachClubClaims={setCoachClubClaims}
             loadCoachData={loadCoachData} twirlers={twirlers}
             pendingClubMembers={pendingClubMembers} setPendingClubMembers={setPendingClubMembers} />}
-          {page === "competitions" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} />}
-          {page === "history" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} />}
+          {page === "competitions" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
+          {page === "history" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
-          {page === "upcoming" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} initialTab="upcoming" />}
-          {page === "competition-detail" && <CompetitionDetailPage publicCompetitions={publicCompetitions} competitionHosts={competitionHosts} attendees={[]} activeTwirler={activeTwirler} twirlers={twirlers} addAttendee={() => {}} removeAttendee={() => {}} setPage={setPage} progress={allProgress} openModal={() => {}} twirlerResults={[]} twirlerComps={coachCompetitions} results={results} competitions={competitions} myCompetitionClaims={[]} setActiveDirectorId={setActiveDirectorId} activeCompetitionId={activeCompetitionId} familyAccount={null} coachAccount={coachAccount} supabase={supabase} />}
-          {page === "director-profile" && <DirectorPublicProfile competitionHosts={competitionHosts} publicCompetitions={publicCompetitions} attendees={[]} setPage={setPage} setActiveCompetitionId={setActiveCompetitionId} activeDirectorId={activeDirectorId} />}
+          {page === "upcoming" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} initialTab="upcoming" />}
           {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} coachClubs={coachClubs} />}
           {page === "invite-athlete" && <InviteAthletePage coachAccount={coachAccount} supabase={supabase} setPage={setPage} loadCoachData={loadCoachData} />}
           {page === "create-competition" && <CreateCompetitionPage coachAccount={coachAccount} twirlers={twirlers} supabase={supabase} setPage={setPage} coachCreateCompetition={coachCreateCompetition} />}
-          {page === "admin" && isAdmin && <AdminPage twirlers={twirlers} competitions={[]} results={[]} coaches={[]} familyAccount={null} competitionHosts={competitionHosts || []} approveHost={() => {}} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={null} setPreviewRole={() => {}} publicCompetitions={publicCompetitions || []} deletePublicCompetition={() => {}} updatePublicCompetition={() => {}} approveCompetitionClaim={() => {}} denyCompetitionClaim={() => {}} unclaimCompetition={() => {}} />}
+          {page === "admin" && isAdmin && <AdminPage twirlers={twirlers} competitions={[]} results={[]} coaches={[]} familyAccount={null} competitionHosts={[]} approveHost={() => {}} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={null} setPreviewRole={() => {}} />}
         </div>
       </div>
     </>
@@ -3841,7 +3821,7 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
 
 // ─── COACH HISTORY PAGE ───────────────────────────────────────────────────────
 
-function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage, publicCompetitions, familyAccount, addAttendee, removeAttendee, attendees, registerHost, initialTab, competitionHosts, myCompetitionClaims, setActiveCompetitionId, setActiveDirectorId }) {
+function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage, publicCompetitions, familyAccount, addAttendee, attendees, registerHost, initialTab }) {
   const [tab, setTab] = useState(initialTab || 'history');
 
   return (
@@ -3862,16 +3842,16 @@ function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirl
         ))}
       </div>
       {tab === 'history' && (
-        <CoachHistoryPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} setActiveCompetitionId={setActiveCompetitionId} publicCompetitions={publicCompetitions} />
+        <CoachHistoryPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />
       )}
       {tab === 'upcoming' && (
-        <UpcomingCompetitionsPage publicCompetitions={publicCompetitions || []} familyAccount={familyAccount} addAttendee={addAttendee} removeAttendee={removeAttendee || (() => {})} attendees={attendees || []} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} registerHost={registerHost} competitionHosts={competitionHosts || []} myCompetitionClaims={myCompetitionClaims || []} setActiveCompetitionId={setActiveCompetitionId || (() => {})} setActiveDirectorId={setActiveDirectorId || (() => {})} />
+        <UpcomingCompetitionsPage publicCompetitions={publicCompetitions || []} familyAccount={familyAccount} addAttendee={addAttendee} attendees={attendees || []} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} registerHost={registerHost} addCompetition={() => {}} />
       )}
     </div>
   );
 }
 
-function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage, setActiveCompetitionId, publicCompetitions }) {
+function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage }) {
   const [filterTwirler, setFilterTwirler] = useState("");
   const [tab, setTab] = useState("family"); // "family" | "coach"
 
@@ -3921,17 +3901,14 @@ function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, 
         ) : famComps.map(c => {
           const twirler = twirlers.find(t => t.id === c.twirler_id);
           const compResults = (results || []).filter(r => r.competitionId === c.id);
-          const isPublic = (publicCompetitions || []).some(p => p.id === c.id);
           return (
-            <div key={c.id} className="card mb-3" style={{ cursor: isPublic ? "pointer" : "default" }}
-              onClick={() => { if (isPublic && setActiveCompetitionId) { setActiveCompetitionId(c.id); setPage("competition-detail"); } }}>
+            <div key={c.id} className="card mb-3">
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{c.name}</div>
                   <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>
                     {fmtDate(c.date)}{c.location ? ` · ${c.location}` : ""}
                     {c.orgId && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{c.orgId}</span>}
-                    {isPublic && <span style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, marginLeft: 6 }}>View Details →</span>}
                   </div>
                 </div>
                 {!filterTwirler && twirler && (
@@ -5072,59 +5049,22 @@ function CoachVerificationCard({ coachAccount, setCoachAccount, supabase }) {
 
 // ─── ADMIN COMPETITIONS TAB ──────────────────────────────────────────────────
 
-function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePublicCompetition, updatePublicCompetition, unclaimCompetition, supabase, competitionClaims, setCompetitionClaims, approveCompetitionClaim, denyCompetitionClaim }) {
+function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePublicCompetition, updatePublicCompetition, supabase }) {
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
-  const [filterState, setFilterState] = useState("");
-  const [sortBy, setSortBy] = useState("date"); // "date" | "state" | "name"
-  const [compPage, setCompPage] = useState(0);
-  const [viewTab, setViewTab] = useState(competitionClaims?.length > 0 ? "pending" : "competitions"); // "pending" | "competitions" | "history"
-  const [claimHistory, setClaimHistory] = useState([]);
-  const [claimSearch, setClaimSearch] = useState("");
-  const [claimPage, setClaimPage] = useState(0);
-  const PAGE_SIZE = 20;
-
-  // Load claim history
-  useEffect(() => {
-    supabase.from('competition_claims').select('*').in('status', ['approved', 'denied']).order('created_at', { ascending: false })
-      .then(({ data }) => setClaimHistory(data || []));
-  }, []);
 
   const sorted = [...publicCompetitions]
     .filter(c => !search ||
       c.name?.toLowerCase().includes(search.toLowerCase()) ||
-      (normalizeState(c.state) || c.state || "").toLowerCase().includes(search.toLowerCase()) ||
-      c.orgId?.toLowerCase().includes(search.toLowerCase()) ||
-      c.city?.toLowerCase().includes(search.toLowerCase())
+      c.state?.toLowerCase().includes(search.toLowerCase()) ||
+      c.orgId?.toLowerCase().includes(search.toLowerCase())
     )
-    .filter(c => !filterState || c.state === filterState || normalizeState(c.state) === filterState)
-    .sort((a, b) => {
-      if (sortBy === "state") return (normalizeState(a.state) || a.state || "").localeCompare(normalizeState(b.state) || b.state || "");
-      if (sortBy === "name") return (a.name || "").localeCompare(b.name || "");
-      return new Date(b.date) - new Date(a.date);
-    });
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const today = new Date().toISOString().slice(0, 10);
-  const upcoming = sorted.filter(c => c.date >= today);
-  const past = sorted.filter(c => c.date < today);
-  const allComps = [...upcoming, ...past];
-  const pagedComps = allComps.slice(compPage * PAGE_SIZE, (compPage + 1) * PAGE_SIZE);
-  const totalPages = Math.ceil(allComps.length / PAGE_SIZE);
-
-  // Claim history filtering
-  const filteredClaims = claimHistory.filter(cl => !claimSearch ||
-    cl.competition_id?.includes(claimSearch) ||
-    cl.user_id?.includes(claimSearch) ||
-    cl.message?.toLowerCase().includes(claimSearch.toLowerCase()) ||
-    cl.status?.toLowerCase().includes(claimSearch.toLowerCase())
-  );
-  const pagedClaims = filteredClaims.slice(claimPage * PAGE_SIZE, (claimPage + 1) * PAGE_SIZE);
-  const claimTotalPages = Math.ceil(filteredClaims.length / PAGE_SIZE);
-
-  // Get unique states for filter
-  const states = [...new Set(publicCompetitions.map(c => c.state).filter(Boolean))].sort();
+  const upcoming = sorted.filter(c => c.date >= new Date().toISOString().slice(0, 10));
+  const past = sorted.filter(c => c.date < new Date().toISOString().slice(0, 10));
 
   function startEdit(comp) {
     setEditingId(comp.id);
@@ -5204,17 +5144,10 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
                 </div>
                 {comp.address && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>🏛 {comp.address}</div>}
                 {host && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Posted by {host.name}{host.organization ? ` · ${host.organization}` : ""}</div>}
-                {!host && <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 2 }}>No director linked</div>}
               </div>
             </div>
             <div className="flex gap-2" style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
               <button className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => startEdit(comp)}>Edit</button>
-              {host && (
-                <button className="btn btn-secondary btn-sm" style={{ fontSize: 11 }}
-                  onClick={() => { if (window.confirm(`Remove ${host.name} as director of "${comp.name}"? The competition will become unclaimed.`)) unclaimCompetition(comp.id); }}>
-                  Unclaim
-                </button>
-              )}
               <button className="btn btn-danger btn-sm" style={{ fontSize: 11 }}
                 onClick={() => { if (window.confirm(`Delete "${comp.name}"?`)) deletePublicCompetition(comp.id); }}>
                 Delete
@@ -5228,181 +5161,38 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
 
   return (
     <div>
-      {/* Sub-tabs */}
-      <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "2px solid var(--border)" }}>
-        {[
-          { id: "pending", label: `Pending Claims${(competitionClaims || []).length > 0 ? ` (${competitionClaims.length})` : ""}` },
-          { id: "competitions", label: `All Competitions (${publicCompetitions.length})` },
-          { id: "history", label: `Claim History (${claimHistory.length})` },
-        ].map(t => (
-          <button key={t.id} onClick={() => setViewTab(t.id)}
-            style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-              border: "none", background: "none", fontFamily: "inherit",
-              color: viewTab === t.id ? "var(--brand)" : "var(--slate)",
-              borderBottom: viewTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
-              marginBottom: -2 }}>
-            {t.label}
-          </button>
-        ))}
+      <div style={{ position: "relative", marginBottom: 16 }}>
+        <input className="input" value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search competitions..." style={{ paddingLeft: 30, fontSize: 12 }} />
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+          style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
       </div>
 
-      {viewTab === "pending" && (
-        <div>
-          {(competitionClaims || []).length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>✓ No pending competition claims.</div>
-          ) : (
-            <div className="flex-col gap-3">
-              {competitionClaims.map(claim => {
-                const comp = publicCompetitions.find(c => c.id === claim.competition_id);
-                const claimHost = competitionHosts.find(h => h.user_id === claim.user_id);
-                return (
-                  <div key={claim.id} className="card-sm" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
-                    <div className="flex items-start gap-3">
-                      <div className="avatar" style={{ background: "#fef3c7", color: "#92400e", flexShrink: 0 }}>🏆</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>
-                          Claim for: {comp?.name || "Unknown competition"}
-                        </div>
-                        {comp && <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>{fmtDate(comp.date)}{comp.state ? ` · ${normalizeState(comp.state) || comp.state}` : ""}</div>}
-                        <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 4 }}>
-                          Claimant: {claimHost?.name || `User ${claim.user_id?.slice(0, 8)}...`}
-                          {claimHost?.email && <span style={{ color: "var(--muted)" }}> · {claimHost.email}</span>}
-                        </div>
-                        {claim.message && (
-                          <div style={{ fontSize: 13, color: "var(--navy)", marginTop: 8, padding: "8px 12px", background: "#f8fafc", borderRadius: 6, lineHeight: 1.6 }}>
-                            "{claim.message}"
-                          </div>
-                        )}
-                        {claim.document_url && (
-                          <a href={claim.document_url} target="_blank" rel="noreferrer"
-                            style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 12, color: "var(--brand)", fontWeight: 600 }}>
-                            📎 View attached document
-                          </a>
-                        )}
-                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Submitted {fmtDate(claim.created_at)}</div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
-                      <button className="btn btn-primary btn-sm" onClick={async () => {
-                        await approveCompetitionClaim(claim.id, claim.competition_id, claim.user_id);
-                        setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
-                      }}>✓ Approve & Link</button>
-                      <button className="btn btn-danger btn-sm" onClick={async () => {
-                        if (window.confirm("Deny this claim?")) {
-                          await denyCompetitionClaim(claim.id);
-                          setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
-                        }
-                      }}>Deny</button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+      {sorted.length === 0 ? (
+        <div className="empty-state" style={{ padding: "24px 0" }}>
+          <h3>{search ? "No competitions match your search" : "No competitions posted yet"}</h3>
         </div>
-      )}
-
-      {viewTab === "competitions" && (
-        <div>
-          {/* Search + filters */}
-          <div className="flex gap-2 mb-3" style={{ flexWrap: "wrap" }}>
-            <div style={{ position: "relative", flex: "1 1 180px", minWidth: 0 }}>
-              <input className="input" value={search} onChange={e => { setSearch(e.target.value); setCompPage(0); }}
-                placeholder="Search competitions..." style={{ paddingLeft: 30, fontSize: 12 }} />
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
-                style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-              </svg>
-            </div>
-            <select className="select" value={filterState} onChange={e => { setFilterState(e.target.value); setCompPage(0); }} style={{ fontSize: 12, maxWidth: 140 }}>
-              <option value="">All states</option>
-              {states.map(s => <option key={s} value={s}>{normalizeState(s) || s}</option>)}
-            </select>
-            <select className="select" value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ fontSize: 12, maxWidth: 130 }}>
-              <option value="date">Sort by date</option>
-              <option value="state">Sort by state</option>
-              <option value="name">Sort by name</option>
-            </select>
-          </div>
-
-          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-            Showing {compPage * PAGE_SIZE + 1}–{Math.min((compPage + 1) * PAGE_SIZE, allComps.length)} of {allComps.length}
-            {upcoming.length > 0 && <span> · <strong>{upcoming.length}</strong> upcoming</span>}
-          </div>
-
-          {pagedComps.length === 0 ? (
-            <div className="empty-state" style={{ padding: "24px 0" }}>
-              <h3>{search || filterState ? "No competitions match your filters" : "No competitions posted yet"}</h3>
-            </div>
-          ) : (
-            <div>{pagedComps.map(renderComp)}</div>
-          )}
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2" style={{ marginTop: 16 }}>
-              <button className="btn btn-ghost btn-sm" disabled={compPage === 0} onClick={() => setCompPage(p => p - 1)}>← Prev</button>
-              <span style={{ fontSize: 12, color: "var(--slate)" }}>Page {compPage + 1} of {totalPages}</span>
-              <button className="btn btn-ghost btn-sm" disabled={compPage >= totalPages - 1} onClick={() => setCompPage(p => p + 1)}>Next →</button>
+      ) : (
+        <>
+          {upcoming.length > 0 && (
+            <div className="mb-4">
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                Upcoming ({upcoming.length})
+              </div>
+              {upcoming.map(renderComp)}
             </div>
           )}
-        </div>
-      )}
-
-      {viewTab === "history" && (
-        <div>
-          <div style={{ position: "relative", marginBottom: 16 }}>
-            <input className="input" value={claimSearch} onChange={e => { setClaimSearch(e.target.value); setClaimPage(0); }}
-              placeholder="Search claims..." style={{ paddingLeft: 30, fontSize: 12 }} />
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
-              style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-            </svg>
-          </div>
-
-          {pagedClaims.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>No claim history found.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {pagedClaims.map(claim => {
-                const comp = publicCompetitions.find(c => c.id === claim.competition_id);
-                const host = competitionHosts.find(h => h.user_id === claim.user_id);
-                return (
-                  <div key={claim.id} className="card-sm">
-                    <div className="flex items-start justify-between gap-2">
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)" }}>
-                          {comp?.name || `Competition ${claim.competition_id?.slice(0, 8)}...`}
-                        </div>
-                        <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
-                          Claimed by: {host?.name || `User ${claim.user_id?.slice(0, 8)}...`}
-                          {host?.email && <span style={{ color: "var(--muted)" }}> · {host.email}</span>}
-                        </div>
-                        {claim.message && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, fontStyle: "italic" }}>"{claim.message}"</div>}
-                        {claim.document_url && <a href={claim.document_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--brand)", marginTop: 2, display: "inline-block" }}>📎 Document</a>}
-                      </div>
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <span className={`badge ${claim.status === 'approved' ? 'badge-green' : 'badge-warn'}`} style={{ fontSize: 10 }}>
-                          {claim.status === 'approved' ? '✓ Approved' : '✗ Denied'}
-                        </span>
-                        <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{fmtDate(claim.created_at)}</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+          {past.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                Past ({past.length})
+              </div>
+              {past.map(renderComp)}
             </div>
           )}
-
-          {/* Pagination */}
-          {claimTotalPages > 1 && (
-            <div className="flex items-center justify-center gap-2" style={{ marginTop: 16 }}>
-              <button className="btn btn-ghost btn-sm" disabled={claimPage === 0} onClick={() => setClaimPage(p => p - 1)}>← Prev</button>
-              <span style={{ fontSize: 12, color: "var(--slate)" }}>Page {claimPage + 1} of {claimTotalPages}</span>
-              <button className="btn btn-ghost btn-sm" disabled={claimPage >= claimTotalPages - 1} onClick={() => setClaimPage(p => p + 1)}>Next →</button>
-            </div>
-          )}
-        </div>
+        </>
       )}
     </div>
   );
@@ -5410,9 +5200,9 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications, canShowInstall, onInstallClick, competitionHosts, pendingClubClaims, pendingCompetitionClaims }) {
+function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications, canShowInstall, onInstallClick, competitionHosts, pendingClubClaims }) {
   const pendingDirectors = (competitionHosts || []).filter(h => !h.approved).length;
-  const adminTaskCount = pendingDirectors + (pendingClubClaims || 0) + (pendingCompetitionClaims || 0);
+  const adminTaskCount = pendingDirectors + (pendingClubClaims || 0);
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "competitions", label: "Competitions", icon: "trophy" },
@@ -5572,7 +5362,7 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
 
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
 
-function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode, setActiveCompetitionId }) {
+function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode }) {
   if (!activeTwirler) return <div className="empty-state"><h3>No twirler selected</h3></div>;
 
   const [classifOrgFilter, setClassifOrgFilter] = useState("all");
@@ -5603,9 +5393,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     if (edgeKey) localStorage.setItem(edgeKey, String(next));
   }
 
-  const pastComps = twirlerComps.filter(c => c.date < today).sort((a, b) => new Date(b.date) - new Date(a.date));
-  const recentComps = pastComps.slice(0, 5);
-  const lastComp = pastComps[0];
+  const lastComp = twirlerComps.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
   const lastResults = lastComp ? twirlerResults.filter(r => r.competitionId === lastComp.id) : [];
   const totalWins = twirlerResults.filter(r => r.placement === 1).length;
   const totalComps = twirlerComps.length;
@@ -6067,33 +5855,48 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
 
         <div className="card">
           <div className="section-header">
-            <span className="section-title">Recent Competitions</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => setPage("competitions")} style={{ fontSize: 11 }}>View all</button>
+            <span className="section-title">Last Competition</span>
           </div>
-          {recentComps.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {recentComps.map(comp => {
-                const compResults = twirlerResults.filter(r => r.competitionId === comp.id);
-                const wins = compResults.filter(r => r.placement === 1).length;
-                return (
-                  <div key={comp.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "10px 12px", background: "var(--bg)", borderRadius: 8, cursor: "pointer" }}
-                    onClick={() => { setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{comp.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
-                        {fmtDate(comp.date)}{comp.state ? ` · ${comp.state}` : ""}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 items-center" style={{ flexShrink: 0 }}>
-                      {comp.orgId && <span className="badge" style={{ fontSize: 9, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
-                      {wins > 0 && <span className="badge badge-amber" style={{ fontSize: 9 }}>{wins} 🥇</span>}
-                      <span className="badge badge-gray" style={{ fontSize: 9 }}>{compResults.length} event{compResults.length !== 1 ? "s" : ""}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          {lastComp ? (
+            <>
+              <div className="mb-3">
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{lastComp.name}</div>
+                <div style={{ color: "var(--slate)", fontSize: 13 }}>{fmtDate(lastComp.date)} · {lastComp.location}</div>
+                <span className="badge badge-gray" style={{ marginTop: 6 }}>{lastComp.orgId}</span>
+              </div>
+              <div className="divider" />
+              {lastResults.length === 0 ? <p style={{ color: "var(--muted)", fontSize: 13 }}>No results recorded</p> : (
+                <table className="table">
+                  <thead><tr><th>Event</th><th>Level</th><th>Place</th><th>Score</th></tr></thead>
+                  <tbody>
+                    {lastResults.map(r => (
+                      <tr key={r.id}>
+                        <td style={{ fontSize: 13 }}>
+                          {r.event}
+                          {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9, marginLeft: 4 }}>All Catch</span>}
+                        </td>
+                        <td><span className="badge badge-gray">{r.classificationLevelEntered}</span></td>
+                        <td>
+                          {CAS_EVENTS.has(r.event) ? (
+                            <span className="badge" style={{
+                              background: r.casPassed === true ? "#f0fdf4" : r.casPassed === false ? "#fef2f2" : "#f1f5f9",
+                              color: r.casPassed === true ? "#16a34a" : r.casPassed === false ? "#dc2626" : "var(--slate)"
+                            }}>
+                              {r.casLevel} {r.casPassed === true ? "✓" : r.casPassed === false ? "✗" : "—"}
+                            </span>
+                          ) : (
+                          <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)" }}>
+                            {r.placement === 1 ? "🥇" : r.placement === 2 ? "🥈" : r.placement === 3 ? "🥉" : `${r.placement}th`}
+                          </span>
+                          )}
+                        </td>
+                        <td style={{ fontSize: 12, color: "var(--slate)" }}>{r.score ? r.score.toFixed(1) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
           ) : (
             <div className="empty-state" style={{ padding: "24px 0" }}>
               <p>No competitions yet.</p>
@@ -6344,12 +6147,9 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
             </div>
             <div className="flex items-center gap-2">
               <span className="badge" style={{ background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>
-              {comp.fromPublic || comp.from_public
-                ? (comp.sanctioned !== false
-                    ? <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>
-                    : <span className="badge badge-warn" title="Wins may not count toward advancement">Unsanctioned ⚠</span>)
-                : <span className="badge badge-gray" style={{ fontSize: 10 }} title="Created by a TwirlPower user, not an official listing">User-reported</span>
-              }
+              {comp.sanctioned === false
+                ? <span className="badge badge-warn" title="Wins may not count toward advancement">Unsanctioned ⚠</span>
+                : <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
               {wins > 0 && <span className="badge badge-amber">{wins} win{wins !== 1 ? "s" : ""}</span>}
               <span className="badge badge-gray">{compResults.length} event{compResults.length !== 1 ? "s" : ""}</span>
               {publicCompetitions?.find(p => p.id === comp.id) && setActiveCompetitionId && (
@@ -7649,19 +7449,8 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
 
 // ─── ADMIN PAGE ──────────────────────────────────────────────────────────────
 
-function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole, publicCompetitions, deletePublicCompetition, updatePublicCompetition, approveCompetitionClaim, denyCompetitionClaim, unclaimCompetition }) {
-  const [tab, setTabRaw] = useState("competitions");
-  const [adminSubTab, setAdminSubTab] = useState(null);
-  const setTab = (val) => {
-    if (val && val.includes(":")) {
-      const [main, sub] = val.split(":");
-      setTabRaw(main);
-      setAdminSubTab(sub);
-    } else {
-      setTabRaw(val);
-      setAdminSubTab(null);
-    }
-  };
+function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole, publicCompetitions, deletePublicCompetition, updatePublicCompetition, approveCompetitionClaim, denyCompetitionClaim }) {
+  const [tab, setTab] = useState("hosts");
   const [competitionClaims, setCompetitionClaims] = useState([]);
 
   // Load competition claims
@@ -7673,14 +7462,13 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
   const pendingHosts = (competitionHosts || []).filter(h => !h.approved);
   const approvedHosts = (competitionHosts || []).filter(h => h.approved);
 
-  const pendingBadge = (count) => count > 0 ? ` (${count})` : "";
-
   const tabs = [
-    { id: "dashboard", label: "Dashboard" },
-    { id: "competitions", label: `Competitions${pendingBadge(competitionClaims.length)}` },
-    { id: "directors", label: `Directors${pendingBadge(pendingHosts.length)}` },
+    { id: "hosts", label: `Director Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
+    { id: "claims", label: `Competition Claims${competitionClaims.length > 0 ? ` (${competitionClaims.length})` : ""}` },
+    { id: "competitions", label: `Competitions (${(publicCompetitions || []).length})` },
     { id: "clubs", label: "Clubs" },
     { id: "accounts", label: "Accounts" },
+    { id: "data", label: "Data Overview" },
   ];
 
   return (
@@ -7695,12 +7483,15 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
         </div>
       </div>
 
+      {/* ── TABS ── */}
+
+      {/* ── TABS ── */}
       <div className="card">
-        <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0, overflowX: "auto" }}>
+        <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
-                background: "none", fontFamily: "inherit", whiteSpace: "nowrap",
+                background: "none", fontFamily: "inherit",
                 color: tab === t.id ? "var(--brand)" : "var(--slate)",
                 borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
                 marginBottom: -1 }}>
@@ -7709,425 +7500,177 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
           ))}
         </div>
 
-        {/* ══ COMPETITIONS TAB ══ */}
+        {/* HOST APPROVALS */}
+        {tab === "hosts" && (
+          <div>
+            <div className="alert alert-info mb-4">
+              <Icon name="info" size={14} color="var(--brand)" />
+              <span style={{ fontSize: 12 }}>Once approved, directors retain access permanently. Phase 2: approval notifications via email.</span>
+            </div>
+            {pendingHosts.length === 0 && (
+              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending director approvals.</div>
+            )}
+            {pendingHosts.length > 0 && (
+              <div className="mb-4">
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                  ⏳ Pending ({pendingHosts.length})
+                </div>
+                {pendingHosts.map(h => (
+                  <div key={h.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                    <div className="flex items-start gap-3">
+                      <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(h.name)}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
+                        {h.organization && <div style={{ fontSize: 12, color: "var(--slate)" }}>🏆 {h.organization}</div>}
+                        {h.email && <div style={{ fontSize: 12, color: "var(--slate)" }}>📧 {h.email}</div>}
+                        {h.phone && <div style={{ fontSize: 12, color: "var(--slate)" }}>📞 {h.phone}</div>}
+                        {h.state && <div style={{ fontSize: 12, color: "var(--slate)" }}>📍 {h.state}</div>}
+                        {h.notes && <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{h.notes}"</div>}
+                        {h.document_url && (
+                          <a href={h.document_url} target="_blank" rel="noreferrer"
+                            style={{ fontSize: 12, color: "var(--brand)", display: "inline-block", marginTop: 4 }}>
+                            📎 View attached document
+                          </a>
+                        )}
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt)}</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
+                      <button className="btn btn-danger btn-sm"
+                        onClick={() => {
+                          if (window.confirm(`Delete director registration for ${h.name}?`)) {
+                            supabase.from("competition_hosts").delete().eq("id", h.id);
+                          }
+                        }}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {approvedHosts.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                  ✓ Approved Directors ({approvedHosts.length})
+                </div>
+                {approvedHosts.map(h => (
+                  <div key={h.id} className="card-sm mb-2" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                    <div className="flex items-center gap-3">
+                      <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#bbf7d0", color: "#166534" }}>{initials(h.name)}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[h.organization, h.email, h.state].filter(Boolean).join(" · ")}</div>
+                      </div>
+                      <span className="badge badge-green" style={{ fontSize: 10, flexShrink: 0 }}>Approved</span>
+                    </div>
+                    <div className="flex gap-2" style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #bbf7d0" }}>
+                      <button className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          if (window.confirm(`Revoke director access for ${h.name}?`)) {
+                            supabase.from("competition_hosts").update({ approved: false }).eq("id", h.id);
+                            setCompetitionHosts(prev => prev.map(x => x.id === h.id ? { ...x, approved: false } : x));
+                          }
+                        }}
+                        style={{ fontSize: 10, padding: "4px 10px" }}>Revoke</button>
+                      <button className="btn btn-danger btn-sm"
+                        onClick={() => {
+                          if (window.confirm(`Delete director registration for ${h.name}? This cannot be undone.`)) {
+                            supabase.from("competition_hosts").delete().eq("id", h.id);
+                            setCompetitionHosts(prev => prev.filter(x => x.id !== h.id));
+                          }
+                        }}
+                        style={{ fontSize: 10, padding: "4px 10px" }}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* COMPETITION CLAIMS */}
+        {tab === "claims" && (
+          <div>
+            {competitionClaims.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--muted)" }}>✓ No pending competition claims.</div>
+            ) : (
+              <div className="flex-col gap-3">
+                {competitionClaims.map(claim => {
+                  const comp = (publicCompetitions || []).find(c => c.id === claim.competition_id);
+                  return (
+                    <div key={claim.id} className="card-sm" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                      <div className="flex items-start gap-3">
+                        <div className="avatar" style={{ background: "#fef3c7", color: "#92400e", flexShrink: 0 }}>🏆</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>
+                            Claim for: {comp?.name || "Unknown competition"}
+                          </div>
+                          {comp && <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>{fmtDate(comp.date)}{comp.state ? ` · ${comp.state}` : ""}</div>}
+                          <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 4 }}>Claimant user ID: {claim.user_id?.slice(0, 8)}...</div>
+                          {claim.message && (
+                            <div style={{ fontSize: 13, color: "var(--navy)", marginTop: 8, padding: "8px 12px", background: "#f8fafc", borderRadius: 6, lineHeight: 1.6 }}>
+                              "{claim.message}"
+                            </div>
+                          )}
+                          {claim.document_url && (
+                            <a href={claim.document_url} target="_blank" rel="noreferrer"
+                              style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 12, color: "var(--brand)", fontWeight: 600 }}>
+                              📎 View attached document
+                            </a>
+                          )}
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Submitted {fmtDate(claim.created_at)}</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
+                        <button className="btn btn-primary btn-sm" onClick={async () => {
+                          await approveCompetitionClaim(claim.id, claim.competition_id, claim.user_id);
+                          setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
+                        }}>✓ Approve & Link</button>
+                        <button className="btn btn-danger btn-sm" onClick={async () => {
+                          if (window.confirm("Deny this claim?")) {
+                            await denyCompetitionClaim(claim.id);
+                            setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
+                          }
+                        }}>Deny</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* COMPETITIONS */}
         {tab === "competitions" && (
           <AdminCompetitionsTab
             publicCompetitions={publicCompetitions || []}
             competitionHosts={competitionHosts || []}
             deletePublicCompetition={deletePublicCompetition}
             updatePublicCompetition={updatePublicCompetition}
-            unclaimCompetition={unclaimCompetition}
             supabase={supabase}
-            competitionClaims={competitionClaims}
-            setCompetitionClaims={setCompetitionClaims}
-            approveCompetitionClaim={approveCompetitionClaim}
-            denyCompetitionClaim={denyCompetitionClaim}
           />
         )}
 
-        {/* ══ DIRECTORS TAB ══ */}
-        {tab === "directors" && (
-          <AdminDirectorsTab
-            competitionHosts={competitionHosts || []}
-            pendingHosts={pendingHosts}
-            approvedHosts={approvedHosts}
-            approveHost={approveHost}
-            publicCompetitions={publicCompetitions || []}
-            supabase={supabase}
-            initialSubTab={adminSubTab}
-          />
-        )}
-
-        {/* ══ CLUBS TAB ══ */}
+        {/* STUDIOS */}
         {tab === "clubs" && (
           <ClubAdminTab supabase={supabase} />
         )}
 
-        {/* ══ ACCOUNTS TAB ══ */}
+        {/* ACCOUNTS */}
         {tab === "accounts" && (
-          <AdminAccountsTab
-            familyAccount={familyAccount}
-            twirlers={twirlers}
-            coaches={coaches}
-            supabase={supabase}
-            competitionHosts={competitionHosts}
-            setPage={setPage}
-            initialSubTab={adminSubTab}
-          />
+          <AccountsTab supabase={supabase} currentFamilyAccount={familyAccount} twirlers={twirlers} />
         )}
 
-        {/* ══ DATA OVERVIEW TAB ══ */}
-        {tab === "dashboard" && (
-          <AdminDataOverviewTab supabase={supabase} competitionHosts={competitionHosts} publicCompetitions={publicCompetitions} twirlers={twirlers} coaches={coaches} setTab={setTab} />
+        {/* DATA OVERVIEW */}
+        {tab === "data" && (
+          <DataOverviewTab supabase={supabase} competitionHosts={competitionHosts} pendingHosts={pendingHosts} setPage={setPage} />
         )}
       </div>
     </div>
   );
 }
 
-// ─── ADMIN DIRECTORS TAB ─────────────────────────────────────────────────────
-
-function AdminDirectorsTab({ competitionHosts, pendingHosts, approvedHosts, approveHost, publicCompetitions, supabase, initialSubTab }) {
-  const [subTab, setSubTab] = useState(initialSubTab || (pendingHosts.length > 0 ? "pending" : "all"));
-  const [setCompetitionHosts] = [() => {}]; // placeholder — host state managed by parent
-
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
-        {[
-          { id: "pending", label: `Pending${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
-          { id: "all", label: `All Directors (${competitionHosts.length})` },
-        ].map(t => (
-          <button key={t.id} onClick={() => setSubTab(t.id)}
-            style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer", border: "none",
-              background: "none", fontFamily: "inherit",
-              color: subTab === t.id ? "var(--brand)" : "var(--slate)",
-              borderBottom: subTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
-              marginBottom: -1 }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {subTab === "pending" && (
-        <div>
-          {pendingHosts.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>✓ No pending director approvals.</div>
-          ) : pendingHosts.map(h => (
-            <div key={h.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
-              <div className="flex items-start gap-3">
-                <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(h.name)}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
-                  {h.organization && <div style={{ fontSize: 12, color: "var(--slate)" }}>🏆 {h.organization}</div>}
-                  {h.email && <div style={{ fontSize: 12, color: "var(--slate)" }}>📧 {h.email}</div>}
-                  {h.phone && <div style={{ fontSize: 12, color: "var(--slate)" }}>📞 {h.phone}</div>}
-                  {h.state && <div style={{ fontSize: 12, color: "var(--slate)" }}>📍 {h.state}</div>}
-                  {h.bio && <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{h.bio}"</div>}
-                  {h.document_url && (
-                    <a href={h.document_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--brand)", display: "inline-block", marginTop: 4 }}>📎 View document</a>
-                  )}
-                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt || h.created_at)}</div>
-                </div>
-              </div>
-              <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
-                <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
-                <button className="btn btn-danger btn-sm" onClick={() => {
-                  if (window.confirm(`Delete director registration for ${h.name}?`)) {
-                    supabase.from("competition_hosts").delete().eq("id", h.id);
-                  }
-                }}>Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {subTab === "all" && (
-        <div>
-          {competitionHosts.map(h => {
-            const compCount = publicCompetitions.filter(c => (c.hostId || c.host_id) === h.id).length;
-            return (
-              <div key={h.id} className="card-sm mb-2" style={{ background: h.approved ? "#f0fdf4" : "#fff7ed", border: `1px solid ${h.approved ? "#bbf7d0" : "#fed7aa"}` }}>
-                <div className="flex items-center gap-3">
-                  <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: h.approved ? "#bbf7d0" : "#fef3c7", color: h.approved ? "#166534" : "#92400e" }}>{initials(h.name)}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {[h.email, h.organization, h.state].filter(Boolean).join(" · ")}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 items-center" style={{ flexShrink: 0 }}>
-                    {compCount > 0 && <span style={{ fontSize: 11, color: "var(--slate)" }}>{compCount} comp{compCount !== 1 ? "s" : ""}</span>}
-                    <span className={`badge ${h.approved ? "badge-green" : "badge-amber"}`} style={{ fontSize: 10 }}>{h.approved ? "Approved" : "Pending"}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── ADMIN ACCOUNTS TAB ──────────────────────────────────────────────────────
-
-function AdminAccountsTab({ familyAccount, twirlers, coaches, supabase, competitionHosts, setPage, initialSubTab }) {
-  const [subTab, setSubTab] = useState(initialSubTab || "families");
-  const [familyAccounts, setFamilyAccounts] = useState([]);
-  const [allTwirlers, setAllTwirlers] = useState([]);
-  const [coachAccounts, setCoachAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      const [{ data: fams }, { data: tw }, { data: co }] = await Promise.all([
-        supabase.from('family_accounts').select('*').order('created_at', { ascending: false }),
-        supabase.from('twirlers').select('*').order('created_at', { ascending: false }),
-        supabase.from('coach_accounts').select('*').order('created_at', { ascending: false }),
-      ]);
-      setFamilyAccounts(fams || []);
-      setAllTwirlers(tw || []);
-      setCoachAccounts(co || []);
-      setLoading(false);
-    })();
-  }, []);
-
-  const clubOwnerIds = new Set((competitionHosts || []).filter(h => h.approved).map(h => h.user_id));
-
-  if (loading) return <div style={{ fontSize: 13, color: "var(--muted)" }}>Loading accounts...</div>;
-
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
-        {[
-          { id: "families", label: `Families (${familyAccounts.length})` },
-          { id: "twirlers", label: `Twirlers (${allTwirlers.length})` },
-          { id: "coaches", label: `Coaches (${coachAccounts.length})` },
-        ].map(t => (
-          <button key={t.id} onClick={() => setSubTab(t.id)}
-            style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer", border: "none",
-              background: "none", fontFamily: "inherit",
-              color: subTab === t.id ? "var(--brand)" : "var(--slate)",
-              borderBottom: subTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
-              marginBottom: -1 }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {subTab === "families" && (
-        <div className="flex-col gap-2">
-          {familyAccounts.map(f => (
-            <div key={f.id} className="card-sm">
-              <div className="flex items-center gap-3">
-                <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "var(--brand)", color: "white" }}>{initials(f.parent_name || f.parentName || "?")}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>{f.parent_name || f.parentName || "—"}</div>
-                  <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.email}{f.state ? ` · ${f.state}` : ""}</div>
-                </div>
-                <span style={{ fontSize: 11, color: "var(--muted)", marginRight: 4 }}>{fmtDate(f.created_at)}</span>
-                <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: "2px 8px" }}
-                  onClick={() => { if (window.confirm(`Delete family account for ${f.parent_name || f.parentName || f.email}? This cannot be undone.`)) {
-                    supabase.from("family_accounts").delete().eq("id", f.id).then(() => setFamilyAccounts(prev => prev.filter(x => x.id !== f.id)));
-                  }}}>Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {subTab === "twirlers" && (
-        <div className="flex-col gap-2">
-          {allTwirlers.map(t => (
-            <div key={t.id} className="card-sm">
-              <div className="flex items-center gap-3">
-                <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#e0e7ff", color: "#4338ca" }}>{initials(t.first_name || t.firstName || "?")}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, fontSize: 13 }}>{t.first_name || t.firstName || "—"}</div>
-                  <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                    {(t.organizations || []).join(", ")}{t.club ? ` · ${t.club}` : ""}
-                  </div>
-                </div>
-                <span style={{ fontSize: 11, color: "var(--muted)", marginRight: 4 }}>{fmtDate(t.created_at)}</span>
-                <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: "2px 8px" }}
-                  onClick={() => { if (window.confirm(`Delete twirler ${t.first_name || t.firstName}? This cannot be undone.`)) {
-                    supabase.from("twirlers").delete().eq("id", t.id).then(() => setAllTwirlers(prev => prev.filter(x => x.id !== t.id)));
-                  }}}>Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {subTab === "coaches" && (
-        <div className="flex-col gap-2">
-          {coachAccounts.map(c => (
-            <div key={c.id} className="card-sm">
-              <div className="flex items-center gap-3">
-                <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#fef3c7", color: "#92400e" }}>{initials(c.name || "?")}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                    {c.name || "—"}
-                    {c.verified && <span className="badge" style={{ fontSize: 9, background: "#f0fdfa", color: "#0d9488", border: "1px solid #99f6e4" }}>✓ Verified</span>}
-                    {c.verification_status === 'pending' && <span className="badge badge-amber" style={{ fontSize: 9 }}>⏳ Pending</span>}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.email}{c.studio ? ` · ${c.studio}` : ""}{c.state ? ` · ${c.state}` : ""}
-                  </div>
-                </div>
-                <div className="flex gap-1 items-center" style={{ flexShrink: 0 }}>
-                  {(c.organizations || []).map(o => <span key={o} className="badge" style={{ fontSize: 9, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>)}
-                  {c.verification_status === 'pending' && (
-                    <>
-                      <button className="btn btn-primary btn-sm" style={{ fontSize: 10, padding: "2px 8px" }}
-                        onClick={() => { supabase.from("coach_accounts").update({ verified: true, verification_status: 'verified' }).eq("id", c.id).then(() => {
-                          setCoachAccounts(prev => prev.map(x => x.id === c.id ? { ...x, verified: true, verification_status: 'verified' } : x));
-                        }); }}>✓ Verify</button>
-                      {c.verification_document_url && <a href={c.verification_document_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: "2px 6px" }}>📎</a>}
-                    </>
-                  )}
-                  {c.verified && (
-                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: "2px 6px" }}
-                      onClick={() => { if (window.confirm(`Revoke verified status for ${c.name}?`)) {
-                        supabase.from("coach_accounts").update({ verified: false, verification_status: 'none' }).eq("id", c.id).then(() => {
-                          setCoachAccounts(prev => prev.map(x => x.id === c.id ? { ...x, verified: false, verification_status: 'none' } : x));
-                        });
-                      }}}>Revoke</button>
-                  )}
-                  <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: "2px 8px" }}
-                    onClick={() => { if (window.confirm(`Delete coach ${c.name || c.email}? This cannot be undone.`)) {
-                      supabase.from("coach_accounts").delete().eq("id", c.id).then(() => setCoachAccounts(prev => prev.filter(x => x.id !== c.id)));
-                    }}}>Delete</button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── ADMIN DATA OVERVIEW TAB ─────────────────────────────────────────────────
-
-function AdminDataOverviewTab({ supabase, competitionHosts, publicCompetitions, twirlers, coaches, setTab }) {
-  const [stats, setStats] = useState({});
-  const [bugReports, setBugReports] = useState([]);
-  const [betaFeedback, setBetaFeedback] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showResolved, setShowResolved] = useState(false);
-  const [resolvedBugs, setResolvedBugs] = useState([]);
-
-  useEffect(() => {
-    (async () => {
-      const [{ count: famCount }, { count: twCount }, { count: coachCount }, { count: compCount }, { count: clubCount }, { data: bugs }, { data: feedback }] = await Promise.all([
-        supabase.from('family_accounts').select('id', { count: 'exact', head: true }),
-        supabase.from('twirlers').select('id', { count: 'exact', head: true }),
-        supabase.from('coach_accounts').select('id', { count: 'exact', head: true }),
-        supabase.from('public_competitions').select('id', { count: 'exact', head: true }),
-        supabase.from('clubs').select('id', { count: 'exact', head: true }),
-        supabase.from('bug_reports').select('*').order('created_at', { ascending: false }),
-        supabase.from('beta_feedback').select('*').order('created_at', { ascending: false }),
-      ]);
-      setStats({ families: famCount || 0, twirlers: twCount || 0, coaches: coachCount || 0, competitions: compCount || 0, clubs: clubCount || 0 });
-      // Split bugs into active vs resolved
-      setBugReports((bugs || []).filter(b => !b.resolved_at));
-      setResolvedBugs((bugs || []).filter(b => b.resolved_at));
-      setBetaFeedback(feedback || []);
-      setLoading(false);
-    })();
-  }, []);
-
-  const pendingHosts = (competitionHosts || []).filter(h => !h.approved).length;
-  const totalHosts = (competitionHosts || []).length;
-
-  if (loading) return <div style={{ fontSize: 13, color: "var(--muted)" }}>Loading data...</div>;
-
-  const statCards = [
-    { emoji: "👨‍👩‍👧", label: "FAMILY ACCOUNTS", value: stats.families, action: () => setTab("accounts:families") },
-    { emoji: "🧑", label: "TWIRLERS", value: stats.twirlers, action: () => setTab("accounts:twirlers") },
-    { emoji: "👤", label: "COACH ACCOUNTS", value: stats.coaches, action: () => setTab("accounts:coaches") },
-    { emoji: "🏆", label: "COMPETITIONS", value: stats.competitions, action: () => setTab("competitions") },
-    { emoji: "🏛", label: "DIRECTORS (TOTAL)", value: totalHosts, action: () => setTab("directors") },
-    { emoji: "⏳", label: "DIRECTORS (PENDING)", value: pendingHosts, action: () => setTab("directors:pending"), highlight: pendingHosts > 0 },
-    { emoji: "🏠", label: "CLUBS", value: stats.clubs, action: () => setTab("clubs") },
-    { emoji: "🐛", label: "BUG REPORTS", value: bugReports.length, highlight: bugReports.length > 0 },
-    { emoji: "⭐", label: "BETA FEEDBACK", value: betaFeedback.length },
-  ];
-
-  return (
-    <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
-        {statCards.map((s, i) => (
-          <div key={i} onClick={s.action} className="card-sm" style={{
-            cursor: s.action ? "pointer" : "default", textAlign: "center", padding: "16px 12px",
-            border: s.highlight ? "2px solid var(--brand)" : "1px solid var(--border)",
-            background: s.highlight ? "var(--brand-light)" : "var(--card)",
-          }}>
-            <div style={{ fontSize: 24, marginBottom: 4 }}>{s.emoji}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: s.highlight ? "var(--brand)" : "var(--navy)" }}>{s.value}</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Bug Reports */}
-      <div className="mb-4">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            🐛 Active Bug Reports ({bugReports.length})
-          </div>
-          {resolvedBugs.length > 0 && (
-            <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
-              onClick={() => setShowResolved(!showResolved)}>
-              {showResolved ? "Hide" : "Show"} resolved ({resolvedBugs.length})
-            </button>
-          )}
-        </div>
-        {bugReports.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}>✓ No active bug reports.</div>}
-        <div className="flex-col gap-2">
-          {bugReports.map(b => (
-            <div key={b.id} className="card-sm">
-              <div className="flex items-start justify-between gap-2">
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6 }}>{b.message || b.description || "No description"}</div>
-                  {b.email && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>From: {b.email}</div>}
-                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>Reported {fmtDate(b.created_at)}</div>
-                </div>
-                <button className="btn btn-primary btn-sm" style={{ fontSize: 10, flexShrink: 0 }}
-                  onClick={async () => {
-                    const now = new Date().toISOString();
-                    await supabase.from('bug_reports').update({ resolved_at: now, resolved_by: 'admin' }).eq('id', b.id);
-                    setBugReports(prev => prev.filter(x => x.id !== b.id));
-                    setResolvedBugs(prev => [{ ...b, resolved_at: now, resolved_by: 'admin' }, ...prev]);
-                  }}>✓ Resolve</button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {showResolved && resolvedBugs.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>Resolved</div>
-            <div className="flex-col gap-2">
-              {resolvedBugs.map(b => (
-                <div key={b.id} className="card-sm" style={{ opacity: 0.6 }}>
-                  <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6 }}>{b.message || b.description || "No description"}</div>
-                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>
-                    Reported {fmtDate(b.created_at)} · Resolved {fmtDate(b.resolved_at)}{b.resolved_by ? ` by ${b.resolved_by}` : ""}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Beta Feedback */}
-      {betaFeedback.length > 0 && (
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-            ⭐ Beta Feedback ({betaFeedback.length})
-          </div>
-          <div className="flex-col gap-2">
-            {betaFeedback.map(f => (
-              <div key={f.id} className="card-sm">
-                <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6 }}>{f.message || f.feedback || "No content"}</div>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
-                  {f.email && `From: ${f.email} · `}{fmtDate(f.created_at)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── STUDIO ADMIN TAB ────────────────────────────────────────────────────────
 // ─── STUDIO ADMIN TAB ────────────────────────────────────────────────────────
 
 function ClubAdminTab({ supabase }) {
@@ -8135,10 +7678,9 @@ function ClubAdminTab({ supabase }) {
   const [clubs, setClubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState({});
-  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // club object
   const [deleteInput, setDeleteInput] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [viewTab, setViewTab] = useState("clubs");
+  const [filter, setFilter] = useState("all"); // all | pending | claimed | unclaimed | archived
 
   useEffect(() => {
     async function load() {
@@ -8225,30 +7767,8 @@ function ClubAdminTab({ supabase }) {
 
   return (
     <div>
-      {/* Sub-tabs */}
-      <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "2px solid var(--border)" }}>
-        {[
-          { id: "pending", label: `Pending Claims${pending.length > 0 ? ` (${pending.length})` : ""}` },
-          { id: "clubs", label: `All Clubs (${clubs.length})` },
-          { id: "history", label: `Claim History (${resolved.length})` },
-        ].map(t => (
-          <button key={t.id} onClick={() => setViewTab(t.id)}
-            style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-              border: "none", background: "none", fontFamily: "inherit",
-              color: viewTab === t.id ? "var(--brand)" : "var(--slate)",
-              borderBottom: viewTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
-              marginBottom: -2 }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {/* Pending claims */}
-      {viewTab === "pending" && (
-        <div>
-          {pending.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>✓ No pending club claims.</div>
-          ) : (
+      {pending.length > 0 && (
         <div className="mb-4">
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
             ⏳ Pending Claims ({pending.length})
@@ -8288,13 +7808,13 @@ function ClubAdminTab({ supabase }) {
             </div>
           ))}
         </div>
-          )}
-        </div>
       )}
 
-      {/* All clubs */}
-      {viewTab === "clubs" && (
-        <div>
+      {pending.length === 0 && clubs.filter(c => c.status === "pending_claim").length === 0 && (
+        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending club claims.</div>
+      )}
+
+      {/* All clubs with filter */}
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
           All Clubs ({clubs.length})
@@ -8399,39 +7919,6 @@ function ClubAdminTab({ supabase }) {
                 style={{ fontSize: 10 }}>{c.status}</span>
             </div>
           ))}
-        </div>
-      )}
-        </div>
-      )}
-
-      {/* Claim History */}
-      {viewTab === "history" && (
-        <div>
-          {resolved.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>No claim history.</div>
-          ) : (
-            <div className="flex-col gap-2">
-              {resolved.map(c => (
-                <div key={c.id} className="card-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)" }}>{c.clubs?.name || "Unknown club"}</div>
-                      <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
-                        Claimed by: {c.coach_accounts?.name || "Unknown"}{c.coach_accounts?.email ? ` · ${c.coach_accounts.email}` : ""}
-                      </div>
-                      {c.message && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, fontStyle: "italic" }}>"{c.message}"</div>}
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <span className={`badge ${c.status === 'approved' ? 'badge-green' : 'badge-warn'}`} style={{ fontSize: 10 }}>
-                        {c.status === 'approved' ? '✓ Approved' : '✗ Denied'}
-                      </span>
-                      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{fmtDate(c.created_at)}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -10178,7 +9665,7 @@ function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
 
 // ─── COMPETITION DETAIL PAGE ─────────────────────────────────────────────────
 
-function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions, myCompetitionClaims, setActiveDirectorId, familyAccount, coachAccount, supabase }) {
+function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions }) {
   const comp = publicCompetitions.find(c => c.id === activeCompetitionId) || twirlerComps.find(c => c.id === activeCompetitionId);
   if (!comp) return <div className="empty-state"><h3>Competition not found</h3><button className="btn btn-secondary btn-sm" onClick={() => setPage("competitions")}>← Back</button></div>;
 
@@ -10209,18 +9696,13 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const doneEvents = eventsToShow.filter(e => myResults.some(r => r.event === e));
   const pendingEvents = eventsToShow.filter(e => !myResults.some(r => r.event === e));
 
-  const isCoach = !!coachAccount && !familyAccount;
-
-  const tabs = isCoach ? [
-    { id: "overview", label: "Overview" },
-  ] : [
+  const tabs = [
     { id: "overview", label: "Overview" },
     { id: "my-competition", label: `My Events${myResults.length ? ` (${myResults.length})` : ""}` },
     { id: "results", label: "Results" },
   ];
 
-  const hasFullAddress = comp.address && /\d/.test(comp.address);
-  const mapsUrl = hasFullAddress ? `https://maps.google.com/?q=${encodeURIComponent([comp.address, comp.city, comp.state].filter(Boolean).join(", "))}` : null;
+  const mapsUrl = comp.address ? `https://maps.google.com/?q=${encodeURIComponent([comp.address, comp.city, comp.state].filter(Boolean).join(", "))}` : null;
 
   return (
     <div>
@@ -10324,15 +9806,9 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
           )}
 
           {host && (
-            <div className="card-sm mb-3" style={{ cursor: "pointer" }} onClick={() => { setActiveDirectorId(host.id); setPage("director-profile"); }}>
+            <div className="card-sm mb-3">
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Director</div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <span style={{ fontSize: 14, color: "var(--brand)", fontWeight: 600 }}>{host.name}</span>
-                  {host.organization && <span style={{ fontSize: 13, color: "var(--slate)", marginLeft: 6 }}>· {host.organization}</span>}
-                </div>
-                <Icon name="chevron_right" size={14} color="var(--brand)" />
-              </div>
+              <div style={{ fontSize: 14, color: "var(--navy)" }}>{host.name}{host.organization ? ` · ${host.organization}` : ""}</div>
             </div>
           )}
 
@@ -10359,72 +9835,13 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
             </div>
           )}
 
-          {!comp.hostId && !comp.host_id && (() => {
-            const myClaim = (myCompetitionClaims || []).find(cl => cl.competition_id === activeCompetitionId);
-            return myClaim ? (
-              <div className="card-sm mb-3" style={{ background: myClaim.status === 'pending' ? "#fefce8" : myClaim.status === 'approved' ? "#f0fdf4" : "#fef2f2", border: `1px solid ${myClaim.status === 'pending' ? "#fde68a" : myClaim.status === 'approved' ? "#86efac" : "#fca5a5"}` }}>
-                <div style={{ fontSize: 13, color: myClaim.status === 'pending' ? "#854d0e" : myClaim.status === 'approved' ? "#166534" : "#991b1b" }}>
-                  {myClaim.status === 'pending' && '⏳ Your claim for this competition is pending admin review.'}
-                  {myClaim.status === 'approved' && '✓ Your claim has been approved! Log out and back in to see this in your director dashboard.'}
-                  {myClaim.status === 'denied' && '✗ Your claim for this competition was denied.'}
-                </div>
-              </div>
-            ) : (
-              <div className="card-sm mb-3" style={{ background: "#fefce8", border: "1px solid #fde68a" }}>
-                <div style={{ fontSize: 13, color: "#854d0e" }}>
-                  This competition doesn't have a linked director.
-                  <a href={`https://app.twirlpower.com?claim=${activeCompetitionId}`} style={{ color: "var(--brand)", fontWeight: 600, marginLeft: 6 }}>
-                    🏆 Claim this competition
-                  </a>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Coach: Invite twirlers to this competition */}
-          {isCoach && twirlers.length > 0 && (
-            <div className="card-sm mb-3">
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>Invite Your Twirlers</div>
-              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>Send a competition invite to your linked athletes for this event.</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {twirlers.map(t => {
-                  const alreadyInvited = (coachAccount?._sentInvites || []).includes(`${activeCompetitionId}_${t.id}`);
-                  return (
-                    <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "var(--bg)", borderRadius: 8 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div className="avatar" style={{ width: 26, height: 26, fontSize: 10, background: "var(--brand)", color: "white" }}>{initials(t.firstName || t.first_name || "?")}</div>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>{t.firstName || t.first_name}</span>
-                      </div>
-                      {alreadyInvited ? (
-                        <span className="badge badge-green" style={{ fontSize: 10 }}>✓ Invited</span>
-                      ) : (
-                        <button className="btn btn-primary btn-sm" style={{ fontSize: 11, padding: "3px 10px" }}
-                          onClick={async () => {
-                            // Create invite via coach_competition_invites
-                            await supabase.from('coach_competition_invites').upsert({
-                              competition_id: activeCompetitionId,
-                              twirler_id: t.id,
-                              coach_id: coachAccount.id,
-                              status: 'invited',
-                            }, { onConflict: 'competition_id,twirler_id' });
-                            // Track locally
-                            coachAccount._sentInvites = [...(coachAccount._sentInvites || []), `${activeCompetitionId}_${t.id}`];
-                            // Send email to family
-                            if (t.familyEmail) {
-                              await sendEmail('competition_invite', t.familyEmail, {
-                                coachName: coachAccount.name,
-                                competitionName: comp.name,
-                                competitionDate: fmtDate(comp.date),
-                                twirlerName: t.firstName || t.first_name,
-                              });
-                            }
-                          }}>
-                          Invite
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+          {!comp.hostId && !comp.host_id && (
+            <div className="card-sm mb-3" style={{ background: "#fefce8", border: "1px solid #fde68a" }}>
+              <div style={{ fontSize: 13, color: "#854d0e" }}>
+                This competition doesn't have a linked director.
+                <a href={`https://app.twirlpower.com?claim=${activeCompetitionId}`} style={{ color: "var(--brand)", fontWeight: 600, marginLeft: 6 }}>
+                  🏆 Claim this competition
+                </a>
               </div>
             </div>
           )}
@@ -10581,132 +9998,9 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   );
 }
 
-// ─── DIRECTOR PUBLIC PROFILE ─────────────────────────────────────────────────
-
-function DirectorPublicProfile({ activeDirectorId, competitionHosts, publicCompetitions, attendees, setPage, setActiveCompetitionId }) {
-  const host = competitionHosts.find(h => h.id === activeDirectorId);
-  if (!host) return <div className="empty-state"><h3>Director not found</h3><button className="btn btn-secondary btn-sm" onClick={() => setPage("competitions")}>← Back</button></div>;
-
-  const today = new Date().toISOString().slice(0, 10);
-  const directorComps = publicCompetitions.filter(c => (c.hostId || c.host_id) === activeDirectorId);
-  const upcoming = directorComps.filter(c => c.date >= today).sort((a, b) => a.date.localeCompare(b.date));
-  const past = directorComps.filter(c => c.date < today).sort((a, b) => b.date.localeCompare(a.date));
-
-  return (
-    <div>
-      <button className="btn btn-ghost btn-sm mb-3" onClick={() => setPage("competitions")} style={{ fontSize: 12 }}>
-        ← Back
-      </button>
-
-      {/* Profile header */}
-      <div className="card mb-4">
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div className="avatar avatar-lg" style={{ background: "var(--brand)", color: "white", fontSize: 20, flexShrink: 0 }}>
-            {host.name ? host.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?"}
-          </div>
-          <div style={{ flex: 1 }}>
-            <h2 className="serif" style={{ fontSize: 22, color: "var(--navy)", marginBottom: 4 }}>{host.name}</h2>
-            <div style={{ fontSize: 13, color: "var(--slate)" }}>Competition Director</div>
-            {host.organization && <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>{host.organization}</div>}
-            {host.state && <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>📍 {normalizeState(host.state) || host.state}</div>}
-          </div>
-        </div>
-
-        {(host.organizations || []).length > 0 && (
-          <div className="flex gap-2 flex-wrap" style={{ marginTop: 12 }}>
-            {host.organizations.map(o => <span key={o} className="badge" style={{ background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>)}
-          </div>
-        )}
-
-        {host.bio && (
-          <div style={{ marginTop: 12, fontSize: 14, color: "var(--navy)", lineHeight: 1.7, background: "var(--bg)", padding: "12px 16px", borderRadius: 8 }}>
-            {host.bio}
-          </div>
-        )}
-
-        {(host.email || host.phone) && (
-          <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {host.email && <a href={`mailto:${host.email}`} style={{ fontSize: 13, color: "var(--brand)" }}>📧 {host.email}</a>}
-            {host.phone && <span style={{ fontSize: 13, color: "var(--slate)" }}>📞 {host.phone}</span>}
-          </div>
-        )}
-
-        <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
-          {directorComps.length} competition{directorComps.length !== 1 ? "s" : ""} listed
-        </div>
-      </div>
-
-      {/* Upcoming competitions */}
-      {upcoming.length > 0 && (
-        <div className="mb-4">
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
-            Upcoming Competitions ({upcoming.length})
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {upcoming.map(comp => {
-              const count = attendees.filter(a => a.competitionId === comp.id).length;
-              return (
-                <div key={comp.id} className="card-sm" style={{ cursor: "pointer", borderLeft: `3px solid ${orgColor(comp.orgId)}` }}
-                  onClick={() => { setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>{comp.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
-                        📅 {fmtDate(comp.date)}{(comp.end_date || comp.endDate) && comp.date !== (comp.end_date || comp.endDate) ? ` — ${fmtDate(comp.end_date || comp.endDate)}` : ""}
-                        {" · "}{[comp.city, normalizeState(comp.state) || comp.state].filter(Boolean).join(", ") || "Location TBD"}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 items-center" style={{ flexShrink: 0 }}>
-                      {comp.orgId && <span className="badge" style={{ fontSize: 9, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
-                      {count > 0 && <span style={{ fontSize: 11, color: "var(--muted)" }}>👥 {count}</span>}
-                      <Icon name="chevron_right" size={13} color="var(--muted)" />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Past competitions */}
-      {past.length > 0 && (
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
-            Past Competitions ({past.length})
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {past.map(comp => (
-              <div key={comp.id} className="card-sm" style={{ cursor: "pointer", opacity: 0.7 }}
-                onClick={() => { setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div>
-                    <span style={{ fontWeight: 500, fontSize: 13, color: "var(--navy)" }}>{comp.name}</span>
-                    <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 8 }}>{fmtDate(comp.date)}</span>
-                    {comp.city && <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 6 }}>· {comp.city}, {comp.state}</span>}
-                  </div>
-                  {comp.orgId && <span className="badge" style={{ fontSize: 9, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {directorComps.length === 0 && (
-        <div className="card">
-          <div className="empty-state">
-            <p>This director hasn't posted any competitions yet.</p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── UPCOMING COMPETITIONS PAGE ──────────────────────────────────────────────
 
-function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage, registerHost, setActiveCompetitionId, setActiveDirectorId, myCompetitionClaims }) {
+function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage, registerHost, setActiveCompetitionId }) {
   const [directorModal, setDirectorModal] = useState(null); // null | 'confirm' | 'form' | 'done'
   const [filterState, setFilterState] = useState(familyAccount?.state || "");
   const [filterOrg, setFilterOrg] = useState("");
@@ -10802,13 +10096,11 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
                   {comp.address && (
                     <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
                       🏛 {comp.address}
-                      {/\d/.test(comp.address) && (
-                        <a href={`https://maps.google.com/?q=${encodeURIComponent(comp.address + (comp.city ? ', ' + comp.city : '') + (comp.state ? ', ' + comp.state : ''))}`}
-                          target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                          style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
-                          Get Directions →
-                        </a>
-                      )}
+                      <a href={`https://maps.google.com/?q=${encodeURIComponent(comp.address + (comp.city ? ', ' + comp.city : '') + (comp.state ? ', ' + comp.state : ''))}`}
+                        target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                        style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
+                        Get Directions →
+                      </a>
                     </div>
                   )}
                   {(comp.contact_email || comp.contactEmail || comp.contact_raw || comp.contactRaw) && (
@@ -10823,46 +10115,35 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
                     </div>
                   )}
                   <div className="flex items-center gap-3 flex-wrap">
-                    {host && <span style={{ fontSize: 12, color: "var(--muted)" }}>Posted by <a onClick={e => { e.stopPropagation(); setActiveDirectorId(host.id); setPage("director-profile"); }} style={{ color: "var(--brand)", cursor: "pointer", fontWeight: 500 }}>{host.name}</a>{host.organization ? ` · ${host.organization}` : ""}</span>}
+                    {host && <span style={{ fontSize: 12, color: "var(--muted)" }}>Posted by {host.name}{host.organization ? ` · ${host.organization}` : ""}</span>}
                     {!host && <span style={{ fontSize: 12, color: "var(--amber)" }}>No director linked</span>}
                     {count > 0 && <span style={{ fontSize: 12, color: "var(--slate)" }}>👥 {count} attending</span>}
-                    {!comp.hostId && (() => {
-                      const myClaim = (myCompetitionClaims || []).find(cl => cl.competition_id === comp.id);
-                      return myClaim ? (
-                        <span style={{ fontSize: 11, fontWeight: 600, color: myClaim.status === 'pending' ? "#854d0e" : myClaim.status === 'approved' ? "var(--green)" : "var(--red)" }}>
-                          {myClaim.status === 'pending' ? '⏳ Claim Pending' : myClaim.status === 'approved' ? '✓ Claim Approved' : '✗ Claim Denied'}
-                        </span>
-                      ) : (
-                        <a href={`https://app.twirlpower.com?claim=${comp.id}`}
-                          onClick={e => { e.preventDefault(); e.stopPropagation(); setActiveCompetitionId(comp.id); setPage("competition-detail"); }}
-                          style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none" }}>
-                          🏆 Claim this competition
-                        </a>
-                      );
-                    })()}
+                    {!comp.hostId && (
+                      <a href={`https://app.twirlpower.com?claim=${comp.id}`}
+                        style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none" }}>
+                        🏆 Claim this competition
+                      </a>
+                    )}
                   </div>
                 </div>
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-                  {familyAccount && activeTwirler ? (
+                  {activeTwirler ? (
                     attending ? (
                       <div className="flex items-center gap-3">
                         <span className="badge badge-green">✓ Added to my competitions</span>
                         <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
-                          onClick={(e) => { e.stopPropagation(); removeAttendee(comp.id, activeTwirler.id); }}>
+                          onClick={() => removeAttendee(comp.id, activeTwirler.id)}>
                           Remove
                         </button>
                       </div>
                     ) : (
                       <button className="btn btn-primary btn-sm"
-                        onClick={(e) => { e.stopPropagation(); addAttendee(comp.id, activeTwirler.id); }}>
+                        onClick={() => addAttendee(comp.id, activeTwirler.id)}>
                         + Add to my competitions
                       </button>
                     )
                   ) : (
-                    <button className="btn btn-secondary btn-sm"
-                      onClick={(e) => { e.stopPropagation(); setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
-                      View Details →
-                    </button>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>No twirler selected</span>
                   )}
                 </div>
               </div>
@@ -12472,8 +11753,22 @@ function AddCompetitionModal({ open, onClose, onSave, activeTwirler, competition
           </div>
           <div className="form-group">
             <label className="label">Sanctioned status</label>
-            <div style={{ padding: "10px 14px", background: "#f8fafc", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--slate)", lineHeight: 1.6 }}>
-              Competitions added by families are marked as <strong>user-reported</strong>. Only verified competition directors can mark events as officially sanctioned.
+            <div style={{ display: "flex", gap: 8 }}>
+              {[{ val: true, label: "Sanctioned", desc: "Official sanctioned competition" },
+                { val: false, label: "Unsanctioned", desc: "Practice meet, invitational, or non-sanctioned" }
+              ].map(opt => (
+                <div key={String(opt.val)}
+                  onClick={() => cf("sanctioned", opt.val)}
+                  style={{ flex: 1, padding: "10px 14px", borderRadius: 8, cursor: "pointer",
+                    border: `2px solid ${compForm.sanctioned === opt.val ? "var(--brand)" : "var(--border)"}`,
+                    background: compForm.sanctioned === opt.val ? "var(--brand-light)" : "#f8fafc",
+                    transition: "all 0.15s" }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: compForm.sanctioned === opt.val ? "var(--brand2)" : "var(--navy)" }}>
+                    {compForm.sanctioned === opt.val ? "✓ " : ""}{opt.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--slate)", marginTop: 2 }}>{opt.desc}</div>
+                </div>
+              ))}
             </div>
           </div>
           <div className="form-group">

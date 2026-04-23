@@ -14,11 +14,11 @@ export default function Nav() {
   return (
     <header className={styles.header}>
       <div className={styles.inner}>
-        <Link href="/" className={styles.logo}>
+        <a href="https://twirlpower.com" className={styles.logo}>
           <span className={styles.logoTwirl}>Twirl</span>
           <span className={styles.logoPower}>Power</span>
           <span className={styles.logoSub}>Directory</span>
-        </Link>
+        </a>
         <nav className={styles.nav}>
           {links.map(l => (
             <Link
