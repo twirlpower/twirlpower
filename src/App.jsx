@@ -882,6 +882,12 @@ export default function App() {
       sessionStorage.setItem('tp_pending_coach_id', coachRef);
       window.history.replaceState({}, '', window.location.pathname);
     }
+    // Capture competition claim link
+    const claimCompId = params.get('claim');
+    if (claimCompId) {
+      sessionStorage.setItem('tp_claim_competition_id', claimCompId);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     return token || sessionStorage.getItem('tp_invite_token') || null;
   });
   const [inviteEmail, setInviteEmail] = useState(sessionStorage.getItem('tp_invite_email') || '');
@@ -2091,6 +2097,83 @@ export default function App() {
     await supabase.from('public_competitions').update(dbData).eq('id', compId);
   }
 
+  async function submitCompetitionClaim(competitionId, data) {
+    // Upload document if provided
+    let docUrl = null;
+    if (data.file) {
+      const ext = data.file.name.split(".").pop();
+      const path = `${authUser?.id}/competition_claim_${Date.now()}.${ext}`;
+      const { data: upload } = await supabase.storage.from("documents").upload(path, data.file, { upsert: true });
+      if (upload) {
+        const { data: { publicUrl } } = supabase.storage.from("documents").getPublicUrl(path);
+        docUrl = publicUrl;
+      }
+    }
+    const { data: inserted, error } = await supabase.from('competition_claims').insert({
+      competition_id: competitionId,
+      user_id: authUser?.id,
+      message: data.message || null,
+      document_url: docUrl,
+      status: 'pending',
+    }).select().single();
+    if (error) { console.error('submitCompetitionClaim:', error); return null; }
+
+    // Notify admin
+    const comp = publicCompetitions.find(c => c.id === competitionId);
+    await sendEmail('competition_claim_request', 'tye@twirlpower.com', {
+      competitionName: comp?.name || 'Unknown competition',
+      claimantEmail: authUser?.email,
+      message: data.message,
+      hasDocument: !!docUrl,
+    });
+
+    return inserted;
+  }
+
+  async function approveCompetitionClaim(claimId, competitionId, userId) {
+    // Create a host record if user doesn't have one
+    let hostRecord = competitionHosts.find(h => h.user_id === userId);
+    if (!hostRecord) {
+      const { data: newHost } = await supabase.from('competition_hosts').insert({
+        user_id: userId,
+        name: 'Claimed Director',
+        approved: true,
+      }).select().single();
+      if (newHost) {
+        hostRecord = newHost;
+        setCompetitionHosts(prev => [...prev, { ...newHost, createdAt: newHost.created_at }]);
+      }
+    } else if (!hostRecord.approved) {
+      await supabase.from('competition_hosts').update({ approved: true }).eq('id', hostRecord.id);
+      setCompetitionHosts(prev => prev.map(h => h.id === hostRecord.id ? { ...h, approved: true } : h));
+    }
+
+    // Link competition to host
+    if (hostRecord) {
+      await supabase.from('public_competitions').update({
+        host_id: hostRecord.id,
+        source: 'claimed',
+      }).eq('id', competitionId);
+      setPublicCompetitions(prev => prev.map(c => c.id === competitionId ? { ...c, hostId: hostRecord.id, source: 'claimed' } : c));
+    }
+
+    // Update claim status
+    await supabase.from('competition_claims').update({ status: 'approved' }).eq('id', claimId);
+
+    // Notify claimant
+    const { data: claimUser } = await supabase.from('auth.users').select('email').eq('id', userId).single().catch(() => ({ data: null }));
+    if (claimUser?.email) {
+      const comp = publicCompetitions.find(c => c.id === competitionId);
+      await sendEmail('competition_claim_approved', claimUser.email, {
+        competitionName: comp?.name || 'your competition',
+      });
+    }
+  }
+
+  async function denyCompetitionClaim(claimId) {
+    await supabase.from('competition_claims').update({ status: 'denied' }).eq('id', claimId);
+  }
+
   async function addAttendee(competitionId, twirlerId) {
     if (attendees.find(a => a.competitionId === competitionId && a.twirlerId === twirlerId)) return;
     const newAttendee = { id: uid(), competitionId, twirlerId, addedAt: new Date().toISOString().slice(0,10) };
@@ -2288,6 +2371,7 @@ export default function App() {
         authError={authError}
         setAuthError={setAuthError}
         hasInvite={!!pendingInviteToken || !!sessionStorage.getItem('tp_pending_coach_id')}
+        claimMode={!!sessionStorage.getItem('tp_claim_competition_id')}
         inviteEmail={inviteEmail}
       />
     );
@@ -2451,9 +2535,42 @@ export default function App() {
                 createPublicCompetition={createPublicCompetition}
                 deletePublicCompetition={deletePublicCompetition}
                 updatePublicCompetition={updatePublicCompetition}
+                submitCompetitionClaim={submitCompetitionClaim}
                 supabase={supabase}
                 setCompetitionHosts={setCompetitionHosts}
               />
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // If a non-host user arrives via ?claim= link, prompt them to become a director
+  const pendingClaimCompId = sessionStorage.getItem('tp_claim_competition_id');
+  const pendingClaimComp = pendingClaimCompId ? publicCompetitions.find(c => c.id === pendingClaimCompId) : null;
+  if (pendingClaimComp && userRole !== 'host') {
+    return (
+      <>
+        <style>{css}</style>
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", padding: 20 }}>
+          <div className="card" style={{ maxWidth: 480, width: "100%", textAlign: "center", padding: "40px 32px" }}>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>🏆</div>
+            <h2 className="serif" style={{ fontSize: 22, marginBottom: 8, color: "var(--navy)" }}>Claim "{pendingClaimComp.name}"</h2>
+            <p style={{ color: "var(--slate)", fontSize: 14, marginBottom: 8, lineHeight: 1.6 }}>
+              To claim this competition, you need a Competition Director account.
+            </p>
+            <p style={{ color: "var(--slate)", fontSize: 13, marginBottom: 24, lineHeight: 1.6 }}>
+              You're currently signed in as a {userRole || "family"} account. Sign out and create a new account as a Competition Director, or contact support to add director access to your existing account.
+            </p>
+            <div className="flex-col gap-2">
+              <button className="btn btn-primary w-full" onClick={signOut}>
+                Sign Out & Create Director Account
+              </button>
+              <button className="btn btn-ghost w-full" style={{ fontSize: 13 }}
+                onClick={() => { sessionStorage.removeItem('tp_claim_competition_id'); window.location.reload(); }}>
+                Cancel — return to my account
+              </button>
             </div>
           </div>
         </div>
@@ -2558,7 +2675,7 @@ export default function App() {
           {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} isAdmin={isAdmin} />}
           {page === "privacy" && <PrivacyPolicyPage onClose={() => setPage("home")} />}
           {page === "terms" && <TermsOfServicePage onClose={() => setPage("home")} />}
-          {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} />}
+          {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} approveCompetitionClaim={approveCompetitionClaim} denyCompetitionClaim={denyCompetitionClaim} />}
           {page === "orgs" && <OrganizationsPage activeTwirler={activeTwirler} twirlerResults={twirlerResults} />}
           {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
           {page === "upcoming" && <CompetitionsPage {...pageProps} initialTab="upcoming" />}
@@ -2632,9 +2749,9 @@ function PasswordResetForm({ supabase, onDone }) {
   );
 }
 
-function AuthScreen({ onAuth, authError, setAuthError, hasInvite, inviteEmail }) {
-  const [mode, setMode] = useState(hasInvite ? "signup" : "login"); // "login" | "signup" | "coach-signup" | "reset"
-  const [signupRole, setSignupRole] = useState(hasInvite ? "family" : null); // null | "family" | "coach"
+function AuthScreen({ onAuth, authError, setAuthError, hasInvite, inviteEmail, claimMode }) {
+  const [mode, setMode] = useState(hasInvite || claimMode ? "signup" : "login"); // "login" | "signup" | "coach-signup" | "reset"
+  const [signupRole, setSignupRole] = useState(hasInvite ? "family" : claimMode ? "host" : null); // null | "family" | "coach"
   const [email, setEmail] = useState(inviteEmail || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -7255,14 +7372,22 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
 
 // ─── ADMIN PAGE ──────────────────────────────────────────────────────────────
 
-function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole, publicCompetitions, deletePublicCompetition, updatePublicCompetition }) {
+function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole, publicCompetitions, deletePublicCompetition, updatePublicCompetition, approveCompetitionClaim, denyCompetitionClaim }) {
   const [tab, setTab] = useState("hosts");
+  const [competitionClaims, setCompetitionClaims] = useState([]);
+
+  // Load competition claims
+  useEffect(() => {
+    supabase.from('competition_claims').select('*').eq('status', 'pending').order('created_at', { ascending: false })
+      .then(({ data }) => setCompetitionClaims(data || []));
+  }, []);
 
   const pendingHosts = (competitionHosts || []).filter(h => !h.approved);
   const approvedHosts = (competitionHosts || []).filter(h => h.approved);
 
   const tabs = [
     { id: "hosts", label: `Director Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
+    { id: "claims", label: `Competition Claims${competitionClaims.length > 0 ? ` (${competitionClaims.length})` : ""}` },
     { id: "competitions", label: `Competitions (${(publicCompetitions || []).length})` },
     { id: "clubs", label: "Clubs" },
     { id: "accounts", label: "Accounts" },
@@ -7381,6 +7506,59 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* COMPETITION CLAIMS */}
+        {tab === "claims" && (
+          <div>
+            {competitionClaims.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--muted)" }}>✓ No pending competition claims.</div>
+            ) : (
+              <div className="flex-col gap-3">
+                {competitionClaims.map(claim => {
+                  const comp = (publicCompetitions || []).find(c => c.id === claim.competition_id);
+                  return (
+                    <div key={claim.id} className="card-sm" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                      <div className="flex items-start gap-3">
+                        <div className="avatar" style={{ background: "#fef3c7", color: "#92400e", flexShrink: 0 }}>🏆</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>
+                            Claim for: {comp?.name || "Unknown competition"}
+                          </div>
+                          {comp && <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>{fmtDate(comp.date)}{comp.state ? ` · ${comp.state}` : ""}</div>}
+                          <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 4 }}>Claimant user ID: {claim.user_id?.slice(0, 8)}...</div>
+                          {claim.message && (
+                            <div style={{ fontSize: 13, color: "var(--navy)", marginTop: 8, padding: "8px 12px", background: "#f8fafc", borderRadius: 6, lineHeight: 1.6 }}>
+                              "{claim.message}"
+                            </div>
+                          )}
+                          {claim.document_url && (
+                            <a href={claim.document_url} target="_blank" rel="noreferrer"
+                              style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 12, color: "var(--brand)", fontWeight: 600 }}>
+                              📎 View attached document
+                            </a>
+                          )}
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Submitted {fmtDate(claim.created_at)}</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
+                        <button className="btn btn-primary btn-sm" onClick={async () => {
+                          await approveCompetitionClaim(claim.id, claim.competition_id, claim.user_id);
+                          setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
+                        }}>✓ Approve & Link</button>
+                        <button className="btn btn-danger btn-sm" onClick={async () => {
+                          if (window.confirm("Deny this claim?")) {
+                            await denyCompetitionClaim(claim.id);
+                            setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
+                          }
+                        }}>Deny</button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -9510,7 +9688,14 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
                   )}
                   <div className="flex items-center gap-3 flex-wrap">
                     {host && <span style={{ fontSize: 12, color: "var(--muted)" }}>Posted by {host.name}{host.organization ? ` · ${host.organization}` : ""}</span>}
+                    {!host && <span style={{ fontSize: 12, color: "var(--amber)" }}>No director linked</span>}
                     {count > 0 && <span style={{ fontSize: 12, color: "var(--slate)" }}>👥 {count} attending</span>}
+                    {!comp.hostId && (
+                      <a href={`https://app.twirlpower.com?claim=${comp.id}`}
+                        style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none" }}>
+                        🏆 Claim this competition
+                      </a>
+                    )}
                   </div>
                 </div>
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
@@ -9742,10 +9927,14 @@ function DirectorRequestModal({ step, setStep, familyAccount, registerHost }) {
 
 // ─── HOST DASHBOARD PAGE ──────────────────────────────────────────────────────
 
-function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, twirlers, familyAccount, registerHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, supabase, setCompetitionHosts }) {
+function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, twirlers, familyAccount, registerHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, submitCompetitionClaim, supabase, setCompetitionHosts }) {
   const [view, setView] = useState("find"); // "find" | "register" | "dashboard"
   const [hostId, setHostId] = useState(null);
   const [tab, setTab] = useState("competitions"); // "competitions" | "profile"
+
+  // Check for pending competition claim
+  const claimCompId = sessionStorage.getItem('tp_claim_competition_id');
+  const claimComp = claimCompId ? publicCompetitions.find(c => c.id === claimCompId) : null;
 
   const myHost = competitionHosts.find(h => h.id === hostId) ||
     competitionHosts.find(h => h.email && h.email === familyAccount?.email);
@@ -9757,9 +9946,22 @@ function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, tw
         <p className="page-sub">Create and manage public competition listings</p>
       </div>
 
+      {/* Claim competition flow */}
+      {claimComp && myHost && (
+        <ClaimCompetitionCard
+          competition={claimComp}
+          onSubmit={async (data) => {
+            await submitCompetitionClaim(claimComp.id, data);
+            sessionStorage.removeItem('tp_claim_competition_id');
+          }}
+          onDismiss={() => sessionStorage.removeItem('tp_claim_competition_id')}
+        />
+      )}
+
       {!myHost && (
         <HostRegisterView
           familyAccount={familyAccount}
+          claimComp={claimComp}
           onRegister={(data) => {
             const h = registerHost(data);
             setHostId(h.id);
@@ -9825,7 +10027,7 @@ function HostDashboardPage({ competitionHosts, publicCompetitions, attendees, tw
   );
 }
 
-function HostRegisterView({ onRegister, familyAccount }) {
+function HostRegisterView({ onRegister, familyAccount, claimComp }) {
   const [form, setForm] = useState({
     name: familyAccount?.parentName || familyAccount?.parent_name || "",
     organizations: [],
@@ -9843,6 +10045,20 @@ function HostRegisterView({ onRegister, familyAccount }) {
 
   return (
     <div>
+      {claimComp && (
+        <div className="alert alert-warn mb-4">
+          <Icon name="alert" size={16} color="var(--amber)" />
+          <div>
+            <strong>You're claiming: {claimComp.name}</strong>
+            <div style={{ fontSize: 13, marginTop: 4, color: "var(--slate)" }}>
+              {fmtDate(claimComp.date)}{claimComp.state ? ` · ${claimComp.state}` : ""}
+            </div>
+            <div style={{ fontSize: 12, marginTop: 4, color: "var(--muted)" }}>
+              Complete your director profile below. Once approved, this competition will be linked to your account.
+            </div>
+          </div>
+        </div>
+      )}
       <div className="card mb-4" style={{ background: "var(--brand-light)", border: "1px solid rgba(13,148,136,0.2)" }}>
         <div className="flex gap-3">
           <Icon name="info" size={18} color="var(--brand)" />
@@ -9852,7 +10068,8 @@ function HostRegisterView({ onRegister, familyAccount }) {
               <li>Complete your director profile below</li>
               <li>Upload documentation verifying your role (e.g. sanctioning letter, org affiliation)</li>
               <li>A TwirlPower admin reviews and approves your account (one-time)</li>
-              <li>Once approved, you can post unlimited competition listings</li>
+              {claimComp ? <li>Once approved, you'll be linked as the director of <strong>{claimComp.name}</strong></li>
+                : <li>Once approved, you can post unlimited competition listings</li>}
             </ul>
           </div>
         </div>
@@ -10184,6 +10401,83 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── CLAIM COMPETITION CARD ──────────────────────────────────────────────────
+
+function ClaimCompetitionCard({ competition, onSubmit, onDismiss }) {
+  const [message, setMessage] = useState("");
+  const [file, setFile] = useState(null);
+  const [fileName, setFileName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    await onSubmit({ message, file });
+    setSubmitting(false);
+    setSubmitted(true);
+  }
+
+  if (submitted) {
+    return (
+      <div className="card mb-4" style={{ borderTop: "3px solid var(--brand)" }}>
+        <div className="alert alert-success">
+          <Icon name="check" size={15} color="var(--green)" />
+          <span>Your claim for <strong>{competition.name}</strong> has been submitted! A TwirlPower admin will review and link you to this competition.</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card mb-4" style={{ borderTop: "3px solid var(--amber)" }}>
+      <div className="section-header" style={{ marginBottom: 12 }}>
+        <span className="section-title">🏆 Claim a Competition</span>
+        <button className="btn btn-ghost btn-sm" onClick={onDismiss} style={{ fontSize: 12 }}>✕ Dismiss</button>
+      </div>
+      <div className="alert alert-info mb-3">
+        <Icon name="info" size={14} color="var(--brand)" />
+        <div style={{ fontSize: 13 }}>
+          You're claiming <strong>{competition.name}</strong>
+          {competition.date && <span> on {fmtDate(competition.date)}</span>}
+          {competition.state && <span> in {competition.state}</span>}.
+          Once approved, you'll be able to edit this listing and manage attendees.
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="label">Why should this competition be linked to you?</label>
+        <textarea className="textarea" value={message} onChange={e => setMessage(e.target.value)} rows={3}
+          placeholder="I am the organizer of this competition and have been hosting it for X years..." />
+      </div>
+      <div className="form-group">
+        <label className="label">Supporting documentation <span style={{ fontWeight: 400, color: "var(--muted)" }}>(recommended)</span></label>
+        <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+          Upload a sanctioning letter, org approval, or other proof you organize this competition.
+        </p>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 16px",
+          background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8,
+          cursor: "pointer", fontSize: 13, color: "var(--slate)" }}>
+          <Icon name="export" size={14} />
+          {fileName || "Choose file..."}
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{ display: "none" }}
+            onChange={e => {
+              const f = e.target.files?.[0];
+              if (f) { setFile(f); setFileName(f.name); }
+            }} />
+        </label>
+        {fileName && (
+          <button onClick={() => { setFile(null); setFileName(""); }}
+            style={{ marginLeft: 8, background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 12 }}>
+            Remove
+          </button>
+        )}
+      </div>
+      <button className="btn btn-primary" disabled={submitting || !message} onClick={handleSubmit}>
+        {submitting ? "Submitting..." : "Submit Claim"}
+      </button>
     </div>
   );
 }

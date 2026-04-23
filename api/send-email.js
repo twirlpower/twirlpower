@@ -577,6 +577,40 @@ export default async function handler(req, res) {
     </div>${footer}</div>`;
   }
 
+  else if (type === 'competition_claim_request') {
+    const { competitionName, claimantEmail, message, hasDocument } = data;
+    subject = `Competition claim request: ${competitionName}`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">Competition Claim Request</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        Someone is requesting to be linked as the director of <strong>${competitionName}</strong>.
+      </p>
+      <div style="background:#f1f5f9;border-radius:10px;padding:16px 20px;margin-bottom:20px;font-size:14px;color:#0f172a;line-height:1.8;">
+        <strong>Competition:</strong> ${competitionName}<br/>
+        <strong>Claimant email:</strong> ${claimantEmail}<br/>
+        <strong>Document uploaded:</strong> ${hasDocument ? 'Yes' : 'No'}
+        ${message ? `<br/><strong>Message:</strong> ${message}` : ''}
+      </div>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">Review in Admin</a>
+      </div>
+    </div>${footer}</div>`;
+  }
+
+  else if (type === 'competition_claim_approved') {
+    const { competitionName } = data;
+    subject = `Your claim for ${competitionName} has been approved!`;
+    html = `<div style="${baseStyle}">${header}<div style="padding:32px;">
+      <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin:0 0 12px;">Claim Approved! 🏆</h2>
+      <p style="font-size:15px;color:#475569;line-height:1.7;margin:0 0 20px;">
+        Your claim for <strong>${competitionName}</strong> has been approved. You're now linked as the director and can edit the listing, view attendees, and manage the competition.
+      </p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${appUrl}" style="display:inline-block;background:#0d9488;color:white;font-size:15px;font-weight:600;padding:14px 32px;border-radius:8px;text-decoration:none;">Manage Your Competition</a>
+      </div>
+    </div>${footer}</div>`;
+  }
+
   else {
     return res.status(400).json({ error: `Unknown email type: ${type}` });
   }
