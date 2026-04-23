@@ -2590,24 +2590,32 @@ export default function App() {
   // If a non-host user arrives via ?claim= link, prompt them to become a director
   const pendingClaimCompId = sessionStorage.getItem('tp_claim_competition_id');
   const pendingClaimComp = pendingClaimCompId ? publicCompetitions.find(c => c.id === pendingClaimCompId) : null;
-  if (pendingClaimComp && userRole !== 'host') {
+  // Show director prompt immediately if we have a claim ID and user is not a host
+  // Don't wait for publicCompetitions to load — check role first
+  if (pendingClaimCompId && userRole !== 'host') {
     return (
       <>
         <style>{css}</style>
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", padding: 20 }}>
           <div className="card" style={{ maxWidth: 480, width: "100%", textAlign: "center", padding: "40px 32px" }}>
             <div style={{ fontSize: 40, marginBottom: 16 }}>🏆</div>
-            <h2 className="serif" style={{ fontSize: 22, marginBottom: 8, color: "var(--navy)" }}>Claim "{pendingClaimComp.name}"</h2>
+            <h2 className="serif" style={{ fontSize: 22, marginBottom: 8, color: "var(--navy)" }}>
+              Claim {pendingClaimComp ? `"${pendingClaimComp.name}"` : "this Competition"}
+            </h2>
             <p style={{ color: "var(--slate)", fontSize: 14, marginBottom: 8, lineHeight: 1.6 }}>
-              To claim this competition, you need a Competition Director account.
+              To claim a competition, you need a <strong>Competition Director account</strong>.
             </p>
             <p style={{ color: "var(--slate)", fontSize: 13, marginBottom: 24, lineHeight: 1.6 }}>
-              You're currently signed in as a {userRole || "family"} account. Sign out and create a new account as a Competition Director, or contact support to add director access to your existing account.
+              You're currently signed in as a {userRole === 'coach' ? 'coach' : 'family'} account.
+              Sign out and create a Director account, or contact us to add director access to your existing account.
             </p>
             <div className="flex-col gap-2">
               <button className="btn btn-primary w-full" onClick={signOut}>
                 Sign Out & Create Director Account
               </button>
+              <a href="mailto:support@twirlpower.com" className="btn btn-secondary w-full" style={{ fontSize: 13 }}>
+                Contact Support
+              </a>
               <button className="btn btn-ghost w-full" style={{ fontSize: 13 }}
                 onClick={() => { sessionStorage.removeItem('tp_claim_competition_id'); window.location.reload(); }}>
                 Cancel — return to my account
