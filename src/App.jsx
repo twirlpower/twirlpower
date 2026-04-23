@@ -891,6 +891,12 @@ export default function App() {
       sessionStorage.setItem('tp_claim_competition_id', claimCompId);
       window.history.replaceState({}, '', window.location.pathname);
     }
+    // Capture competition deep link (from directory)
+    const compId = params.get('comp');
+    if (compId) {
+      sessionStorage.setItem('tp_view_competition_id', compId);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     return token || sessionStorage.getItem('tp_invite_token') || null;
   });
   const [inviteEmail, setInviteEmail] = useState(sessionStorage.getItem('tp_invite_email') || '');
@@ -1520,6 +1526,19 @@ export default function App() {
       loadAllData(authUser.id);
     })();
   }, [dataLoading, twirlers.length]);
+
+  // Process ?comp= deep link — auto-open competition detail page
+  useEffect(() => {
+    if (dataLoading || !authUser) return;
+    const viewCompId = sessionStorage.getItem('tp_view_competition_id');
+    if (!viewCompId) return;
+    const comp = publicCompetitions.find(c => c.id === viewCompId);
+    if (comp) {
+      setActiveCompetitionId(viewCompId);
+      setPage("competition-detail");
+      sessionStorage.removeItem('tp_view_competition_id');
+    }
+  }, [dataLoading, publicCompetitions.length]);
 
   // Always ensure a valid selection — if stored id is stale or null, pick first twirler
   const resolvedActiveTwirlerId = twirlers.find(t => t.id === activeTwirlerId)
