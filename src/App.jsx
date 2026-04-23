@@ -965,6 +965,8 @@ export default function App() {
   const [coachLinks, setCoachLinks] = useState([]);
   const [competitionHosts, setCompetitionHosts] = useState([]);
   const [pendingClubClaims, setPendingClubClaims] = useState(0);
+  const [pendingCompetitionClaims, setPendingCompetitionClaims] = useState(0);
+  const [myCompetitionClaims, setMyCompetitionClaims] = useState([]);
   const [publicCompetitions, setPublicCompetitions] = useState([]);
   const [attendees, setAttendees] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -1405,7 +1407,16 @@ export default function App() {
           .from('clubs').select('id', { count: 'exact', head: true })
           .eq('status', 'pending_claim');
         setPendingClubClaims(count || 0);
+
+        const { count: compClaimCount } = await supabase
+          .from('competition_claims').select('id', { count: 'exact', head: true })
+          .eq('status', 'pending');
+        setPendingCompetitionClaims(compClaimCount || 0);
       }
+
+      // Load user's own competition claims
+      const { data: myClaims } = await supabase.from('competition_claims').select('*').eq('user_id', userId);
+      setMyCompetitionClaims(myClaims || []);
 
       // If no own family account, check if this user is a guardian on another account
       if (!fa) {
@@ -2200,12 +2211,13 @@ export default function App() {
 
     // Update claim status
     await supabase.from('competition_claims').update({ status: 'approved' }).eq('id', claimId);
+    setPendingCompetitionClaims(prev => Math.max(0, prev - 1));
 
     // Notify claimant
-    const { data: claimUser } = await supabase.from('auth.users').select('email').eq('id', userId).single().catch(() => ({ data: null }));
-    if (claimUser?.email) {
+    const claimantEmail = hostRecord?.email;
+    if (claimantEmail) {
       const comp = publicCompetitions.find(c => c.id === competitionId);
-      await sendEmail('competition_claim_approved', claimUser.email, {
+      await sendEmail('competition_claim_approved', claimantEmail, {
         competitionName: comp?.name || 'your competition',
       });
     }
@@ -2213,6 +2225,7 @@ export default function App() {
 
   async function denyCompetitionClaim(claimId) {
     await supabase.from('competition_claims').update({ status: 'denied' }).eq('id', claimId);
+    setPendingCompetitionClaims(prev => Math.max(0, prev - 1));
   }
 
   async function unclaimCompetition(competitionId) {
@@ -2651,7 +2664,7 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage, myCompetitionClaims };
 
   return (
     <>
@@ -2661,7 +2674,7 @@ export default function App() {
       <InstallBanner show={showInstallBanner && canShowInstall} onInstall={triggerInstall} onDismiss={dismissInstall} isIos={isIos} />
       <IosInstallModal show={showIosInstructions} onDone={markIosDone} onClose={() => setShowIosInstructions(false)} />
       <div className="app">
-        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} canShowInstall={canShowInstall} onInstallClick={triggerInstall} competitionHosts={competitionHosts} pendingClubClaims={pendingClubClaims} />
+        <Sidebar page={page} setPage={p => { setPage(p); setSidebarOpen(false); }} twirlers={twirlers} activeTwirlerId={activeTwirlerId} setActiveTwirlerId={id => { setActiveTwirlerId(id); setSidebarOpen(false); }} openModal={openModal} familyAccount={familyAccount} progress={progress} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} pendingInvites={pendingInvites} onSignOut={signOut} darkMode={darkMode} setDarkMode={setDarkMode} isAdmin={isAdmin} previewRole={previewRole} setPreviewRole={setPreviewRole} allNotifications={allNotifications} canShowInstall={canShowInstall} onInstallClick={triggerInstall} competitionHosts={competitionHosts} pendingClubClaims={pendingClubClaims} pendingCompetitionClaims={pendingCompetitionClaims} />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="mobile-topbar">
@@ -5205,9 +5218,9 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
 
 // ─── SIDEBAR ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications, canShowInstall, onInstallClick, competitionHosts, pendingClubClaims }) {
+function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId, openModal, familyAccount, progress, sidebarOpen, setSidebarOpen, pendingInvites, onSignOut, darkMode, setDarkMode, isAdmin, previewRole, setPreviewRole, allNotifications, canShowInstall, onInstallClick, competitionHosts, pendingClubClaims, pendingCompetitionClaims }) {
   const pendingDirectors = (competitionHosts || []).filter(h => !h.approved).length;
-  const adminTaskCount = pendingDirectors + (pendingClubClaims || 0);
+  const adminTaskCount = pendingDirectors + (pendingClubClaims || 0) + (pendingCompetitionClaims || 0);
   const navItems = [
     { id: "home", label: "Dashboard", icon: "home" },
     { id: "competitions", label: "Competitions", icon: "trophy" },
@@ -9671,7 +9684,7 @@ function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
 
 // ─── COMPETITION DETAIL PAGE ─────────────────────────────────────────────────
 
-function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions }) {
+function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions, myCompetitionClaims }) {
   const comp = publicCompetitions.find(c => c.id === activeCompetitionId) || twirlerComps.find(c => c.id === activeCompetitionId);
   if (!comp) return <div className="empty-state"><h3>Competition not found</h3><button className="btn btn-secondary btn-sm" onClick={() => setPage("competitions")}>← Back</button></div>;
 
@@ -9841,16 +9854,27 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
             </div>
           )}
 
-          {!comp.hostId && !comp.host_id && (
-            <div className="card-sm mb-3" style={{ background: "#fefce8", border: "1px solid #fde68a" }}>
-              <div style={{ fontSize: 13, color: "#854d0e" }}>
-                This competition doesn't have a linked director.
-                <a href={`https://app.twirlpower.com?claim=${activeCompetitionId}`} style={{ color: "var(--brand)", fontWeight: 600, marginLeft: 6 }}>
-                  🏆 Claim this competition
-                </a>
+          {!comp.hostId && !comp.host_id && (() => {
+            const myClaim = (myCompetitionClaims || []).find(cl => cl.competition_id === activeCompetitionId);
+            return myClaim ? (
+              <div className="card-sm mb-3" style={{ background: myClaim.status === 'pending' ? "#fefce8" : myClaim.status === 'approved' ? "#f0fdf4" : "#fef2f2", border: `1px solid ${myClaim.status === 'pending' ? "#fde68a" : myClaim.status === 'approved' ? "#86efac" : "#fca5a5"}` }}>
+                <div style={{ fontSize: 13, color: myClaim.status === 'pending' ? "#854d0e" : myClaim.status === 'approved' ? "#166534" : "#991b1b" }}>
+                  {myClaim.status === 'pending' && '⏳ Your claim for this competition is pending admin review.'}
+                  {myClaim.status === 'approved' && '✓ Your claim has been approved! Log out and back in to see this in your director dashboard.'}
+                  {myClaim.status === 'denied' && '✗ Your claim for this competition was denied.'}
+                </div>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="card-sm mb-3" style={{ background: "#fefce8", border: "1px solid #fde68a" }}>
+                <div style={{ fontSize: 13, color: "#854d0e" }}>
+                  This competition doesn't have a linked director.
+                  <a href={`https://app.twirlpower.com?claim=${activeCompetitionId}`} style={{ color: "var(--brand)", fontWeight: 600, marginLeft: 6 }}>
+                    🏆 Claim this competition
+                  </a>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -10124,12 +10148,20 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
                     {host && <span style={{ fontSize: 12, color: "var(--muted)" }}>Posted by {host.name}{host.organization ? ` · ${host.organization}` : ""}</span>}
                     {!host && <span style={{ fontSize: 12, color: "var(--amber)" }}>No director linked</span>}
                     {count > 0 && <span style={{ fontSize: 12, color: "var(--slate)" }}>👥 {count} attending</span>}
-                    {!comp.hostId && (
-                      <a href={`https://app.twirlpower.com?claim=${comp.id}`}
-                        style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none" }}>
-                        🏆 Claim this competition
-                      </a>
-                    )}
+                    {!comp.hostId && (() => {
+                      const myClaim = (myCompetitionClaims || []).find(cl => cl.competition_id === comp.id);
+                      return myClaim ? (
+                        <span style={{ fontSize: 11, fontWeight: 600, color: myClaim.status === 'pending' ? "#854d0e" : myClaim.status === 'approved' ? "var(--green)" : "var(--red)" }}>
+                          {myClaim.status === 'pending' ? '⏳ Claim Pending' : myClaim.status === 'approved' ? '✓ Claim Approved' : '✗ Claim Denied'}
+                        </span>
+                      ) : (
+                        <a href={`https://app.twirlpower.com?claim=${comp.id}`}
+                          onClick={e => { e.preventDefault(); e.stopPropagation(); setActiveCompetitionId(comp.id); setPage("competition-detail"); }}
+                          style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none" }}>
+                          🏆 Claim this competition
+                        </a>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
