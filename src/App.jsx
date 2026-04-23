@@ -902,6 +902,11 @@ export default function App() {
       sessionStorage.setItem('tp_signup_role', 'host');
       window.history.replaceState({}, '', window.location.pathname);
     }
+    const signupParam = params.get('signup');
+    if (signupParam === 'true') {
+      sessionStorage.setItem('tp_show_signup', 'true');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     return token || sessionStorage.getItem('tp_invite_token') || null;
   });
   const [inviteEmail, setInviteEmail] = useState(sessionStorage.getItem('tp_invite_email') || '');
@@ -2420,6 +2425,7 @@ export default function App() {
         hasInvite={!!pendingInviteToken || !!sessionStorage.getItem('tp_pending_coach_id')}
         claimMode={!!sessionStorage.getItem('tp_claim_competition_id')}
         hostMode={sessionStorage.getItem('tp_signup_role') === 'host'}
+        showSignup={sessionStorage.getItem('tp_show_signup') === 'true'}
         inviteEmail={inviteEmail}
       />
     );
@@ -2798,8 +2804,8 @@ function PasswordResetForm({ supabase, onDone }) {
   );
 }
 
-function AuthScreen({ onAuth, authError, setAuthError, hasInvite, inviteEmail, claimMode, hostMode }) {
-  const [mode, setMode] = useState(hasInvite || claimMode || hostMode ? "signup" : "login");
+function AuthScreen({ onAuth, authError, setAuthError, hasInvite, inviteEmail, claimMode, hostMode, showSignup }) {
+  const [mode, setMode] = useState(hasInvite || claimMode || hostMode || showSignup ? "signup" : "login");
   const [signupRole, setSignupRole] = useState(hasInvite ? "family" : (claimMode || hostMode) ? "host" : null);
   const [email, setEmail] = useState(inviteEmail || "");
   const [password, setPassword] = useState("");
