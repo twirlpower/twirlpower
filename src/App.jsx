@@ -1725,7 +1725,6 @@ export default function App() {
   const allNotifications = [
     ...pendingInvites.map(i => ({ ...i, notifType: 'competition_invite' })),
     ...pendingCoachLinks.map(l => ({ ...l, notifType: 'coach_link' })),
-    ...pendingDirectorApprovals.map(h => ({ ...h, notifType: 'director_approval' })),
   ];
 
   // Pass resolved id as the canonical activeTwirlerId throughout the app
@@ -5380,7 +5379,7 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
 
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
 
-function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode }) {
+function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode, setActiveCompetitionId }) {
   if (!activeTwirler) return <div className="empty-state"><h3>No twirler selected</h3></div>;
 
   const [classifOrgFilter, setClassifOrgFilter] = useState("all");
@@ -5411,7 +5410,9 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     if (edgeKey) localStorage.setItem(edgeKey, String(next));
   }
 
-  const lastComp = twirlerComps.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+  const pastComps = twirlerComps.filter(c => c.date < today).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const recentComps = pastComps.slice(0, 5);
+  const lastComp = pastComps[0];
   const lastResults = lastComp ? twirlerResults.filter(r => r.competitionId === lastComp.id) : [];
   const totalWins = twirlerResults.filter(r => r.placement === 1).length;
   const totalComps = twirlerComps.length;
@@ -5873,48 +5874,33 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
 
         <div className="card">
           <div className="section-header">
-            <span className="section-title">Last Competition</span>
+            <span className="section-title">Recent Competitions</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPage("competitions")} style={{ fontSize: 11 }}>View all</button>
           </div>
-          {lastComp ? (
-            <>
-              <div className="mb-3">
-                <div style={{ fontWeight: 600, fontSize: 15 }}>{lastComp.name}</div>
-                <div style={{ color: "var(--slate)", fontSize: 13 }}>{fmtDate(lastComp.date)} · {lastComp.location}</div>
-                <span className="badge badge-gray" style={{ marginTop: 6 }}>{lastComp.orgId}</span>
-              </div>
-              <div className="divider" />
-              {lastResults.length === 0 ? <p style={{ color: "var(--muted)", fontSize: 13 }}>No results recorded</p> : (
-                <table className="table">
-                  <thead><tr><th>Event</th><th>Level</th><th>Place</th><th>Score</th></tr></thead>
-                  <tbody>
-                    {lastResults.map(r => (
-                      <tr key={r.id}>
-                        <td style={{ fontSize: 13 }}>
-                          {r.event}
-                          {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9, marginLeft: 4 }}>All Catch</span>}
-                        </td>
-                        <td><span className="badge badge-gray">{r.classificationLevelEntered}</span></td>
-                        <td>
-                          {CAS_EVENTS.has(r.event) ? (
-                            <span className="badge" style={{
-                              background: r.casPassed === true ? "#f0fdf4" : r.casPassed === false ? "#fef2f2" : "#f1f5f9",
-                              color: r.casPassed === true ? "#16a34a" : r.casPassed === false ? "#dc2626" : "var(--slate)"
-                            }}>
-                              {r.casLevel} {r.casPassed === true ? "✓" : r.casPassed === false ? "✗" : "—"}
-                            </span>
-                          ) : (
-                          <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)" }}>
-                            {r.placement === 1 ? "🥇" : r.placement === 2 ? "🥈" : r.placement === 3 ? "🥉" : `${r.placement}th`}
-                          </span>
-                          )}
-                        </td>
-                        <td style={{ fontSize: 12, color: "var(--slate)" }}>{r.score ? r.score.toFixed(1) : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </>
+          {recentComps.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {recentComps.map(comp => {
+                const compResults = twirlerResults.filter(r => r.competitionId === comp.id);
+                const wins = compResults.filter(r => r.placement === 1).length;
+                return (
+                  <div key={comp.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "10px 12px", background: "var(--bg)", borderRadius: 8, cursor: "pointer" }}
+                    onClick={() => { setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{comp.name}</div>
+                      <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
+                        {fmtDate(comp.date)}{comp.state ? ` · ${comp.state}` : ""}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 items-center" style={{ flexShrink: 0 }}>
+                      {comp.orgId && <span className="badge" style={{ fontSize: 9, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
+                      {wins > 0 && <span className="badge badge-amber" style={{ fontSize: 9 }}>{wins} 🥇</span>}
+                      <span className="badge badge-gray" style={{ fontSize: 9 }}>{compResults.length} event{compResults.length !== 1 ? "s" : ""}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="empty-state" style={{ padding: "24px 0" }}>
               <p>No competitions yet.</p>
