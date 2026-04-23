@@ -2500,6 +2500,8 @@ export default function App() {
         competitionHosts={competitionHosts}
         setActiveCompetitionId={setActiveCompetitionId}
         setActiveDirectorId={setActiveDirectorId}
+        activeCompetitionId={activeCompetitionId}
+        activeDirectorId={activeDirectorId}
       />
     );
   }
@@ -3219,7 +3221,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
   pendingClubMembers, setPendingClubMembers,
   invites, progress, darkMode, setDarkMode, isAdmin, onSignOut, supabase, loadCoachData,
   page, setPage, openModal, closeModal, modals, coachCreateCompetition, publicCompetitions,
-  competitionHosts, setActiveCompetitionId, setActiveDirectorId }) {
+  competitionHosts, setActiveCompetitionId, setActiveDirectorId, activeCompetitionId, activeDirectorId }) {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTwirlerId, setActiveTwirlerId] = useState(twirlers[0]?.id || null);
@@ -3445,6 +3447,8 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
           {page === "history" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
           {page === "upcoming" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} initialTab="upcoming" />}
+          {page === "competition-detail" && <CompetitionDetailPage publicCompetitions={publicCompetitions} competitionHosts={competitionHosts} attendees={[]} activeTwirler={activeTwirler} twirlers={twirlers} addAttendee={() => {}} removeAttendee={() => {}} setPage={setPage} progress={allProgress} openModal={() => {}} twirlerResults={[]} twirlerComps={coachCompetitions} results={results} competitions={competitions} myCompetitionClaims={[]} setActiveDirectorId={setActiveDirectorId} activeCompetitionId={activeCompetitionId} familyAccount={null} />}
+          {page === "director-profile" && <DirectorPublicProfile competitionHosts={competitionHosts} publicCompetitions={publicCompetitions} attendees={[]} setPage={setPage} setActiveCompetitionId={setActiveCompetitionId} activeDirectorId={activeDirectorId} />}
           {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} coachClubs={coachClubs} />}
           {page === "invite-athlete" && <InviteAthletePage coachAccount={coachAccount} supabase={supabase} setPage={setPage} loadCoachData={loadCoachData} />}
           {page === "create-competition" && <CreateCompetitionPage coachAccount={coachAccount} twirlers={twirlers} supabase={supabase} setPage={setPage} coachCreateCompetition={coachCreateCompetition} />}
