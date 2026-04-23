@@ -5998,7 +5998,7 @@ function CompetitionsPage(props) {
   );
 }
 
-function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, openModal, deleteResult, deleteCompetition, updateResult, updateCompetition, competitions, addResultsToComp, setPage, setActiveCompetitionId }) {
+function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, openModal, deleteResult, deleteCompetition, updateResult, updateCompetition, competitions, addResultsToComp, setPage, setActiveCompetitionId, publicCompetitions }) {
   const [filterOrg, setFilterOrg] = useState("");
   const [filterEvent, setFilterEvent] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
