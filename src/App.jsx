@@ -5066,17 +5066,54 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
+  const [filterState, setFilterState] = useState("");
+  const [sortBy, setSortBy] = useState("date"); // "date" | "state" | "name"
+  const [compPage, setCompPage] = useState(0);
+  const [viewTab, setViewTab] = useState("competitions"); // "competitions" | "claims"
+  const [claimHistory, setClaimHistory] = useState([]);
+  const [claimSearch, setClaimSearch] = useState("");
+  const [claimPage, setClaimPage] = useState(0);
+  const PAGE_SIZE = 20;
+
+  // Load claim history
+  useEffect(() => {
+    supabase.from('competition_claims').select('*').in('status', ['approved', 'denied']).order('created_at', { ascending: false })
+      .then(({ data }) => setClaimHistory(data || []));
+  }, []);
 
   const sorted = [...publicCompetitions]
     .filter(c => !search ||
       c.name?.toLowerCase().includes(search.toLowerCase()) ||
-      c.state?.toLowerCase().includes(search.toLowerCase()) ||
-      c.orgId?.toLowerCase().includes(search.toLowerCase())
+      (normalizeState(c.state) || c.state || "").toLowerCase().includes(search.toLowerCase()) ||
+      c.orgId?.toLowerCase().includes(search.toLowerCase()) ||
+      c.city?.toLowerCase().includes(search.toLowerCase())
     )
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+    .filter(c => !filterState || c.state === filterState || normalizeState(c.state) === filterState)
+    .sort((a, b) => {
+      if (sortBy === "state") return (normalizeState(a.state) || a.state || "").localeCompare(normalizeState(b.state) || b.state || "");
+      if (sortBy === "name") return (a.name || "").localeCompare(b.name || "");
+      return new Date(b.date) - new Date(a.date);
+    });
 
-  const upcoming = sorted.filter(c => c.date >= new Date().toISOString().slice(0, 10));
-  const past = sorted.filter(c => c.date < new Date().toISOString().slice(0, 10));
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = sorted.filter(c => c.date >= today);
+  const past = sorted.filter(c => c.date < today);
+  const allComps = [...upcoming, ...past];
+  const pagedComps = allComps.slice(compPage * PAGE_SIZE, (compPage + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(allComps.length / PAGE_SIZE);
+
+  // Claim history filtering
+  const filteredClaims = claimHistory.filter(cl => !claimSearch ||
+    cl.competition_id?.includes(claimSearch) ||
+    cl.user_id?.includes(claimSearch) ||
+    cl.message?.toLowerCase().includes(claimSearch.toLowerCase()) ||
+    cl.status?.toLowerCase().includes(claimSearch.toLowerCase())
+  );
+  const pagedClaims = filteredClaims.slice(claimPage * PAGE_SIZE, (claimPage + 1) * PAGE_SIZE);
+  const claimTotalPages = Math.ceil(filteredClaims.length / PAGE_SIZE);
+
+  // Get unique states for filter
+  const states = [...new Set(publicCompetitions.map(c => c.state).filter(Boolean))].sort();
 
   function startEdit(comp) {
     setEditingId(comp.id);
@@ -5180,38 +5217,121 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
 
   return (
     <div>
-      <div style={{ position: "relative", marginBottom: 16 }}>
-        <input className="input" value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search competitions..." style={{ paddingLeft: 30, fontSize: 12 }} />
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
-          style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-        </svg>
+      {/* Sub-tabs */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "2px solid var(--border)" }}>
+        {[{ id: "competitions", label: `Competitions (${publicCompetitions.length})` }, { id: "claims", label: `Claim History (${claimHistory.length})` }].map(t => (
+          <button key={t.id} onClick={() => setViewTab(t.id)}
+            style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              border: "none", background: "none", fontFamily: "inherit",
+              color: viewTab === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: viewTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -2 }}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {sorted.length === 0 ? (
-        <div className="empty-state" style={{ padding: "24px 0" }}>
-          <h3>{search ? "No competitions match your search" : "No competitions posted yet"}</h3>
+      {viewTab === "competitions" && (
+        <div>
+          {/* Search + filters */}
+          <div className="flex gap-2 mb-3" style={{ flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: "1 1 180px", minWidth: 0 }}>
+              <input className="input" value={search} onChange={e => { setSearch(e.target.value); setCompPage(0); }}
+                placeholder="Search competitions..." style={{ paddingLeft: 30, fontSize: 12 }} />
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+                style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+              </svg>
+            </div>
+            <select className="select" value={filterState} onChange={e => { setFilterState(e.target.value); setCompPage(0); }} style={{ fontSize: 12, maxWidth: 140 }}>
+              <option value="">All states</option>
+              {states.map(s => <option key={s} value={s}>{normalizeState(s) || s}</option>)}
+            </select>
+            <select className="select" value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ fontSize: 12, maxWidth: 130 }}>
+              <option value="date">Sort by date</option>
+              <option value="state">Sort by state</option>
+              <option value="name">Sort by name</option>
+            </select>
+          </div>
+
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
+            Showing {compPage * PAGE_SIZE + 1}–{Math.min((compPage + 1) * PAGE_SIZE, allComps.length)} of {allComps.length}
+            {upcoming.length > 0 && <span> · <strong>{upcoming.length}</strong> upcoming</span>}
+          </div>
+
+          {pagedComps.length === 0 ? (
+            <div className="empty-state" style={{ padding: "24px 0" }}>
+              <h3>{search || filterState ? "No competitions match your filters" : "No competitions posted yet"}</h3>
+            </div>
+          ) : (
+            <div>{pagedComps.map(renderComp)}</div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2" style={{ marginTop: 16 }}>
+              <button className="btn btn-ghost btn-sm" disabled={compPage === 0} onClick={() => setCompPage(p => p - 1)}>← Prev</button>
+              <span style={{ fontSize: 12, color: "var(--slate)" }}>Page {compPage + 1} of {totalPages}</span>
+              <button className="btn btn-ghost btn-sm" disabled={compPage >= totalPages - 1} onClick={() => setCompPage(p => p + 1)}>Next →</button>
+            </div>
+          )}
         </div>
-      ) : (
-        <>
-          {upcoming.length > 0 && (
-            <div className="mb-4">
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-                Upcoming ({upcoming.length})
-              </div>
-              {upcoming.map(renderComp)}
+      )}
+
+      {viewTab === "claims" && (
+        <div>
+          <div style={{ position: "relative", marginBottom: 16 }}>
+            <input className="input" value={claimSearch} onChange={e => { setClaimSearch(e.target.value); setClaimPage(0); }}
+              placeholder="Search claims..." style={{ paddingLeft: 30, fontSize: 12 }} />
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" strokeWidth="2" strokeLinecap="round"
+              style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+          </div>
+
+          {pagedClaims.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>No claim history found.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {pagedClaims.map(claim => {
+                const comp = publicCompetitions.find(c => c.id === claim.competition_id);
+                const host = competitionHosts.find(h => h.user_id === claim.user_id);
+                return (
+                  <div key={claim.id} className="card-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)" }}>
+                          {comp?.name || `Competition ${claim.competition_id?.slice(0, 8)}...`}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
+                          Claimed by: {host?.name || `User ${claim.user_id?.slice(0, 8)}...`}
+                          {host?.email && <span style={{ color: "var(--muted)" }}> · {host.email}</span>}
+                        </div>
+                        {claim.message && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, fontStyle: "italic" }}>"{claim.message}"</div>}
+                        {claim.document_url && <a href={claim.document_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "var(--brand)", marginTop: 2, display: "inline-block" }}>📎 Document</a>}
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <span className={`badge ${claim.status === 'approved' ? 'badge-green' : 'badge-warn'}`} style={{ fontSize: 10 }}>
+                          {claim.status === 'approved' ? '✓ Approved' : '✗ Denied'}
+                        </span>
+                        <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{fmtDate(claim.created_at)}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-          {past.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-                Past ({past.length})
-              </div>
-              {past.map(renderComp)}
+
+          {/* Pagination */}
+          {claimTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-2" style={{ marginTop: 16 }}>
+              <button className="btn btn-ghost btn-sm" disabled={claimPage === 0} onClick={() => setClaimPage(p => p - 1)}>← Prev</button>
+              <span style={{ fontSize: 12, color: "var(--slate)" }}>Page {claimPage + 1} of {claimTotalPages}</span>
+              <button className="btn btn-ghost btn-sm" disabled={claimPage >= claimTotalPages - 1} onClick={() => setClaimPage(p => p + 1)}>Next →</button>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
