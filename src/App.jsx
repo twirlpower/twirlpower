@@ -2215,6 +2215,11 @@ export default function App() {
     await supabase.from('competition_claims').update({ status: 'denied' }).eq('id', claimId);
   }
 
+  async function unclaimCompetition(competitionId) {
+    await supabase.from('public_competitions').update({ host_id: null, source: 'scraped' }).eq('id', competitionId);
+    setPublicCompetitions(prev => prev.map(c => c.id === competitionId ? { ...c, hostId: null, host_id: null, source: 'scraped' } : c));
+  }
+
   async function addAttendee(competitionId, twirlerId) {
     if (attendees.find(a => a.competitionId === competitionId && a.twirlerId === twirlerId)) return;
     const newAttendee = { id: uid(), competitionId, twirlerId, addedAt: new Date().toISOString().slice(0,10) };
@@ -2590,32 +2595,24 @@ export default function App() {
   // If a non-host user arrives via ?claim= link, prompt them to become a director
   const pendingClaimCompId = sessionStorage.getItem('tp_claim_competition_id');
   const pendingClaimComp = pendingClaimCompId ? publicCompetitions.find(c => c.id === pendingClaimCompId) : null;
-  // Show director prompt immediately if we have a claim ID and user is not a host
-  // Don't wait for publicCompetitions to load — check role first
-  if (pendingClaimCompId && userRole !== 'host') {
+  if (pendingClaimComp && userRole !== 'host') {
     return (
       <>
         <style>{css}</style>
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", padding: 20 }}>
           <div className="card" style={{ maxWidth: 480, width: "100%", textAlign: "center", padding: "40px 32px" }}>
             <div style={{ fontSize: 40, marginBottom: 16 }}>🏆</div>
-            <h2 className="serif" style={{ fontSize: 22, marginBottom: 8, color: "var(--navy)" }}>
-              Claim {pendingClaimComp ? `"${pendingClaimComp.name}"` : "this Competition"}
-            </h2>
+            <h2 className="serif" style={{ fontSize: 22, marginBottom: 8, color: "var(--navy)" }}>Claim "{pendingClaimComp.name}"</h2>
             <p style={{ color: "var(--slate)", fontSize: 14, marginBottom: 8, lineHeight: 1.6 }}>
-              To claim a competition, you need a <strong>Competition Director account</strong>.
+              To claim this competition, you need a Competition Director account.
             </p>
             <p style={{ color: "var(--slate)", fontSize: 13, marginBottom: 24, lineHeight: 1.6 }}>
-              You're currently signed in as a {userRole === 'coach' ? 'coach' : 'family'} account.
-              Sign out and create a Director account, or contact us to add director access to your existing account.
+              You're currently signed in as a {userRole || "family"} account. Sign out and create a new account as a Competition Director, or contact support to add director access to your existing account.
             </p>
             <div className="flex-col gap-2">
               <button className="btn btn-primary w-full" onClick={signOut}>
                 Sign Out & Create Director Account
               </button>
-              <a href="mailto:support@twirlpower.com" className="btn btn-secondary w-full" style={{ fontSize: 13 }}>
-                Contact Support
-              </a>
               <button className="btn btn-ghost w-full" style={{ fontSize: 13 }}
                 onClick={() => { sessionStorage.removeItem('tp_claim_competition_id'); window.location.reload(); }}>
                 Cancel — return to my account
@@ -2725,7 +2722,7 @@ export default function App() {
           {page === "notifications" && <NotificationsPage {...pageProps} setPage={setPage} isAdmin={isAdmin} />}
           {page === "privacy" && <PrivacyPolicyPage onClose={() => setPage("home")} />}
           {page === "terms" && <TermsOfServicePage onClose={() => setPage("home")} />}
-          {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} approveCompetitionClaim={approveCompetitionClaim} denyCompetitionClaim={denyCompetitionClaim} />}
+          {page === "admin" && isAdmin && <AdminPage {...pageProps} supabase={supabase} isAdmin={isAdmin} setPage={setPage} previewRole={previewRole} setPreviewRole={setPreviewRole} approveCompetitionClaim={approveCompetitionClaim} denyCompetitionClaim={denyCompetitionClaim} unclaimCompetition={unclaimCompetition} />}
           {page === "orgs" && <OrganizationsPage activeTwirler={activeTwirler} twirlerResults={twirlerResults} />}
           {page === "timeline" && <ClassificationTimelinePage {...pageProps} />}
           {page === "upcoming" && <CompetitionsPage {...pageProps} initialTab="upcoming" />}
@@ -5050,7 +5047,7 @@ function CoachVerificationCard({ coachAccount, setCoachAccount, supabase }) {
 
 // ─── ADMIN COMPETITIONS TAB ──────────────────────────────────────────────────
 
-function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePublicCompetition, updatePublicCompetition, supabase }) {
+function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePublicCompetition, updatePublicCompetition, unclaimCompetition, supabase }) {
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -5145,10 +5142,17 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
                 </div>
                 {comp.address && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>🏛 {comp.address}</div>}
                 {host && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>Posted by {host.name}{host.organization ? ` · ${host.organization}` : ""}</div>}
+                {!host && <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 2 }}>No director linked</div>}
               </div>
             </div>
             <div className="flex gap-2" style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
               <button className="btn btn-secondary btn-sm" style={{ fontSize: 11 }} onClick={() => startEdit(comp)}>Edit</button>
+              {host && (
+                <button className="btn btn-secondary btn-sm" style={{ fontSize: 11 }}
+                  onClick={() => { if (window.confirm(`Remove ${host.name} as director of "${comp.name}"? The competition will become unclaimed.`)) unclaimCompetition(comp.id); }}>
+                  Unclaim
+                </button>
+              )}
               <button className="btn btn-danger btn-sm" style={{ fontSize: 11 }}
                 onClick={() => { if (window.confirm(`Delete "${comp.name}"?`)) deletePublicCompetition(comp.id); }}>
                 Delete
@@ -7450,7 +7454,7 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
 
 // ─── ADMIN PAGE ──────────────────────────────────────────────────────────────
 
-function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole, publicCompetitions, deletePublicCompetition, updatePublicCompetition, approveCompetitionClaim, denyCompetitionClaim }) {
+function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole, publicCompetitions, deletePublicCompetition, updatePublicCompetition, approveCompetitionClaim, denyCompetitionClaim, unclaimCompetition }) {
   const [tab, setTab] = useState("hosts");
   const [competitionClaims, setCompetitionClaims] = useState([]);
 
@@ -7649,6 +7653,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
             competitionHosts={competitionHosts || []}
             deletePublicCompetition={deletePublicCompetition}
             updatePublicCompetition={updatePublicCompetition}
+            unclaimCompetition={unclaimCompetition}
             supabase={supabase}
           />
         )}
