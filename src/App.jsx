@@ -3447,7 +3447,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
           {page === "history" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
           {page === "upcoming" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} initialTab="upcoming" />}
-          {page === "competition-detail" && <CompetitionDetailPage publicCompetitions={publicCompetitions} competitionHosts={competitionHosts} attendees={[]} activeTwirler={activeTwirler} twirlers={twirlers} addAttendee={() => {}} removeAttendee={() => {}} setPage={setPage} progress={allProgress} openModal={() => {}} twirlerResults={[]} twirlerComps={coachCompetitions} results={results} competitions={competitions} myCompetitionClaims={[]} setActiveDirectorId={setActiveDirectorId} activeCompetitionId={activeCompetitionId} familyAccount={null} />}
+          {page === "competition-detail" && <CompetitionDetailPage publicCompetitions={publicCompetitions} competitionHosts={competitionHosts} attendees={[]} activeTwirler={activeTwirler} twirlers={twirlers} addAttendee={() => {}} removeAttendee={() => {}} setPage={setPage} progress={allProgress} openModal={() => {}} twirlerResults={[]} twirlerComps={coachCompetitions} results={results} competitions={competitions} myCompetitionClaims={[]} setActiveDirectorId={setActiveDirectorId} activeCompetitionId={activeCompetitionId} familyAccount={null} coachAccount={coachAccount} supabase={supabase} />}}
           {page === "director-profile" && <DirectorPublicProfile competitionHosts={competitionHosts} publicCompetitions={publicCompetitions} attendees={[]} setPage={setPage} setActiveCompetitionId={setActiveCompetitionId} activeDirectorId={activeDirectorId} />}
           {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} coachClubs={coachClubs} />}
           {page === "invite-athlete" && <InviteAthletePage coachAccount={coachAccount} supabase={supabase} setPage={setPage} loadCoachData={loadCoachData} />}
@@ -3862,7 +3862,7 @@ function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirl
         ))}
       </div>
       {tab === 'history' && (
-        <CoachHistoryPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />
+        <CoachHistoryPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} setActiveCompetitionId={setActiveCompetitionId} publicCompetitions={publicCompetitions} />
       )}
       {tab === 'upcoming' && (
         <UpcomingCompetitionsPage publicCompetitions={publicCompetitions || []} familyAccount={familyAccount} addAttendee={addAttendee} removeAttendee={removeAttendee || (() => {})} attendees={attendees || []} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} registerHost={registerHost} competitionHosts={competitionHosts || []} myCompetitionClaims={myCompetitionClaims || []} setActiveCompetitionId={setActiveCompetitionId || (() => {})} setActiveDirectorId={setActiveDirectorId || (() => {})} />
@@ -3871,7 +3871,7 @@ function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirl
   );
 }
 
-function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage }) {
+function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, activeTwirler, setPage, setActiveCompetitionId, publicCompetitions }) {
   const [filterTwirler, setFilterTwirler] = useState("");
   const [tab, setTab] = useState("family"); // "family" | "coach"
 
@@ -3921,14 +3921,17 @@ function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, 
         ) : famComps.map(c => {
           const twirler = twirlers.find(t => t.id === c.twirler_id);
           const compResults = (results || []).filter(r => r.competitionId === c.id);
+          const isPublic = (publicCompetitions || []).some(p => p.id === c.id);
           return (
-            <div key={c.id} className="card mb-3">
+            <div key={c.id} className="card mb-3" style={{ cursor: isPublic ? "pointer" : "default" }}
+              onClick={() => { if (isPublic && setActiveCompetitionId) { setActiveCompetitionId(c.id); setPage("competition-detail"); } }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{c.name}</div>
                   <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>
                     {fmtDate(c.date)}{c.location ? ` · ${c.location}` : ""}
                     {c.orgId && <span className="badge badge-gray" style={{ marginLeft: 6, fontSize: 10 }}>{c.orgId}</span>}
+                    {isPublic && <span style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, marginLeft: 6 }}>View Details →</span>}
                   </div>
                 </div>
                 {!filterTwirler && twirler && (
@@ -10175,7 +10178,7 @@ function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
 
 // ─── COMPETITION DETAIL PAGE ─────────────────────────────────────────────────
 
-function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions, myCompetitionClaims, setActiveDirectorId }) {
+function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions, myCompetitionClaims, setActiveDirectorId, familyAccount, coachAccount, supabase }) {
   const comp = publicCompetitions.find(c => c.id === activeCompetitionId) || twirlerComps.find(c => c.id === activeCompetitionId);
   if (!comp) return <div className="empty-state"><h3>Competition not found</h3><button className="btn btn-secondary btn-sm" onClick={() => setPage("competitions")}>← Back</button></div>;
 
@@ -10206,7 +10209,11 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const doneEvents = eventsToShow.filter(e => myResults.some(r => r.event === e));
   const pendingEvents = eventsToShow.filter(e => !myResults.some(r => r.event === e));
 
-  const tabs = [
+  const isCoach = !!coachAccount && !familyAccount;
+
+  const tabs = isCoach ? [
+    { id: "overview", label: "Overview" },
+  ] : [
     { id: "overview", label: "Overview" },
     { id: "my-competition", label: `My Events${myResults.length ? ` (${myResults.length})` : ""}` },
     { id: "results", label: "Results" },
@@ -10373,6 +10380,54 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
               </div>
             );
           })()}
+
+          {/* Coach: Invite twirlers to this competition */}
+          {isCoach && twirlers.length > 0 && (
+            <div className="card-sm mb-3">
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>Invite Your Twirlers</div>
+              <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>Send a competition invite to your linked athletes for this event.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {twirlers.map(t => {
+                  const alreadyInvited = (coachAccount?._sentInvites || []).includes(`${activeCompetitionId}_${t.id}`);
+                  return (
+                    <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: "var(--bg)", borderRadius: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div className="avatar" style={{ width: 26, height: 26, fontSize: 10, background: "var(--brand)", color: "white" }}>{initials(t.firstName || t.first_name || "?")}</div>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{t.firstName || t.first_name}</span>
+                      </div>
+                      {alreadyInvited ? (
+                        <span className="badge badge-green" style={{ fontSize: 10 }}>✓ Invited</span>
+                      ) : (
+                        <button className="btn btn-primary btn-sm" style={{ fontSize: 11, padding: "3px 10px" }}
+                          onClick={async () => {
+                            // Create invite via coach_competition_invites
+                            await supabase.from('coach_competition_invites').upsert({
+                              competition_id: activeCompetitionId,
+                              twirler_id: t.id,
+                              coach_id: coachAccount.id,
+                              status: 'invited',
+                            }, { onConflict: 'competition_id,twirler_id' });
+                            // Track locally
+                            coachAccount._sentInvites = [...(coachAccount._sentInvites || []), `${activeCompetitionId}_${t.id}`];
+                            // Send email to family
+                            if (t.familyEmail) {
+                              await sendEmail('competition_invite', t.familyEmail, {
+                                coachName: coachAccount.name,
+                                competitionName: comp.name,
+                                competitionDate: fmtDate(comp.date),
+                                twirlerName: t.firstName || t.first_name,
+                              });
+                            }
+                          }}>
+                          Invite
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
