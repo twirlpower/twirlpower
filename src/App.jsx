@@ -8127,9 +8127,10 @@ function ClubAdminTab({ supabase }) {
   const [clubs, setClubs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState({});
-  const [confirmDelete, setConfirmDelete] = useState(null); // club object
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [deleteInput, setDeleteInput] = useState("");
-  const [filter, setFilter] = useState("all"); // all | pending | claimed | unclaimed | archived
+  const [filter, setFilter] = useState("all");
+  const [viewTab, setViewTab] = useState("clubs");
 
   useEffect(() => {
     async function load() {
@@ -8213,7 +8214,6 @@ function ClubAdminTab({ supabase }) {
   };
 
   const filteredClubs = clubs.filter(c => filter === "all" || c.status === filter);
-  const [viewTab, setViewTab] = useState(pending.length > 0 ? "pending" : "clubs");
 
   return (
     <div>
