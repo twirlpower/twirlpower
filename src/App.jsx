@@ -5996,9 +5996,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
               </div>
             ) : (
               <>
-                <table className="table">
-                  <thead><tr><th>Event</th><th>Level</th><th>Place</th><th>Score</th><th>Contested</th><th>Flags</th><th>Notes</th><th></th></tr></thead>
-                  <tbody>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {compResults.map(r => {
                       const isEditingThisResult = editingResult === r.id;
                       const org = ORGS[comp.orgId];
@@ -6011,8 +6009,8 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                       if (r.isTwirlOff) flags.push({ label: "Twirl-off", color: "gray" });
                       if (isEditingThisResult) {
                         return (
-                          <tr key={r.id} style={{ background: "#f8fafc" }}>
-                            <td colSpan={7} style={{ padding: "12px 16px" }}>
+                          <div key={r.id} className="card-sm" style={{ background: "#f8fafc" }}>
+                            <div style={{ padding: "4px 0" }}>
                               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>Editing: {r.event}</div>
                               <div className="form-row" style={{ marginBottom: 8 }}>
                                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -6101,60 +6099,61 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                                 <button className="btn btn-primary btn-sm" onClick={saveEditResult}>Save</button>
                                 <button className="btn btn-secondary btn-sm" onClick={() => setEditingResult(null)}>Cancel</button>
                               </div>
-                            </td>
-                          </tr>
+                            </div>
+                          </div>
                         );
                       }
                       return (
-                        <tr key={r.id}>
-                          <td style={{ fontSize: 13 }}>
-                            {r.event}
-                            {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9, marginLeft: 4 }}>All Catch</span>}
-                          </td>
-                          <td><span className="badge badge-gray">{r.classificationLevelEntered}</span></td>
-                          <td>
-                            {CAS_EVENTS.has(r.event) ? (
-                              <span className="badge" style={{
-                                background: r.casPassed === true ? "#f0fdf4" : r.casPassed === false ? "#fef2f2" : "#f1f5f9",
-                                color: r.casPassed === true ? "#16a34a" : r.casPassed === false ? "#dc2626" : "var(--slate)"
-                              }}>
-                                {r.casLevel} {r.casPassed === true ? "✓" : r.casPassed === false ? "✗" : "—"}
-                              </span>
-                            ) : (
-                            <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)" }}>
-                              {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
-                            </span>
-                            )}
-                          </td>
-                          <td style={{ fontSize: 12, color: "var(--slate)" }}>{r.score != null ? r.score.toFixed(1) : "—"}</td>
-                          <td style={{ fontSize: 13 }}>{r.contested ? "Yes" : "No"}</td>
-                          <td>{flags.map((f, i) => <span key={i} className={`badge badge-${f.color === "warn" ? "warn" : "gray"}`} style={{ marginRight: 4, fontSize: 10 }}>{f.label}</span>)}</td>
-                          <td style={{ fontSize: 12, color: "var(--muted)", maxWidth: 160 }}>
-                            {r.notes ? <span title={r.notes}>📝 {r.notes.length > 30 ? r.notes.slice(0, 30) + "…" : r.notes}</span> : null}
-                            {r.scorecardUrl && (
-                              <a href={r.scorecardUrl} target="_blank" rel="noopener noreferrer"
-                                style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: r.notes ? 4 : 0,
-                                  fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none" }}>
-                                <Icon name="image" size={11} color="var(--brand)" /> Scorecard
-                              </a>
-                            )}
-                          </td>
-                          <td>
-                            <div className="flex gap-1">
-                              <button className="btn btn-ghost btn-sm" onClick={() => startEditResult(r)} title="Edit result">
+                        <div key={r.id} className="card-sm" style={{ padding: "10px 14px" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>
+                                {r.event}
+                              </div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                                <span className="badge badge-gray" style={{ fontSize: 10 }}>{r.classificationLevelEntered}</span>
+                                {CAS_EVENTS.has(r.event) ? (
+                                  <span className="badge" style={{
+                                    background: r.casPassed === true ? "#f0fdf4" : r.casPassed === false ? "#fef2f2" : "#f1f5f9",
+                                    color: r.casPassed === true ? "#16a34a" : r.casPassed === false ? "#dc2626" : "var(--slate)",
+                                    fontSize: 10
+                                  }}>
+                                    CAS {r.casLevel} {r.casPassed === true ? "✓" : r.casPassed === false ? "✗" : "—"}
+                                  </span>
+                                ) : r.placement ? (
+                                  <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)", fontSize: 10 }}>
+                                    {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
+                                  </span>
+                                ) : null}
+                                {r.score != null && <span style={{ fontSize: 12, color: "var(--slate)" }}>Score: {r.score.toFixed(1)}</span>}
+                                {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9 }}>All Catch</span>}
+                                {flags.map((f, i) => <span key={i} className={`badge badge-${f.color === "warn" ? "warn" : "gray"}`} style={{ fontSize: 9 }}>{f.label}</span>)}
+                              </div>
+                              {r.notes && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>📝 {r.notes}</div>}
+                              {r.scorecardUrl && (
+                                <a href={r.scorecardUrl} target="_blank" rel="noopener noreferrer"
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6,
+                                    fontSize: 12, color: "var(--brand)", fontWeight: 600, textDecoration: "none",
+                                    padding: "4px 10px", background: "var(--brand-light)", borderRadius: 6,
+                                    border: "1px solid rgba(13,148,136,0.2)" }}>
+                                  📄 View Scorecard
+                                </a>
+                              )}
+                            </div>
+                            <div className="flex gap-1" style={{ flexShrink: 0 }}>
+                              <button className="btn btn-ghost btn-sm" onClick={() => startEditResult(r)} title="Edit result" style={{ padding: 4 }}>
                                 <Icon name="edit" size={13} color="var(--slate)" />
                               </button>
-                              <button className="btn btn-ghost btn-sm" onClick={() => deleteResult(r.id)} title="Remove result">
+                              <button className="btn btn-ghost btn-sm" onClick={() => deleteResult(r.id)} title="Remove result" style={{ padding: 4 }}>
                                 <Icon name="trash" size={13} color="var(--red)" />
                               </button>
                             </div>
-                          </td>
-                        </tr>
+                          </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-                <div style={{ padding: "10px 14px", borderTop: "1px solid #f1f5f9" }}>
+                </div>
+                <div style={{ padding: "10px 0", borderTop: "1px solid #f1f5f9", marginTop: 8 }}>
                   <button className="btn btn-ghost btn-sm" onClick={() => openModal("addResults", { competition: comp })}>
                     <Icon name="plus" size={13} /> Add more results to this competition
                   </button>
