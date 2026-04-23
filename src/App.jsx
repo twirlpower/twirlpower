@@ -7884,7 +7884,11 @@ function AdminAccountsTab({ familyAccount, twirlers, coaches, supabase, competit
                   <div style={{ fontWeight: 500, fontSize: 13 }}>{f.parent_name || f.parentName || "—"}</div>
                   <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.email}{f.state ? ` · ${f.state}` : ""}</div>
                 </div>
-                <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(f.created_at)}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)", marginRight: 4 }}>{fmtDate(f.created_at)}</span>
+                <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: "2px 8px" }}
+                  onClick={() => { if (window.confirm(`Delete family account for ${f.parent_name || f.parentName || f.email}? This cannot be undone.`)) {
+                    supabase.from("family_accounts").delete().eq("id", f.id).then(() => setFamilyAccounts(prev => prev.filter(x => x.id !== f.id)));
+                  }}}>Delete</button>
               </div>
             </div>
           ))}
@@ -7903,7 +7907,11 @@ function AdminAccountsTab({ familyAccount, twirlers, coaches, supabase, competit
                     {(t.organizations || []).join(", ")}{t.club ? ` · ${t.club}` : ""}
                   </div>
                 </div>
-                <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(t.created_at)}</span>
+                <span style={{ fontSize: 11, color: "var(--muted)", marginRight: 4 }}>{fmtDate(t.created_at)}</span>
+                <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: "2px 8px" }}
+                  onClick={() => { if (window.confirm(`Delete twirler ${t.first_name || t.firstName}? This cannot be undone.`)) {
+                    supabase.from("twirlers").delete().eq("id", t.id).then(() => setAllTwirlers(prev => prev.filter(x => x.id !== t.id)));
+                  }}}>Delete</button>
               </div>
             </div>
           ))}
@@ -7928,9 +7936,27 @@ function AdminAccountsTab({ familyAccount, twirlers, coaches, supabase, competit
                 </div>
                 <div className="flex gap-1 items-center" style={{ flexShrink: 0 }}>
                   {(c.organizations || []).map(o => <span key={o} className="badge" style={{ fontSize: 9, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>)}
-                  {c.verification_status === 'pending' && c.verification_document_url && (
-                    <a href={c.verification_document_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: "2px 6px" }}>📎</a>
+                  {c.verification_status === 'pending' && (
+                    <>
+                      <button className="btn btn-primary btn-sm" style={{ fontSize: 10, padding: "2px 8px" }}
+                        onClick={() => { supabase.from("coach_accounts").update({ verified: true, verification_status: 'verified' }).eq("id", c.id).then(() => {
+                          setCoachAccounts(prev => prev.map(x => x.id === c.id ? { ...x, verified: true, verification_status: 'verified' } : x));
+                        }); }}>✓ Verify</button>
+                      {c.verification_document_url && <a href={c.verification_document_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: "2px 6px" }}>📎</a>}
+                    </>
                   )}
+                  {c.verified && (
+                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: "2px 6px" }}
+                      onClick={() => { if (window.confirm(`Revoke verified status for ${c.name}?`)) {
+                        supabase.from("coach_accounts").update({ verified: false, verification_status: 'none' }).eq("id", c.id).then(() => {
+                          setCoachAccounts(prev => prev.map(x => x.id === c.id ? { ...x, verified: false, verification_status: 'none' } : x));
+                        });
+                      }}}>Revoke</button>
+                  )}
+                  <button className="btn btn-danger btn-sm" style={{ fontSize: 10, padding: "2px 8px" }}
+                    onClick={() => { if (window.confirm(`Delete coach ${c.name || c.email}? This cannot be undone.`)) {
+                      supabase.from("coach_accounts").delete().eq("id", c.id).then(() => setCoachAccounts(prev => prev.filter(x => x.id !== c.id)));
+                    }}}>Delete</button>
                 </div>
               </div>
             </div>
@@ -8143,11 +8169,34 @@ function ClubAdminTab({ supabase }) {
   };
 
   const filteredClubs = clubs.filter(c => filter === "all" || c.status === filter);
+  const [viewTab, setViewTab] = useState(pending.length > 0 ? "pending" : "clubs");
 
   return (
     <div>
+      {/* Sub-tabs */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "2px solid var(--border)" }}>
+        {[
+          { id: "pending", label: `Pending Claims${pending.length > 0 ? ` (${pending.length})` : ""}` },
+          { id: "clubs", label: `All Clubs (${clubs.length})` },
+          { id: "history", label: `Claim History (${resolved.length})` },
+        ].map(t => (
+          <button key={t.id} onClick={() => setViewTab(t.id)}
+            style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              border: "none", background: "none", fontFamily: "inherit",
+              color: viewTab === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: viewTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -2 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {/* Pending claims */}
-      {pending.length > 0 && (
+      {viewTab === "pending" && (
+        <div>
+          {pending.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>✓ No pending club claims.</div>
+          ) : (
         <div className="mb-4">
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
             ⏳ Pending Claims ({pending.length})
@@ -8187,13 +8236,13 @@ function ClubAdminTab({ supabase }) {
             </div>
           ))}
         </div>
+          )}
+        </div>
       )}
 
-      {pending.length === 0 && clubs.filter(c => c.status === "pending_claim").length === 0 && (
-        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending club claims.</div>
-      )}
-
-      {/* All clubs with filter */}
+      {/* All clubs */}
+      {viewTab === "clubs" && (
+        <div>
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
           All Clubs ({clubs.length})
@@ -8298,6 +8347,39 @@ function ClubAdminTab({ supabase }) {
                 style={{ fontSize: 10 }}>{c.status}</span>
             </div>
           ))}
+        </div>
+      )}
+        </div>
+      )}
+
+      {/* Claim History */}
+      {viewTab === "history" && (
+        <div>
+          {resolved.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>No claim history.</div>
+          ) : (
+            <div className="flex-col gap-2">
+              {resolved.map(c => (
+                <div key={c.id} className="card-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)" }}>{c.clubs?.name || "Unknown club"}</div>
+                      <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
+                        Claimed by: {c.coach_accounts?.name || "Unknown"}{c.coach_accounts?.email ? ` · ${c.coach_accounts.email}` : ""}
+                      </div>
+                      {c.message && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, fontStyle: "italic" }}>"{c.message}"</div>}
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <span className={`badge ${c.status === 'approved' ? 'badge-green' : 'badge-warn'}`} style={{ fontSize: 10 }}>
+                        {c.status === 'approved' ? '✓ Approved' : '✗ Denied'}
+                      </span>
+                      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{fmtDate(c.created_at)}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
