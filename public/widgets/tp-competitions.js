@@ -146,8 +146,12 @@
   .card-action {
     padding: 14px 16px;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 6px;
     flex-shrink: 0;
+    min-width: 130px;
   }
 
   .btn-add {
@@ -160,20 +164,23 @@
     text-decoration: none;
     white-space: nowrap;
     transition: background .15s;
+    text-align: center;
   }
   .btn-add:hover { background: var(--teal-dark); color: #fff; }
 
   .btn-claim {
     display: block;
-    margin-top: 6px;
     font-size: 11px;
     font-weight: 600;
     color: var(--slate);
     text-decoration: none;
     text-align: center;
-    transition: color .15s;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    transition: color .15s, border-color .15s;
   }
-  .btn-claim:hover { color: var(--teal); }
+  .btn-claim:hover { color: var(--teal); border-color: var(--teal); }
 
   .loading {
     text-align: center;
@@ -223,7 +230,15 @@
   .footer-cta a:hover { background: #1e293b; color: #fff; }
 
   @media (max-width: 480px) {
-    .card-action { display: none; }
+    .card { flex-direction: column; }
+    .card-action {
+      flex-direction: row;
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      min-width: unset;
+    }
+    .btn-add { flex: 1; }
+    .btn-claim { flex-shrink: 0; }
     .card-name { font-size: 15px; }
   }
 `,p=["USTA","NBTA","TU","DMA"],f=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];class g extends HTMLElement{constructor(){super(),this.attachShadow({mode:"open"}),this._org="",this._state=""}connectedCallback(){this._org=this.dataset.org??"",this._state=this.dataset.state??"",this._limit=parseInt(this.dataset.limit??"6",10),this._dir=this.dataset.directory??"https://directory.twirlpower.com",this._appUrl=this.dataset.app??"https://app.twirlpower.com",this.render(),this.fetchAndDisplay()}render(){this.shadowRoot.innerHTML=`

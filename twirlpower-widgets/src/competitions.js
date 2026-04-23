@@ -151,8 +151,12 @@ const STYLES = `
   .card-action {
     padding: 14px 16px;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 6px;
     flex-shrink: 0;
+    min-width: 130px;
   }
 
   .btn-add {
@@ -165,20 +169,23 @@ const STYLES = `
     text-decoration: none;
     white-space: nowrap;
     transition: background .15s;
+    text-align: center;
   }
   .btn-add:hover { background: var(--teal-dark); color: #fff; }
 
   .btn-claim {
     display: block;
-    margin-top: 6px;
     font-size: 11px;
     font-weight: 600;
     color: var(--slate);
     text-decoration: none;
     text-align: center;
-    transition: color .15s;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    transition: color .15s, border-color .15s;
   }
-  .btn-claim:hover { color: var(--teal); }
+  .btn-claim:hover { color: var(--teal); border-color: var(--teal); }
 
   .loading {
     text-align: center;
@@ -228,7 +235,15 @@ const STYLES = `
   .footer-cta a:hover { background: #1e293b; color: #fff; }
 
   @media (max-width: 480px) {
-    .card-action { display: none; }
+    .card { flex-direction: column; }
+    .card-action {
+      flex-direction: row;
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      min-width: unset;
+    }
+    .btn-add { flex: 1; }
+    .btn-claim { flex-shrink: 0; }
     .card-name { font-size: 15px; }
   }
 `;
