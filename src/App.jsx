@@ -2497,6 +2497,9 @@ export default function App() {
         modals={modals}
         coachCreateCompetition={coachCreateCompetition}
         publicCompetitions={publicCompetitions}
+        competitionHosts={competitionHosts}
+        setActiveCompetitionId={setActiveCompetitionId}
+        setActiveDirectorId={setActiveDirectorId}
       />
     );
   }
@@ -3215,7 +3218,8 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
   coachClubs, setCoachClubs, coachClubClaims, setCoachClubClaims,
   pendingClubMembers, setPendingClubMembers,
   invites, progress, darkMode, setDarkMode, isAdmin, onSignOut, supabase, loadCoachData,
-  page, setPage, openModal, closeModal, modals, coachCreateCompetition, publicCompetitions }) {
+  page, setPage, openModal, closeModal, modals, coachCreateCompetition, publicCompetitions,
+  competitionHosts, setActiveCompetitionId, setActiveDirectorId }) {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTwirlerId, setActiveTwirlerId] = useState(twirlers[0]?.id || null);
@@ -5061,7 +5065,7 @@ function CoachVerificationCard({ coachAccount, setCoachAccount, supabase }) {
 
 // ─── ADMIN COMPETITIONS TAB ──────────────────────────────────────────────────
 
-function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePublicCompetition, updatePublicCompetition, unclaimCompetition, supabase }) {
+function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePublicCompetition, updatePublicCompetition, unclaimCompetition, supabase, competitionClaims, setCompetitionClaims, approveCompetitionClaim, denyCompetitionClaim }) {
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -5069,7 +5073,7 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
   const [filterState, setFilterState] = useState("");
   const [sortBy, setSortBy] = useState("date"); // "date" | "state" | "name"
   const [compPage, setCompPage] = useState(0);
-  const [viewTab, setViewTab] = useState("competitions"); // "competitions" | "claims"
+  const [viewTab, setViewTab] = useState(competitionClaims?.length > 0 ? "pending" : "competitions"); // "pending" | "competitions" | "history"
   const [claimHistory, setClaimHistory] = useState([]);
   const [claimSearch, setClaimSearch] = useState("");
   const [claimPage, setClaimPage] = useState(0);
@@ -5219,7 +5223,11 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
     <div>
       {/* Sub-tabs */}
       <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "2px solid var(--border)" }}>
-        {[{ id: "competitions", label: `Competitions (${publicCompetitions.length})` }, { id: "claims", label: `Claim History (${claimHistory.length})` }].map(t => (
+        {[
+          { id: "pending", label: `Pending Claims${(competitionClaims || []).length > 0 ? ` (${competitionClaims.length})` : ""}` },
+          { id: "competitions", label: `All Competitions (${publicCompetitions.length})` },
+          { id: "history", label: `Claim History (${claimHistory.length})` },
+        ].map(t => (
           <button key={t.id} onClick={() => setViewTab(t.id)}
             style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer",
               border: "none", background: "none", fontFamily: "inherit",
@@ -5230,6 +5238,62 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
           </button>
         ))}
       </div>
+
+      {viewTab === "pending" && (
+        <div>
+          {(competitionClaims || []).length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>✓ No pending competition claims.</div>
+          ) : (
+            <div className="flex-col gap-3">
+              {competitionClaims.map(claim => {
+                const comp = publicCompetitions.find(c => c.id === claim.competition_id);
+                const claimHost = competitionHosts.find(h => h.user_id === claim.user_id);
+                return (
+                  <div key={claim.id} className="card-sm" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+                    <div className="flex items-start gap-3">
+                      <div className="avatar" style={{ background: "#fef3c7", color: "#92400e", flexShrink: 0 }}>🏆</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>
+                          Claim for: {comp?.name || "Unknown competition"}
+                        </div>
+                        {comp && <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>{fmtDate(comp.date)}{comp.state ? ` · ${normalizeState(comp.state) || comp.state}` : ""}</div>}
+                        <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 4 }}>
+                          Claimant: {claimHost?.name || `User ${claim.user_id?.slice(0, 8)}...`}
+                          {claimHost?.email && <span style={{ color: "var(--muted)" }}> · {claimHost.email}</span>}
+                        </div>
+                        {claim.message && (
+                          <div style={{ fontSize: 13, color: "var(--navy)", marginTop: 8, padding: "8px 12px", background: "#f8fafc", borderRadius: 6, lineHeight: 1.6 }}>
+                            "{claim.message}"
+                          </div>
+                        )}
+                        {claim.document_url && (
+                          <a href={claim.document_url} target="_blank" rel="noreferrer"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 12, color: "var(--brand)", fontWeight: 600 }}>
+                            📎 View attached document
+                          </a>
+                        )}
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Submitted {fmtDate(claim.created_at)}</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
+                      <button className="btn btn-primary btn-sm" onClick={async () => {
+                        await approveCompetitionClaim(claim.id, claim.competition_id, claim.user_id);
+                        setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
+                      }}>✓ Approve & Link</button>
+                      <button className="btn btn-danger btn-sm" onClick={async () => {
+                        if (window.confirm("Deny this claim?")) {
+                          await denyCompetitionClaim(claim.id);
+                          setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
+                        }
+                      }}>Deny</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {viewTab === "competitions" && (
         <div>
@@ -5278,7 +5342,7 @@ function AdminCompetitionsTab({ publicCompetitions, competitionHosts, deletePubl
         </div>
       )}
 
-      {viewTab === "claims" && (
+      {viewTab === "history" && (
         <div>
           <div style={{ position: "relative", marginBottom: 16 }}>
             <input className="input" value={claimSearch} onChange={e => { setClaimSearch(e.target.value); setClaimPage(0); }}
@@ -7576,7 +7640,7 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
 // ─── ADMIN PAGE ──────────────────────────────────────────────────────────────
 
 function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, familyAccount, competitionHosts, approveHost, supabase, isAdmin, setPage, previewRole, setPreviewRole, publicCompetitions, deletePublicCompetition, updatePublicCompetition, approveCompetitionClaim, denyCompetitionClaim, unclaimCompetition }) {
-  const [tab, setTab] = useState("hosts");
+  const [tab, setTab] = useState("competitions");
   const [competitionClaims, setCompetitionClaims] = useState([]);
 
   // Load competition claims
@@ -7588,10 +7652,11 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
   const pendingHosts = (competitionHosts || []).filter(h => !h.approved);
   const approvedHosts = (competitionHosts || []).filter(h => h.approved);
 
+  const pendingBadge = (count) => count > 0 ? ` (${count})` : "";
+
   const tabs = [
-    { id: "hosts", label: `Director Approvals${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
-    { id: "claims", label: `Competition Claims${competitionClaims.length > 0 ? ` (${competitionClaims.length})` : ""}` },
-    { id: "competitions", label: `Competitions (${(publicCompetitions || []).length})` },
+    { id: "competitions", label: `Competitions${pendingBadge(competitionClaims.length)}` },
+    { id: "directors", label: `Directors${pendingBadge(pendingHosts.length)}` },
     { id: "clubs", label: "Clubs" },
     { id: "accounts", label: "Accounts" },
     { id: "data", label: "Data Overview" },
@@ -7609,15 +7674,12 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
         </div>
       </div>
 
-      {/* ── TABS ── */}
-
-      {/* ── TABS ── */}
       <div className="card">
-        <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0 }}>
+        <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)", paddingBottom: 0, overflowX: "auto" }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               style={{ padding: "6px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", border: "none",
-                background: "none", fontFamily: "inherit",
+                background: "none", fontFamily: "inherit", whiteSpace: "nowrap",
                 color: tab === t.id ? "var(--brand)" : "var(--slate)",
                 borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
                 marginBottom: -1 }}>
@@ -7626,148 +7688,7 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
           ))}
         </div>
 
-        {/* HOST APPROVALS */}
-        {tab === "hosts" && (
-          <div>
-            <div className="alert alert-info mb-4">
-              <Icon name="info" size={14} color="var(--brand)" />
-              <span style={{ fontSize: 12 }}>Once approved, directors retain access permanently. Phase 2: approval notifications via email.</span>
-            </div>
-            {pendingHosts.length === 0 && (
-              <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>✓ No pending director approvals.</div>
-            )}
-            {pendingHosts.length > 0 && (
-              <div className="mb-4">
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-                  ⏳ Pending ({pendingHosts.length})
-                </div>
-                {pendingHosts.map(h => (
-                  <div key={h.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
-                    <div className="flex items-start gap-3">
-                      <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(h.name)}</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
-                        {h.organization && <div style={{ fontSize: 12, color: "var(--slate)" }}>🏆 {h.organization}</div>}
-                        {h.email && <div style={{ fontSize: 12, color: "var(--slate)" }}>📧 {h.email}</div>}
-                        {h.phone && <div style={{ fontSize: 12, color: "var(--slate)" }}>📞 {h.phone}</div>}
-                        {h.state && <div style={{ fontSize: 12, color: "var(--slate)" }}>📍 {h.state}</div>}
-                        {h.notes && <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{h.notes}"</div>}
-                        {h.document_url && (
-                          <a href={h.document_url} target="_blank" rel="noreferrer"
-                            style={{ fontSize: 12, color: "var(--brand)", display: "inline-block", marginTop: 4 }}>
-                            📎 View attached document
-                          </a>
-                        )}
-                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt)}</div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
-                      <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
-                      <button className="btn btn-danger btn-sm"
-                        onClick={() => {
-                          if (window.confirm(`Delete director registration for ${h.name}?`)) {
-                            supabase.from("competition_hosts").delete().eq("id", h.id);
-                          }
-                        }}>Delete</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {approvedHosts.length > 0 && (
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-                  ✓ Approved Directors ({approvedHosts.length})
-                </div>
-                {approvedHosts.map(h => (
-                  <div key={h.id} className="card-sm mb-2" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
-                    <div className="flex items-center gap-3">
-                      <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#bbf7d0", color: "#166534" }}>{initials(h.name)}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
-                        <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[h.organization, h.email, h.state].filter(Boolean).join(" · ")}</div>
-                      </div>
-                      <span className="badge badge-green" style={{ fontSize: 10, flexShrink: 0 }}>Approved</span>
-                    </div>
-                    <div className="flex gap-2" style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #bbf7d0" }}>
-                      <button className="btn btn-secondary btn-sm"
-                        onClick={() => {
-                          if (window.confirm(`Revoke director access for ${h.name}?`)) {
-                            supabase.from("competition_hosts").update({ approved: false }).eq("id", h.id);
-                            setCompetitionHosts(prev => prev.map(x => x.id === h.id ? { ...x, approved: false } : x));
-                          }
-                        }}
-                        style={{ fontSize: 10, padding: "4px 10px" }}>Revoke</button>
-                      <button className="btn btn-danger btn-sm"
-                        onClick={() => {
-                          if (window.confirm(`Delete director registration for ${h.name}? This cannot be undone.`)) {
-                            supabase.from("competition_hosts").delete().eq("id", h.id);
-                            setCompetitionHosts(prev => prev.filter(x => x.id !== h.id));
-                          }
-                        }}
-                        style={{ fontSize: 10, padding: "4px 10px" }}>Delete</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* COMPETITION CLAIMS */}
-        {tab === "claims" && (
-          <div>
-            {competitionClaims.length === 0 ? (
-              <div style={{ fontSize: 13, color: "var(--muted)" }}>✓ No pending competition claims.</div>
-            ) : (
-              <div className="flex-col gap-3">
-                {competitionClaims.map(claim => {
-                  const comp = (publicCompetitions || []).find(c => c.id === claim.competition_id);
-                  return (
-                    <div key={claim.id} className="card-sm" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
-                      <div className="flex items-start gap-3">
-                        <div className="avatar" style={{ background: "#fef3c7", color: "#92400e", flexShrink: 0 }}>🏆</div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>
-                            Claim for: {comp?.name || "Unknown competition"}
-                          </div>
-                          {comp && <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>{fmtDate(comp.date)}{comp.state ? ` · ${comp.state}` : ""}</div>}
-                          <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 4 }}>Claimant user ID: {claim.user_id?.slice(0, 8)}...</div>
-                          {claim.message && (
-                            <div style={{ fontSize: 13, color: "var(--navy)", marginTop: 8, padding: "8px 12px", background: "#f8fafc", borderRadius: 6, lineHeight: 1.6 }}>
-                              "{claim.message}"
-                            </div>
-                          )}
-                          {claim.document_url && (
-                            <a href={claim.document_url} target="_blank" rel="noreferrer"
-                              style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 12, color: "var(--brand)", fontWeight: 600 }}>
-                              📎 View attached document
-                            </a>
-                          )}
-                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Submitted {fmtDate(claim.created_at)}</div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
-                        <button className="btn btn-primary btn-sm" onClick={async () => {
-                          await approveCompetitionClaim(claim.id, claim.competition_id, claim.user_id);
-                          setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
-                        }}>✓ Approve & Link</button>
-                        <button className="btn btn-danger btn-sm" onClick={async () => {
-                          if (window.confirm("Deny this claim?")) {
-                            await denyCompetitionClaim(claim.id);
-                            setCompetitionClaims(prev => prev.filter(c => c.id !== claim.id));
-                          }
-                        }}>Deny</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* COMPETITIONS */}
+        {/* ══ COMPETITIONS TAB ══ */}
         {tab === "competitions" && (
           <AdminCompetitionsTab
             publicCompetitions={publicCompetitions || []}
@@ -7776,28 +7697,359 @@ function AdminPage({ activeTwirler, twirlers, competitions, results, coaches, fa
             updatePublicCompetition={updatePublicCompetition}
             unclaimCompetition={unclaimCompetition}
             supabase={supabase}
+            competitionClaims={competitionClaims}
+            setCompetitionClaims={setCompetitionClaims}
+            approveCompetitionClaim={approveCompetitionClaim}
+            denyCompetitionClaim={denyCompetitionClaim}
           />
         )}
 
-        {/* STUDIOS */}
+        {/* ══ DIRECTORS TAB ══ */}
+        {tab === "directors" && (
+          <AdminDirectorsTab
+            competitionHosts={competitionHosts || []}
+            pendingHosts={pendingHosts}
+            approvedHosts={approvedHosts}
+            approveHost={approveHost}
+            publicCompetitions={publicCompetitions || []}
+            supabase={supabase}
+          />
+        )}
+
+        {/* ══ CLUBS TAB ══ */}
         {tab === "clubs" && (
           <ClubAdminTab supabase={supabase} />
         )}
 
-        {/* ACCOUNTS */}
+        {/* ══ ACCOUNTS TAB ══ */}
         {tab === "accounts" && (
-          <AccountsTab supabase={supabase} currentFamilyAccount={familyAccount} twirlers={twirlers} />
+          <AdminAccountsTab
+            familyAccount={familyAccount}
+            twirlers={twirlers}
+            coaches={coaches}
+            supabase={supabase}
+            competitionHosts={competitionHosts}
+            setPage={setPage}
+          />
         )}
 
-        {/* DATA OVERVIEW */}
+        {/* ══ DATA OVERVIEW TAB ══ */}
         {tab === "data" && (
-          <DataOverviewTab supabase={supabase} competitionHosts={competitionHosts} pendingHosts={pendingHosts} setPage={setPage} />
+          <AdminDataOverviewTab supabase={supabase} competitionHosts={competitionHosts} publicCompetitions={publicCompetitions} twirlers={twirlers} coaches={coaches} setTab={setTab} />
         )}
       </div>
     </div>
   );
 }
 
+// ─── ADMIN DIRECTORS TAB ─────────────────────────────────────────────────────
+
+function AdminDirectorsTab({ competitionHosts, pendingHosts, approvedHosts, approveHost, publicCompetitions, supabase }) {
+  const [subTab, setSubTab] = useState(pendingHosts.length > 0 ? "pending" : "all");
+  const [setCompetitionHosts] = [() => {}]; // placeholder — host state managed by parent
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
+        {[
+          { id: "pending", label: `Pending${pendingHosts.length > 0 ? ` (${pendingHosts.length})` : ""}` },
+          { id: "all", label: `All Directors (${competitionHosts.length})` },
+        ].map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)}
+            style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer", border: "none",
+              background: "none", fontFamily: "inherit",
+              color: subTab === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: subTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -1 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "pending" && (
+        <div>
+          {pendingHosts.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>✓ No pending director approvals.</div>
+          ) : pendingHosts.map(h => (
+            <div key={h.id} className="card-sm mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+              <div className="flex items-start gap-3">
+                <div className="avatar" style={{ background: "#fef3c7", color: "#92400e" }}>{initials(h.name)}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{h.name}</div>
+                  {h.organization && <div style={{ fontSize: 12, color: "var(--slate)" }}>🏆 {h.organization}</div>}
+                  {h.email && <div style={{ fontSize: 12, color: "var(--slate)" }}>📧 {h.email}</div>}
+                  {h.phone && <div style={{ fontSize: 12, color: "var(--slate)" }}>📞 {h.phone}</div>}
+                  {h.state && <div style={{ fontSize: 12, color: "var(--slate)" }}>📍 {h.state}</div>}
+                  {h.bio && <div style={{ fontSize: 12, color: "var(--slate)", fontStyle: "italic", marginTop: 4 }}>"{h.bio}"</div>}
+                  {h.document_url && (
+                    <a href={h.document_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--brand)", display: "inline-block", marginTop: 4 }}>📎 View document</a>
+                  )}
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Registered {fmtDate(h.createdAt || h.created_at)}</div>
+                </div>
+              </div>
+              <div className="flex gap-2" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #fed7aa" }}>
+                <button className="btn btn-primary btn-sm" onClick={() => approveHost(h.id)}>✓ Approve</button>
+                <button className="btn btn-danger btn-sm" onClick={() => {
+                  if (window.confirm(`Delete director registration for ${h.name}?`)) {
+                    supabase.from("competition_hosts").delete().eq("id", h.id);
+                  }
+                }}>Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {subTab === "all" && (
+        <div>
+          {competitionHosts.map(h => {
+            const compCount = publicCompetitions.filter(c => (c.hostId || c.host_id) === h.id).length;
+            return (
+              <div key={h.id} className="card-sm mb-2" style={{ background: h.approved ? "#f0fdf4" : "#fff7ed", border: `1px solid ${h.approved ? "#bbf7d0" : "#fed7aa"}` }}>
+                <div className="flex items-center gap-3">
+                  <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: h.approved ? "#bbf7d0" : "#fef3c7", color: h.approved ? "#166534" : "#92400e" }}>{initials(h.name)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, fontSize: 13 }}>{h.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {[h.email, h.organization, h.state].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 items-center" style={{ flexShrink: 0 }}>
+                    {compCount > 0 && <span style={{ fontSize: 11, color: "var(--slate)" }}>{compCount} comp{compCount !== 1 ? "s" : ""}</span>}
+                    <span className={`badge ${h.approved ? "badge-green" : "badge-amber"}`} style={{ fontSize: 10 }}>{h.approved ? "Approved" : "Pending"}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ADMIN ACCOUNTS TAB ──────────────────────────────────────────────────────
+
+function AdminAccountsTab({ familyAccount, twirlers, coaches, supabase, competitionHosts, setPage }) {
+  const [subTab, setSubTab] = useState("families");
+  const [familyAccounts, setFamilyAccounts] = useState([]);
+  const [allTwirlers, setAllTwirlers] = useState([]);
+  const [coachAccounts, setCoachAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: fams }, { data: tw }, { data: co }] = await Promise.all([
+        supabase.from('family_accounts').select('*').order('created_at', { ascending: false }),
+        supabase.from('twirlers').select('*').order('created_at', { ascending: false }),
+        supabase.from('coach_accounts').select('*').order('created_at', { ascending: false }),
+      ]);
+      setFamilyAccounts(fams || []);
+      setAllTwirlers(tw || []);
+      setCoachAccounts(co || []);
+      setLoading(false);
+    })();
+  }, []);
+
+  const clubOwnerIds = new Set((competitionHosts || []).filter(h => h.approved).map(h => h.user_id));
+
+  if (loading) return <div style={{ fontSize: 13, color: "var(--muted)" }}>Loading accounts...</div>;
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 0, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
+        {[
+          { id: "families", label: `Families (${familyAccounts.length})` },
+          { id: "twirlers", label: `Twirlers (${allTwirlers.length})` },
+          { id: "coaches", label: `Coaches (${coachAccounts.length})` },
+        ].map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)}
+            style={{ padding: "6px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer", border: "none",
+              background: "none", fontFamily: "inherit",
+              color: subTab === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: subTab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -1 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "families" && (
+        <div className="flex-col gap-2">
+          {familyAccounts.map(f => (
+            <div key={f.id} className="card-sm">
+              <div className="flex items-center gap-3">
+                <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "var(--brand)", color: "white" }}>{initials(f.parent_name || f.parentName || "?")}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, fontSize: 13 }}>{f.parent_name || f.parentName || "—"}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.email}{f.state ? ` · ${f.state}` : ""}</div>
+                </div>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(f.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {subTab === "twirlers" && (
+        <div className="flex-col gap-2">
+          {allTwirlers.map(t => (
+            <div key={t.id} className="card-sm">
+              <div className="flex items-center gap-3">
+                <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#e0e7ff", color: "#4338ca" }}>{initials(t.first_name || t.firstName || "?")}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, fontSize: 13 }}>{t.first_name || t.firstName || "—"}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                    {(t.organizations || []).join(", ")}{t.club ? ` · ${t.club}` : ""}
+                  </div>
+                </div>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>{fmtDate(t.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {subTab === "coaches" && (
+        <div className="flex-col gap-2">
+          {coachAccounts.map(c => (
+            <div key={c.id} className="card-sm">
+              <div className="flex items-center gap-3">
+                <div className="avatar" style={{ width: 28, height: 28, fontSize: 10, background: "#fef3c7", color: "#92400e" }}>{initials(c.name || "?")}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                    {c.name || "—"}
+                    {c.verified && <span className="badge" style={{ fontSize: 9, background: "#f0fdfa", color: "#0d9488", border: "1px solid #99f6e4" }}>✓ Verified</span>}
+                    {c.verification_status === 'pending' && <span className="badge badge-amber" style={{ fontSize: 9 }}>⏳ Pending</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {c.email}{c.studio ? ` · ${c.studio}` : ""}{c.state ? ` · ${c.state}` : ""}
+                  </div>
+                </div>
+                <div className="flex gap-1 items-center" style={{ flexShrink: 0 }}>
+                  {(c.organizations || []).map(o => <span key={o} className="badge" style={{ fontSize: 9, background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>)}
+                  {c.verification_status === 'pending' && c.verification_document_url && (
+                    <a href={c.verification_document_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: 10, padding: "2px 6px" }}>📎</a>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ADMIN DATA OVERVIEW TAB ─────────────────────────────────────────────────
+
+function AdminDataOverviewTab({ supabase, competitionHosts, publicCompetitions, twirlers, coaches, setTab }) {
+  const [stats, setStats] = useState({});
+  const [bugReports, setBugReports] = useState([]);
+  const [betaFeedback, setBetaFeedback] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const [{ count: famCount }, { count: twCount }, { count: coachCount }, { count: compCount }, { data: bugs }, { data: feedback }] = await Promise.all([
+        supabase.from('family_accounts').select('id', { count: 'exact', head: true }),
+        supabase.from('twirlers').select('id', { count: 'exact', head: true }),
+        supabase.from('coach_accounts').select('id', { count: 'exact', head: true }),
+        supabase.from('public_competitions').select('id', { count: 'exact', head: true }),
+        supabase.from('bug_reports').select('*').order('created_at', { ascending: false }),
+        supabase.from('beta_feedback').select('*').order('created_at', { ascending: false }),
+      ]);
+      setStats({ families: famCount || 0, twirlers: twCount || 0, coaches: coachCount || 0, competitions: compCount || 0 });
+      setBugReports(bugs || []);
+      setBetaFeedback(feedback || []);
+      setLoading(false);
+    })();
+  }, []);
+
+  const pendingHosts = (competitionHosts || []).filter(h => !h.approved).length;
+  const totalHosts = (competitionHosts || []).length;
+
+  if (loading) return <div style={{ fontSize: 13, color: "var(--muted)" }}>Loading data...</div>;
+
+  const statCards = [
+    { emoji: "👨‍👩‍👧", label: "FAMILY ACCOUNTS", value: stats.families, action: () => setTab("accounts") },
+    { emoji: "👤", label: "COACH ACCOUNTS", value: stats.coaches, action: () => setTab("accounts") },
+    { emoji: "🧑", label: "TWIRLERS", value: stats.twirlers, action: () => setTab("accounts") },
+    { emoji: "🏆", label: "COMPETITIONS", value: stats.competitions, action: () => setTab("competitions") },
+    { emoji: "🏛", label: "HOSTS (TOTAL)", value: totalHosts, action: () => setTab("directors") },
+    { emoji: "⏳", label: "HOSTS (PENDING)", value: pendingHosts, action: () => setTab("directors"), highlight: pendingHosts > 0 },
+    { emoji: "🐛", label: "BUG REPORTS", value: bugReports.length, highlight: bugReports.length > 0 },
+    { emoji: "⭐", label: "BETA FEEDBACK", value: betaFeedback.length },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
+        {statCards.map((s, i) => (
+          <div key={i} onClick={s.action} className="card-sm" style={{
+            cursor: s.action ? "pointer" : "default", textAlign: "center", padding: "16px 12px",
+            border: s.highlight ? "2px solid var(--brand)" : "1px solid var(--border)",
+            background: s.highlight ? "var(--brand-light)" : "var(--card)",
+          }}>
+            <div style={{ fontSize: 24, marginBottom: 4 }}>{s.emoji}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: s.highlight ? "var(--brand)" : "var(--navy)" }}>{s.value}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bug Reports */}
+      {bugReports.length > 0 && (
+        <div className="mb-4">
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+            🐛 Bug Reports ({bugReports.length})
+          </div>
+          <div className="flex-col gap-2">
+            {bugReports.map(b => (
+              <div key={b.id} className="card-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6 }}>{b.message || b.description || "No description"}</div>
+                    {b.email && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>From: {b.email}</div>}
+                  </div>
+                  <div style={{ flexShrink: 0, textAlign: "right" }}>
+                    <div style={{ fontSize: 10, color: "var(--muted)" }}>{fmtDate(b.created_at)}</div>
+                    <button className="btn btn-ghost btn-sm" style={{ fontSize: 10, marginTop: 4 }}
+                      onClick={async () => {
+                        await supabase.from('bug_reports').delete().eq('id', b.id);
+                        setBugReports(prev => prev.filter(x => x.id !== b.id));
+                      }}>✓ Resolve</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Beta Feedback */}
+      {betaFeedback.length > 0 && (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+            ⭐ Beta Feedback ({betaFeedback.length})
+          </div>
+          <div className="flex-col gap-2">
+            {betaFeedback.map(f => (
+              <div key={f.id} className="card-sm">
+                <div style={{ fontSize: 13, color: "var(--navy)", lineHeight: 1.6 }}>{f.message || f.feedback || "No content"}</div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                  {f.email && `From: ${f.email} · `}{fmtDate(f.created_at)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── STUDIO ADMIN TAB ────────────────────────────────────────────────────────
 // ─── STUDIO ADMIN TAB ────────────────────────────────────────────────────────
 
 function ClubAdminTab({ supabase }) {
