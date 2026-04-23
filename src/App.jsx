@@ -1481,6 +1481,7 @@ export default function App() {
   const [guardianMode, setGuardianMode] = useState(null); // null | 'co-guardian' | 'viewer'
   const [activeTwirlerId, setActiveTwirlerId] = useLocalStorage("tp_active_twirler", null);
   const [page, setPage] = useLocalStorage("tp_page", "home");
+  const [activeCompetitionId, setActiveCompetitionId] = useState(null);
   const [modals, setModals] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useLocalStorage('tp_dark_mode', false);
@@ -2623,7 +2624,7 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage };
 
   return (
     <>
@@ -2686,6 +2687,7 @@ export default function App() {
         <div className="main">
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
           {page === "competitions" && <CompetitionsPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
+          {page === "competition-detail" && <CompetitionDetailPage {...pageProps} activeCompetitionId={activeCompetitionId} />}
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
           {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} authUser={authUser} supabase={supabase} />}
           {page === "coaches" && <CoachesPage {...pageProps} supabase={supabase} />}
@@ -5996,7 +5998,7 @@ function CompetitionsPage(props) {
   );
 }
 
-function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, openModal, deleteResult, deleteCompetition, updateResult, updateCompetition, competitions, addResultsToComp }) {
+function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, openModal, deleteResult, deleteCompetition, updateResult, updateCompetition, competitions, addResultsToComp, setPage, setActiveCompetitionId }) {
   const [filterOrg, setFilterOrg] = useState("");
   const [filterEvent, setFilterEvent] = useState("");
   const [filterSeason, setFilterSeason] = useState("");
@@ -6121,6 +6123,12 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                 : <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
               {wins > 0 && <span className="badge badge-amber">{wins} win{wins !== 1 ? "s" : ""}</span>}
               <span className="badge badge-gray">{compResults.length} event{compResults.length !== 1 ? "s" : ""}</span>
+              {publicCompetitions?.find(p => p.id === comp.id) && setActiveCompetitionId && (
+                <button className="btn btn-ghost btn-sm" title="View competition details"
+                  onClick={e => { e.stopPropagation(); setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
+                  <Icon name="chevron_right" size={13} color="var(--brand)" />
+                </button>
+              )}
               <button className="btn btn-ghost btn-sm" title="Edit competition"
                 onClick={e => { e.stopPropagation(); startEditComp(comp); setExpandedComp(comp.id); }}>
                 <Icon name="edit" size={13} color="var(--slate)" />
@@ -9626,7 +9634,344 @@ function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
   );
 }
 
-function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage, registerHost }) {
+// ─── COMPETITION DETAIL PAGE ─────────────────────────────────────────────────
+
+function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions }) {
+  const comp = publicCompetitions.find(c => c.id === activeCompetitionId) || twirlerComps.find(c => c.id === activeCompetitionId);
+  if (!comp) return <div className="empty-state"><h3>Competition not found</h3><button className="btn btn-secondary btn-sm" onClick={() => setPage("competitions")}>← Back</button></div>;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const endDate = comp.end_date || comp.endDate || comp.date;
+  const isToday = comp.date <= today && endDate >= today;
+  const isPast = endDate < today;
+  const isFuture = comp.date > today;
+
+  const defaultTab = isToday ? "my-competition" : isPast ? "results" : "overview";
+  const [tab, setTab] = useState(defaultTab);
+  const [copied, setCopied] = useState(false);
+
+  const host = competitionHosts?.find(h => h.id === (comp.hostId || comp.host_id));
+  const compAttendees = (attendees || []).filter(a => a.competitionId === activeCompetitionId);
+  const attending = activeTwirler && compAttendees.some(a => a.twirlerId === activeTwirler?.id);
+
+  // My competition data
+  const myResults = (twirlerResults || []).filter(r => r.competitionId === activeCompetitionId);
+  const org = ORGS[comp.orgId || comp.org_id];
+  const regularEvents = new Set(activeTwirler?.regularEvents || []);
+  const leveledEvents = org?.leveledEvents || [];
+  const allOrgEvents = (org?.eventCategories || []).flatMap(c => c.events);
+  const eventsToShow = [
+    ...leveledEvents.filter(e => regularEvents.has(e)),
+    ...allOrgEvents.filter(e => !leveledEvents.includes(e) && regularEvents.has(e)),
+  ];
+  const doneEvents = eventsToShow.filter(e => myResults.some(r => r.event === e));
+  const pendingEvents = eventsToShow.filter(e => !myResults.some(r => r.event === e));
+
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    { id: "my-competition", label: `My Events${myResults.length ? ` (${myResults.length})` : ""}` },
+    { id: "results", label: "Results" },
+  ];
+
+  const mapsUrl = comp.address ? `https://maps.google.com/?q=${encodeURIComponent([comp.address, comp.city, comp.state].filter(Boolean).join(", "))}` : null;
+
+  return (
+    <div>
+      {/* Back button */}
+      <button className="btn btn-ghost btn-sm mb-3" onClick={() => setPage("competitions")} style={{ fontSize: 12 }}>
+        ← Back to competitions
+      </button>
+
+      {/* Header */}
+      <div className="card mb-4" style={{ background: isToday ? "linear-gradient(135deg, var(--navy) 0%, var(--navy2) 100%)" : "var(--card)", border: isToday ? "none" : undefined }}>
+        {isToday && <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 6 }}>⚡ Competition Day</div>}
+        <div className="flex items-start justify-between gap-3" style={{ flexWrap: "wrap" }}>
+          <div>
+            <h2 className="serif" style={{ fontSize: 22, color: isToday ? "white" : "var(--navy)", marginBottom: 6 }}>{comp.name}</h2>
+            <div className="flex items-center gap-2 flex-wrap" style={{ marginBottom: 6 }}>
+              <span style={{ fontSize: 13, color: isToday ? "rgba(255,255,255,0.7)" : "var(--slate)" }}>
+                📅 {fmtDate(comp.date)}{endDate !== comp.date ? ` — ${fmtDate(endDate)}` : ""}
+              </span>
+              <span style={{ fontSize: 13, color: isToday ? "rgba(255,255,255,0.7)" : "var(--slate)" }}>
+                📍 {[comp.city, comp.state].filter(Boolean).join(", ") || "Location TBD"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {comp.orgId && <span className="badge" style={{ background: orgColor(comp.orgId) + "20", color: isToday ? "white" : orgColor(comp.orgId) }}>{comp.orgId}</span>}
+              {(comp.event_type || comp.eventType) && <span className="badge badge-gray" style={{ fontSize: 10 }}>{comp.event_type || comp.eventType}</span>}
+              {comp.sanctioned !== false && <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
+              {comp.sanctioned === false && <span className="badge badge-warn" style={{ fontSize: 10 }}>Unsanctioned</span>}
+            </div>
+          </div>
+          {isToday && eventsToShow.length > 0 && (
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 28, fontWeight: 700, color: doneEvents.length === eventsToShow.length ? "var(--brand)" : "white" }}>
+                {doneEvents.length}/{eventsToShow.length}
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>events logged</div>
+            </div>
+          )}
+        </div>
+        {isToday && eventsToShow.length > 0 && (
+          <div style={{ marginTop: 12, height: 6, background: isToday ? "rgba(255,255,255,0.15)" : "var(--border)", borderRadius: 999 }}>
+            <div style={{ height: "100%", borderRadius: 999, background: "var(--brand)",
+              width: `${Math.round((doneEvents.length / eventsToShow.length) * 100)}%`, transition: "width 0.4s" }} />
+          </div>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2 flex-wrap mb-4">
+        {activeTwirler && (
+          attending ? (
+            <button className="btn btn-secondary btn-sm" onClick={() => removeAttendee(activeCompetitionId, activeTwirler.id)}>✓ Attending · Remove</button>
+          ) : (
+            <button className="btn btn-primary btn-sm" onClick={() => addAttendee(activeCompetitionId, activeTwirler.id)}>+ Add to My Competitions</button>
+          )
+        )}
+        {mapsUrl && <a href={mapsUrl} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" onClick={e => e.stopPropagation()}>📍 Get Directions</a>}
+        <button className="btn btn-ghost btn-sm" onClick={() => {
+          navigator.clipboard.writeText(`https://app.twirlpower.com?comp=${activeCompetitionId}`);
+          setCopied(true); setTimeout(() => setCopied(false), 2000);
+        }}>{copied ? "✓ Copied" : "🔗 Share"}</button>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: "2px solid var(--border)" }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+              border: "none", background: "none", fontFamily: "inherit",
+              color: tab === t.id ? "var(--brand)" : "var(--slate)",
+              borderBottom: tab === t.id ? "2px solid var(--brand)" : "2px solid transparent",
+              marginBottom: -2 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── OVERVIEW TAB ── */}
+      {tab === "overview" && (
+        <div>
+          {comp.address && (
+            <div className="card-sm mb-3">
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Venue</div>
+              <div style={{ fontSize: 14, color: "var(--navy)" }}>{comp.address}</div>
+              {mapsUrl && <a href={mapsUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--brand)", fontWeight: 600 }}>Open in Google Maps →</a>}
+            </div>
+          )}
+
+          {(comp.contact_raw || comp.contactRaw || comp.contact_email || comp.contactEmail) && (
+            <div className="card-sm mb-3">
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Contact</div>
+              {(comp.contact_raw || comp.contactRaw) && <div style={{ fontSize: 14, color: "var(--navy)" }}>{comp.contact_raw || comp.contactRaw}</div>}
+              {(comp.contact_email || comp.contactEmail) && <a href={`mailto:${comp.contact_email || comp.contactEmail}`} style={{ fontSize: 13, color: "var(--brand)" }}>{comp.contact_email || comp.contactEmail}</a>}
+            </div>
+          )}
+
+          {(comp.sanction_number || comp.sanctionNumber) && (
+            <div className="card-sm mb-3">
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Sanction</div>
+              <div style={{ fontSize: 14, color: "var(--navy)" }}>#{comp.sanction_number || comp.sanctionNumber}</div>
+            </div>
+          )}
+
+          {host && (
+            <div className="card-sm mb-3">
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Director</div>
+              <div style={{ fontSize: 14, color: "var(--navy)" }}>{host.name}{host.organization ? ` · ${host.organization}` : ""}</div>
+            </div>
+          )}
+
+          {comp.info && (
+            <div className="card-sm mb-3">
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Details</div>
+              <div style={{ fontSize: 14, color: "var(--navy)", lineHeight: 1.7 }}>{comp.info}</div>
+            </div>
+          )}
+
+          {compAttendees.length > 0 && (
+            <div className="card-sm mb-3">
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Attending ({compAttendees.length})</div>
+              <div className="flex gap-2 flex-wrap">
+                {compAttendees.map((a, i) => {
+                  const t = twirlers.find(tw => tw.id === a.twirlerId);
+                  return t ? (
+                    <span key={i} style={{ fontSize: 12, padding: "4px 10px", background: "#f0fdf4", borderRadius: 20, fontWeight: 500 }}>
+                      {t.firstName}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          )}
+
+          {!comp.hostId && !comp.host_id && (
+            <div className="card-sm mb-3" style={{ background: "#fefce8", border: "1px solid #fde68a" }}>
+              <div style={{ fontSize: 13, color: "#854d0e" }}>
+                This competition doesn't have a linked director.
+                <a href={`https://app.twirlpower.com?claim=${activeCompetitionId}`} style={{ color: "var(--brand)", fontWeight: 600, marginLeft: 6 }}>
+                  🏆 Claim this competition
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── MY COMPETITION TAB ── */}
+      {tab === "my-competition" && (
+        <div>
+          {!activeTwirler ? (
+            <div className="card"><div className="empty-state"><h3>No twirler selected</h3><p>Select a twirler to see their events.</p></div></div>
+          ) : !attending && !myResults.length ? (
+            <div className="card">
+              <div className="empty-state">
+                <div style={{ fontSize: 36, marginBottom: 12 }}>🏆</div>
+                <h3>Not attending this competition</h3>
+                <p>Add this competition to your list to start tracking events.</p>
+                <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => addAttendee(activeCompetitionId, activeTwirler.id)}>
+                  + Add to My Competitions
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              {/* Event cards — reuses Competitor's Edge pattern */}
+              {eventsToShow.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                  {[...pendingEvents, ...doneEvents].map(event => {
+                    const isDone = myResults.some(r => r.event === event);
+                    const result = myResults.find(r => r.event === event);
+                    const prog = progress?.[comp.orgId || comp.org_id]?.[event];
+                    const level = prog?.currentLevel || (activeTwirler.classificationState?.[`${comp.orgId || comp.org_id}__${event}`]?.level) || "Novice";
+
+                    return (
+                      <div key={event} onClick={() => !isDone && openModal("addResults", { competitionId: activeCompetitionId, prefillEvent: event, prefillLevel: level })}
+                        style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px",
+                          background: isDone ? "#f0fdf4" : "var(--card)", border: `1px solid ${isDone ? "#86efac" : "var(--border)"}`,
+                          borderRadius: 10, cursor: isDone ? "default" : "pointer", opacity: isDone ? 0.85 : 1 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
+                          background: isDone ? "#dcfce7" : "var(--brand-light)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: isDone ? 20 : 14, fontWeight: 700, color: isDone ? "#16a34a" : "var(--brand)" }}>
+                          {isDone ? "✓" : event.slice(0, 2)}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: isDone ? "#166534" : "var(--navy)" }}>{event}</div>
+                          <div style={{ fontSize: 12, color: isDone ? "#16a34a" : "var(--slate)", marginTop: 2 }}>
+                            {isDone
+                              ? `${result?.placement ? `${result.placement}${["st","nd","rd"][result.placement-1]||"th"} place` : "Logged"}${result?.score != null ? ` · ${result.score.toFixed(1)}` : ""} · ${level}`
+                              : `${level} · ${isFuture ? "upcoming" : "tap to log result"}`}
+                          </div>
+                        </div>
+                        {!isDone && !isFuture && (
+                          <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--brand)",
+                            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            <Icon name="plus" size={14} color="white" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="card mb-4">
+                  <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", padding: "16px 0" }}>
+                    No regular events set for {comp.orgId || comp.org_id}. Add events to your twirler's profile or use the button below.
+                  </p>
+                </div>
+              )}
+
+              {!isFuture && (
+                <button className="btn btn-secondary w-full mb-4" onClick={() => openModal("addResults", { competitionId: activeCompetitionId })}>
+                  <Icon name="plus" size={13} /> Log Another Event
+                </button>
+              )}
+
+              {/* Show all results for this competition */}
+              {myResults.length > 0 && eventsToShow.length === 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {myResults.map(r => (
+                    <div key={r.id} className="card-sm" style={{ padding: "10px 14px" }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>{r.event}</div>
+                      <div className="flex gap-2 flex-wrap">
+                        <span className="badge badge-gray" style={{ fontSize: 10 }}>{r.classificationLevelEntered}</span>
+                        {r.placement && <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)", fontSize: 10 }}>
+                          {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
+                        </span>}
+                        {r.score != null && <span style={{ fontSize: 12, color: "var(--slate)" }}>Score: {r.score.toFixed(1)}</span>}
+                        {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9 }}>All Catch</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── RESULTS TAB ── */}
+      {tab === "results" && (
+        <div>
+          {myResults.length > 0 ? (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
+                {activeTwirler?.firstName}'s Results
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {myResults.map(r => (
+                  <div key={r.id} className="card-sm" style={{ padding: "10px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>{r.event}</div>
+                        <div className="flex gap-2 flex-wrap">
+                          <span className="badge badge-gray" style={{ fontSize: 10 }}>{r.classificationLevelEntered}</span>
+                          {r.placement && <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)", fontSize: 10 }}>
+                            {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
+                          </span>}
+                          {r.score != null && <span style={{ fontSize: 12, color: "var(--slate)" }}>Score: {r.score.toFixed(1)}</span>}
+                          {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9 }}>All Catch</span>}
+                        </div>
+                        {r.scorecardUrl && (
+                          <a href={r.scorecardUrl} target="_blank" rel="noopener noreferrer"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6,
+                              fontSize: 12, color: "var(--brand)", fontWeight: 600, textDecoration: "none",
+                              padding: "4px 10px", background: "var(--brand-light)", borderRadius: 6 }}>
+                            📄 View Scorecard
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="empty-state">
+                <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
+                <h3>{isPast ? "No results logged" : "Results will appear here"}</h3>
+                <p>{isPast ? "Add your results from this competition." : "Log your results during or after the competition."}</p>
+                {isPast && activeTwirler && (
+                  <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }}
+                    onClick={() => openModal("addResults", { competitionId: activeCompetitionId })}>
+                    + Add Results
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── UPCOMING COMPETITIONS PAGE ──────────────────────────────────────────────
+
+function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage, registerHost, setActiveCompetitionId }) {
   const [directorModal, setDirectorModal] = useState(null); // null | 'confirm' | 'form' | 'done'
   const [filterState, setFilterState] = useState(familyAccount?.state || "");
   const [filterOrg, setFilterOrg] = useState("");
@@ -9703,21 +10048,35 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
             const host = competitionHosts.find(h => h.id === comp.hostId);
             const count = attendeeCount(comp.id);
             return (
-              <div key={comp.id} className="card" style={{ borderLeft: `4px solid ${orgColor(comp.orgId)}` }}>
+              <div key={comp.id} className="card" style={{ borderLeft: `4px solid ${orgColor(comp.orgId)}`, cursor: "pointer" }}
+                onClick={() => { setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span style={{ fontWeight: 700, fontSize: 16 }}>{comp.name}</span>
                     {comp.sanctioned !== false && <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
                     {comp.sanctioned === false && <span className="badge badge-warn" style={{ fontSize: 10 }}>Unsanctioned</span>}
+                    {(comp.event_type || comp.eventType) && <span className="badge badge-gray" style={{ fontSize: 10 }}>{comp.event_type || comp.eventType}</span>}
                   </div>
                   <div className="flex items-center gap-3 flex-wrap mb-2">
-                    <span style={{ fontSize: 13, color: "var(--slate)" }}>📅 {fmtDate(comp.date)}</span>
-                    {comp.state && <span style={{ fontSize: 13, color: "var(--slate)" }}>📍 {comp.state}</span>}
+                    <span style={{ fontSize: 13, color: "var(--slate)" }}>
+                      📅 {fmtDate(comp.date)}{(comp.end_date || comp.endDate) && comp.date !== (comp.end_date || comp.endDate) ? ` — ${fmtDate(comp.end_date || comp.endDate)}` : ""}
+                    </span>
+                    <span style={{ fontSize: 13, color: "var(--slate)" }}>📍 {[comp.city, comp.state].filter(Boolean).join(", ") || "Location TBD"}</span>
                     {comp.orgId && <span className="badge" style={{ background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
                   </div>
                   {comp.address && (
-                    <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
                       🏛 {comp.address}
+                      <a href={`https://maps.google.com/?q=${encodeURIComponent(comp.address + (comp.city ? ', ' + comp.city : '') + (comp.state ? ', ' + comp.state : ''))}`}
+                        target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                        style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
+                        Get Directions →
+                      </a>
+                    </div>
+                  )}
+                  {(comp.contact_email || comp.contactEmail || comp.contact_raw || comp.contactRaw) && (
+                    <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 6 }}>
+                      📞 {comp.contact_raw || comp.contactRaw || ""}{(comp.contact_raw || comp.contactRaw) && (comp.contact_email || comp.contactEmail) ? " · " : ""}{comp.contact_email || comp.contactEmail ? <a href={`mailto:${comp.contact_email || comp.contactEmail}`} style={{ color: "var(--brand)" }}>{comp.contact_email || comp.contactEmail}</a> : ""}
                     </div>
                   )}
                   {comp.info && (
