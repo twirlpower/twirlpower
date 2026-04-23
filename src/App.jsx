@@ -1502,6 +1502,7 @@ export default function App() {
   const [activeTwirlerId, setActiveTwirlerId] = useLocalStorage("tp_active_twirler", null);
   const [page, setPage] = useLocalStorage("tp_page", "home");
   const [activeCompetitionId, setActiveCompetitionId] = useState(null);
+  const [activeDirectorId, setActiveDirectorId] = useState(null);
   const [modals, setModals] = useState({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useLocalStorage('tp_dark_mode', false);
@@ -2663,7 +2664,7 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage, myCompetitionClaims };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage, myCompetitionClaims, setActiveDirectorId, activeDirectorId };
 
   return (
     <>
@@ -2727,6 +2728,7 @@ export default function App() {
           {page === "home" && <HomePage {...pageProps} setPage={setPage} />}
           {page === "competitions" && <CompetitionsPage {...pageProps} updateResult={updateResult} updateCompetition={updateCompetition} />}
           {page === "competition-detail" && <CompetitionDetailPage {...pageProps} activeCompetitionId={activeCompetitionId} />}
+          {page === "director-profile" && <DirectorPublicProfile {...pageProps} activeDirectorId={activeDirectorId} />}
           {page === "progress" && <ProgressPage {...pageProps} results={results} competitions={competitions} />}
           {page === "profile" && <ProfilePage {...pageProps} setFamilyAccount={setFamilyAccount} openModal={openModal} competitionHosts={competitionHosts} approveHost={approveHost} competitions={competitions} results={results} setTwirlers={setTwirlers} setCompetitions={setCompetitions} setResults={setResults} setCoaches={setCoaches} isAdmin={isAdmin} setPage={setPage} authUser={authUser} supabase={supabase} />}
           {page === "coaches" && <CoachesPage {...pageProps} supabase={supabase} />}
@@ -9670,7 +9672,7 @@ function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
 
 // ─── COMPETITION DETAIL PAGE ─────────────────────────────────────────────────
 
-function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions, myCompetitionClaims }) {
+function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions, myCompetitionClaims, setActiveDirectorId }) {
   const comp = publicCompetitions.find(c => c.id === activeCompetitionId) || twirlerComps.find(c => c.id === activeCompetitionId);
   if (!comp) return <div className="empty-state"><h3>Competition not found</h3><button className="btn btn-secondary btn-sm" onClick={() => setPage("competitions")}>← Back</button></div>;
 
@@ -9811,9 +9813,15 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
           )}
 
           {host && (
-            <div className="card-sm mb-3">
+            <div className="card-sm mb-3" style={{ cursor: "pointer" }} onClick={() => { setActiveDirectorId(host.id); setPage("director-profile"); }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Director</div>
-              <div style={{ fontSize: 14, color: "var(--navy)" }}>{host.name}{host.organization ? ` · ${host.organization}` : ""}</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <span style={{ fontSize: 14, color: "var(--brand)", fontWeight: 600 }}>{host.name}</span>
+                  {host.organization && <span style={{ fontSize: 13, color: "var(--slate)", marginLeft: 6 }}>· {host.organization}</span>}
+                </div>
+                <Icon name="chevron_right" size={14} color="var(--brand)" />
+              </div>
             </div>
           )}
 
@@ -10014,9 +10022,132 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   );
 }
 
+// ─── DIRECTOR PUBLIC PROFILE ─────────────────────────────────────────────────
+
+function DirectorPublicProfile({ activeDirectorId, competitionHosts, publicCompetitions, attendees, setPage, setActiveCompetitionId }) {
+  const host = competitionHosts.find(h => h.id === activeDirectorId);
+  if (!host) return <div className="empty-state"><h3>Director not found</h3><button className="btn btn-secondary btn-sm" onClick={() => setPage("competitions")}>← Back</button></div>;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const directorComps = publicCompetitions.filter(c => (c.hostId || c.host_id) === activeDirectorId);
+  const upcoming = directorComps.filter(c => c.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+  const past = directorComps.filter(c => c.date < today).sort((a, b) => b.date.localeCompare(a.date));
+
+  return (
+    <div>
+      <button className="btn btn-ghost btn-sm mb-3" onClick={() => setPage("competitions")} style={{ fontSize: 12 }}>
+        ← Back
+      </button>
+
+      {/* Profile header */}
+      <div className="card mb-4">
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div className="avatar avatar-lg" style={{ background: "var(--brand)", color: "white", fontSize: 20, flexShrink: 0 }}>
+            {host.name ? host.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase() : "?"}
+          </div>
+          <div style={{ flex: 1 }}>
+            <h2 className="serif" style={{ fontSize: 22, color: "var(--navy)", marginBottom: 4 }}>{host.name}</h2>
+            <div style={{ fontSize: 13, color: "var(--slate)" }}>Competition Director</div>
+            {host.organization && <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>{host.organization}</div>}
+            {host.state && <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 2 }}>📍 {normalizeState(host.state) || host.state}</div>}
+          </div>
+        </div>
+
+        {(host.organizations || []).length > 0 && (
+          <div className="flex gap-2 flex-wrap" style={{ marginTop: 12 }}>
+            {host.organizations.map(o => <span key={o} className="badge" style={{ background: orgColor(o) + "15", color: orgColor(o) }}>{o}</span>)}
+          </div>
+        )}
+
+        {host.bio && (
+          <div style={{ marginTop: 12, fontSize: 14, color: "var(--navy)", lineHeight: 1.7, background: "var(--bg)", padding: "12px 16px", borderRadius: 8 }}>
+            {host.bio}
+          </div>
+        )}
+
+        {(host.email || host.phone) && (
+          <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {host.email && <a href={`mailto:${host.email}`} style={{ fontSize: 13, color: "var(--brand)" }}>📧 {host.email}</a>}
+            {host.phone && <span style={{ fontSize: 13, color: "var(--slate)" }}>📞 {host.phone}</span>}
+          </div>
+        )}
+
+        <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted)" }}>
+          {directorComps.length} competition{directorComps.length !== 1 ? "s" : ""} listed
+        </div>
+      </div>
+
+      {/* Upcoming competitions */}
+      {upcoming.length > 0 && (
+        <div className="mb-4">
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
+            Upcoming Competitions ({upcoming.length})
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {upcoming.map(comp => {
+              const count = attendees.filter(a => a.competitionId === comp.id).length;
+              return (
+                <div key={comp.id} className="card-sm" style={{ cursor: "pointer", borderLeft: `3px solid ${orgColor(comp.orgId)}` }}
+                  onClick={() => { setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>{comp.name}</div>
+                      <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 2 }}>
+                        📅 {fmtDate(comp.date)}{(comp.end_date || comp.endDate) && comp.date !== (comp.end_date || comp.endDate) ? ` — ${fmtDate(comp.end_date || comp.endDate)}` : ""}
+                        {" · "}{[comp.city, normalizeState(comp.state) || comp.state].filter(Boolean).join(", ") || "Location TBD"}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 items-center" style={{ flexShrink: 0 }}>
+                      {comp.orgId && <span className="badge" style={{ fontSize: 9, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
+                      {count > 0 && <span style={{ fontSize: 11, color: "var(--muted)" }}>👥 {count}</span>}
+                      <Icon name="chevron_right" size={13} color="var(--muted)" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Past competitions */}
+      {past.length > 0 && (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
+            Past Competitions ({past.length})
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {past.map(comp => (
+              <div key={comp.id} className="card-sm" style={{ cursor: "pointer", opacity: 0.7 }}
+                onClick={() => { setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <span style={{ fontWeight: 500, fontSize: 13, color: "var(--navy)" }}>{comp.name}</span>
+                    <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 8 }}>{fmtDate(comp.date)}</span>
+                    {comp.city && <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 6 }}>· {comp.city}, {comp.state}</span>}
+                  </div>
+                  {comp.orgId && <span className="badge" style={{ fontSize: 9, background: orgColor(comp.orgId) + "15", color: orgColor(comp.orgId) }}>{comp.orgId}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {directorComps.length === 0 && (
+        <div className="card">
+          <div className="empty-state">
+            <p>This director hasn't posted any competitions yet.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── UPCOMING COMPETITIONS PAGE ──────────────────────────────────────────────
 
-function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage, registerHost, setActiveCompetitionId }) {
+function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage, registerHost, setActiveCompetitionId, setActiveDirectorId, myCompetitionClaims }) {
   const [directorModal, setDirectorModal] = useState(null); // null | 'confirm' | 'form' | 'done'
   const [filterState, setFilterState] = useState(familyAccount?.state || "");
   const [filterOrg, setFilterOrg] = useState("");
@@ -10131,7 +10262,7 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
                     </div>
                   )}
                   <div className="flex items-center gap-3 flex-wrap">
-                    {host && <span style={{ fontSize: 12, color: "var(--muted)" }}>Posted by {host.name}{host.organization ? ` · ${host.organization}` : ""}</span>}
+                    {host && <span style={{ fontSize: 12, color: "var(--muted)" }}>Posted by <a onClick={e => { e.stopPropagation(); setActiveDirectorId(host.id); setPage("director-profile"); }} style={{ color: "var(--brand)", cursor: "pointer", fontWeight: 500 }}>{host.name}</a>{host.organization ? ` · ${host.organization}` : ""}</span>}
                     {!host && <span style={{ fontSize: 12, color: "var(--amber)" }}>No director linked</span>}
                     {count > 0 && <span style={{ fontSize: 12, color: "var(--slate)" }}>👥 {count} attending</span>}
                     {!comp.hostId && (() => {
