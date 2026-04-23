@@ -17,6 +17,7 @@ export type Competition = {
   venue: string | null;
   org_id: string | null;
   host_id: string | null;
+  host_name: string | null;
   registration_url: string | null;
   registration_deadline: string | null;
   show_on_marketing_site: boolean;
@@ -75,7 +76,26 @@ export async function getCompetitions({
 
   const { data, error } = await query;
   if (error) { console.error('getCompetitions error:', error); return []; }
-  return data ?? [];
+
+  const competitions = data ?? [];
+
+  // Fetch host names for claimed competitions
+  const hostIds = [...new Set(competitions.filter(c => c.host_id).map(c => c.host_id))];
+  let hostMap: Record<string, string> = {};
+  if (hostIds.length > 0) {
+    const { data: hosts } = await supabase
+      .from('competition_hosts')
+      .select('id,name')
+      .in('id', hostIds);
+    if (hosts) {
+      hostMap = Object.fromEntries(hosts.map(h => [h.id, h.name]));
+    }
+  }
+
+  return competitions.map(c => ({
+    ...c,
+    host_name: c.host_id ? (hostMap[c.host_id] ?? null) : null,
+  }));
 }
 
 export async function getCompetitionById(id: string): Promise<Competition | null> {

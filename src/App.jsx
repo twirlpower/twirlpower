@@ -3437,10 +3437,10 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
             coachClubClaims={coachClubClaims} setCoachClubClaims={setCoachClubClaims}
             loadCoachData={loadCoachData} twirlers={twirlers}
             pendingClubMembers={pendingClubMembers} setPendingClubMembers={setPendingClubMembers} />}
-          {page === "competitions" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
-          {page === "history" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} />}
+          {page === "competitions" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} />}
+          {page === "history" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} />}
           {page === "progress" && activeTwirler && <ProgressPage activeTwirler={activeTwirler} twirlers={twirlers} progress={progress} openModal={openModal} updateTwirler={() => {}} results={[]} competitions={[]} />}
-          {page === "upcoming" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} attendees={[]} registerHost={() => {}} initialTab="upcoming" />}
+          {page === "upcoming" && <CoachCompetitionsPage coachCompetitions={coachCompetitions} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} publicCompetitions={publicCompetitions} familyAccount={null} addAttendee={() => {}} removeAttendee={() => {}} attendees={[]} registerHost={() => {}} competitionHosts={competitionHosts} myCompetitionClaims={[]} setActiveCompetitionId={setActiveCompetitionId} setActiveDirectorId={setActiveDirectorId} initialTab="upcoming" />}
           {page === "coach-profile" && <CoachProfilePage coachAccount={coachAccount} setCoachAccount={setCoachAccount} supabase={supabase} twirlers={twirlers} invites={invites} loadCoachData={loadCoachData} coachClubs={coachClubs} />}
           {page === "invite-athlete" && <InviteAthletePage coachAccount={coachAccount} supabase={supabase} setPage={setPage} loadCoachData={loadCoachData} />}
           {page === "create-competition" && <CreateCompetitionPage coachAccount={coachAccount} twirlers={twirlers} supabase={supabase} setPage={setPage} coachCreateCompetition={coachCreateCompetition} />}
@@ -9709,7 +9709,8 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
     { id: "results", label: "Results" },
   ];
 
-  const mapsUrl = comp.address ? `https://maps.google.com/?q=${encodeURIComponent([comp.address, comp.city, comp.state].filter(Boolean).join(", "))}` : null;
+  const hasFullAddress = comp.address && /\d/.test(comp.address);
+  const mapsUrl = hasFullAddress ? `https://maps.google.com/?q=${encodeURIComponent([comp.address, comp.city, comp.state].filter(Boolean).join(", "))}` : null;
 
   return (
     <div>
@@ -10243,11 +10244,13 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
                   {comp.address && (
                     <div style={{ fontSize: 13, color: "var(--slate)", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
                       🏛 {comp.address}
-                      <a href={`https://maps.google.com/?q=${encodeURIComponent(comp.address + (comp.city ? ', ' + comp.city : '') + (comp.state ? ', ' + comp.state : ''))}`}
-                        target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
-                        style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
-                        Get Directions →
-                      </a>
+                      {/\d/.test(comp.address) && (
+                        <a href={`https://maps.google.com/?q=${encodeURIComponent(comp.address + (comp.city ? ', ' + comp.city : '') + (comp.state ? ', ' + comp.state : ''))}`}
+                          target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+                          style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
+                          Get Directions →
+                        </a>
+                      )}
                     </div>
                   )}
                   {(comp.contact_email || comp.contactEmail || comp.contact_raw || comp.contactRaw) && (

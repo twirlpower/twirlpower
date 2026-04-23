@@ -84,14 +84,18 @@ export default function CompetitionCard({ competition: c, isPast = false }: Prop
             Register
           </a>
         )}
-        {!c.host_id && !isPast && (
+        {c.host_id ? (
+          <span className={styles.claimedBadge}>
+            ✓ {c.host_name ? c.host_name : 'Claimed'}
+          </span>
+        ) : !isPast && (
           <a
             href={`${appUrl}?claim=${c.id}`}
             className={styles.btnClaim}
             target="_blank"
             rel="noopener"
           >
-            Claim →
+            Claim this competition →
           </a>
         )}
         {isPast && <span className={styles.pastTag}>Past</span>}
