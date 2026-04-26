@@ -5428,19 +5428,22 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     const pe = peRes.data || [];
     const res = resRes.data || [];
     // Cross-reference: merge result data into planned events
-    // Track consumed result IDs so each result matches only ONE planned event
+    // Match by set_number first, then by event_name. Each result consumed once.
     const usedResultIds = new Set();
     const merged = pe.map(p => {
-      // If planned event already has a result on its own row, use that
       if (p.status === "completed" || p.status === "scored") return p;
-      // Find first unmatched result by event_name
-      const match = res.find(r => !usedResultIds.has(r.id) && (r.event === p.event_name || r.event === p.category));
+      // Priority 1: match by set_number (most specific)
+      let match = p.set_number
+        ? res.find(r => !usedResultIds.has(r.id) && r.set_number === p.set_number && (r.event === p.event_name || r.event === p.category))
+        : null;
+      // Priority 2: match by event_name only
+      if (!match) match = res.find(r => !usedResultIds.has(r.id) && (r.event === p.event_name || r.event === p.category));
       if (!match) return p;
       usedResultIds.add(match.id);
       const placement = p.placement || match.placement || null;
       const score = p.score ?? match.score ?? null;
       const status = placement ? "completed" : score != null ? "scored" : p.status;
-      return { ...p, placement, score, status };
+      return { ...p, placement, score, status, _resultId: match.id };
     });
     setTtPlannedEvents(merged);
   }
@@ -5448,6 +5451,15 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
   useEffect(() => {
     if (todayComp && activeTwirler) loadTtData(todayComp.id, activeTwirler.id);
   }, [todayComp?.id, activeTwirler?.id]);
+
+  // Auto-refresh TwirlTracker when results change (after any result save)
+  const prevResultsLen = useRef(results.length);
+  useEffect(() => {
+    if (results.length !== prevResultsLen.current && todayComp && activeTwirler) {
+      prevResultsLen.current = results.length;
+      loadTtData(todayComp.id, activeTwirler.id);
+    }
+  }, [results.length]);
 
   async function refetchTtPlannedEvents() {
     if (!todayComp || !activeTwirler) return;
@@ -5617,10 +5629,12 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
 
           return (
             <div key={pe.id}
-              onClick={() => !isDone && openModal("addResults", { competitionId: todayComp.id, prefillEvent: pe.event_name })}
+              onClick={() => {
+                if (!isDone) openModal("addResults", { competitionId: todayComp.id, prefillEvent: pe.event_name });
+              }}
               style={{ display: "flex", alignItems: "center", gap: 14, padding: isOnDeck ? "20px 18px" : "14px 18px",
                 background: bg, border: `${isOnDeck ? "2px" : "1px"} solid ${borderColor}`,
-                borderRadius: 12, cursor: isDone ? "default" : "pointer", transition: "all 0.15s",
+                borderRadius: 12, cursor: "pointer", transition: "all 0.15s",
                 minHeight: 44 }}>
               <div style={{ width: isOnDeck ? 48 : 36, height: isOnDeck ? 48 : 36, borderRadius: "50%", flexShrink: 0,
                 background: isDone ? "#dcfce7" : isOnDeck ? "var(--brand)" : "var(--bg)",
@@ -5644,6 +5658,14 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                   fontSize: 13, fontWeight: 600, flexShrink: 0, minHeight: 44, display: "flex", alignItems: "center" }}>
                   Add Result
                 </div>
+              )}
+              {isDone && (
+                <button style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--bg)", border: "none",
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }}
+                  onClick={e => { e.stopPropagation(); openModal("addResults", { competitionId: todayComp.id, prefillEvent: pe.event_name }); }}
+                  title="Edit result">
+                  <Icon name="edit" size={13} color="var(--slate)" />
+                </button>
               )}
               {!isDone && !isOnDeck && (
                 <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--bg)",
