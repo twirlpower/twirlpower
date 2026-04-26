@@ -5773,19 +5773,6 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
               )}
             </div>
 
-            {/* Next up hero (on deck event) */}
-            {onDeckPe && !allDone && (
-              <div style={{ marginBottom: 16, textAlign: "center", padding: "8px 0" }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "1px" }}>Next Up</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "var(--navy)", marginTop: 4 }}>{onDeckPe.event_name}</div>
-                {(onDeckPe.set_number || onDeckPe.lane) && (
-                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                    {[onDeckPe.set_number && `Set ${onDeckPe.set_number}`, onDeckPe.lane && `Lane ${onDeckPe.lane}`].filter(Boolean).join(" · ")}
-                  </div>
-                )}
-              </div>
-            )}
-
             {allDone ? (
               /* ── TODAY'S RESULTS SUMMARY ── */
               <div>
@@ -5808,11 +5795,49 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
             ) : (
               /* ── EVENT SECTIONS ── */
               <div>
-                {/* On Deck */}
+                {/* Card 1 — ON DECK */}
                 {onDeckPe && (
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>On Deck</div>
-                    {renderPeCard(onDeckPe, "on-deck")}
+                  <div style={{ marginBottom: 12, padding: "18px 18px", background: "var(--brand-light)",
+                    border: "2px solid var(--brand)", borderRadius: 14, display: "flex", alignItems: "center", gap: 14, minHeight: 56 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--brand)", flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "white" }}>
+                      {(onDeckPe.event_name || "").slice(0, 2)}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand2)", textTransform: "uppercase", letterSpacing: "0.5px" }}>On Deck</div>
+                      <div style={{ fontSize: 17, fontWeight: 700, color: "var(--navy)", marginTop: 2 }}>{onDeckPe.event_name}</div>
+                      <div style={{ fontSize: 11, color: "var(--brand2)", marginTop: 2 }}>
+                        {[onDeckPe.set_number && `Set ${onDeckPe.set_number}`, onDeckPe.lane && `Lane ${onDeckPe.lane}`, onDeckPe.skill_level].filter(Boolean).join(" · ")}
+                      </div>
+                    </div>
+                    <button style={{ padding: "10px 16px", borderRadius: 8, background: "var(--brand)", color: "white",
+                      fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: "inherit", minHeight: 44, flexShrink: 0 }}
+                      onClick={() => openModal("addResults", { competitionId: todayComp.id, prefillEvent: onDeckPe.event_name })}>
+                      Add Result
+                    </button>
+                  </div>
+                )}
+
+                {/* Card 2 — NEXT UP (first pending after on_deck) */}
+                {upcomingPe.length > 0 && (
+                  <div style={{ marginBottom: 16, padding: "14px 18px", background: "var(--card)",
+                    border: "1px solid var(--border)", borderRadius: 12, display: "flex", alignItems: "center", gap: 14, minHeight: 48 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--bg)", flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "var(--slate)" }}>
+                      {(upcomingPe[0].event_name || "").slice(0, 2)}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Next Up</div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)", marginTop: 1 }}>{upcomingPe[0].event_name}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>
+                        {[upcomingPe[0].set_number && `Set ${upcomingPe[0].set_number}`, upcomingPe[0].lane && `Lane ${upcomingPe[0].lane}`, upcomingPe[0].skill_level].filter(Boolean).join(" · ")}
+                      </div>
+                    </div>
+                    <button style={{ padding: "8px 12px", borderRadius: 6, background: "var(--bg)", color: "var(--navy)",
+                      fontSize: 12, fontWeight: 500, border: "1px solid var(--border)", cursor: "pointer", fontFamily: "inherit", minHeight: 36, flexShrink: 0 }}
+                      onClick={() => openModal("addResults", { competitionId: todayComp.id, prefillEvent: upcomingPe[0].event_name })}>
+                      Add Result
+                    </button>
                   </div>
                 )}
 
@@ -5848,12 +5873,12 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                   </div>
                 )}
 
-                {/* Upcoming */}
-                {upcomingPe.length > 0 && (
+                {/* Upcoming (remaining after the "Next Up" card) */}
+                {upcomingPe.length > 1 && (
                   <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Upcoming</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Upcoming ({upcomingPe.length - 1})</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {upcomingPe.map(pe => renderPeCard(pe, "later"))}
+                      {upcomingPe.slice(1).map(pe => renderPeCard(pe, "later"))}
                     </div>
                   </div>
                 )}
