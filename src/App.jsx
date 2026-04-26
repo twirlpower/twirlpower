@@ -9806,6 +9806,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const [editingPe, setEditingPe] = useState(null);
   const [peForm, setPeForm] = useState({ event_name: "", event_time: "", lane: "", set_number: "", notes: "", category: "", skill_level: "", classification: "Open", is_qualifier: false });
   const [peSubmitting, setPeSubmitting] = useState(false);
+  const [deletePeConfirm, setDeletePeConfirm] = useState(null); // { id, name }
   const [showResultModal, setShowResultModal] = useState(false);
   const [resultPeId, setResultPeId] = useState(null);
   const [resultForm, setResultForm] = useState({ placement: "", score: "", result_notes: "" });
@@ -10205,7 +10206,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                                 <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 4, minWidth: 28, minHeight: 28 }}
                                   onClick={() => openEditPe(pe)} title="Edit">✏️</button>
                                 <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 4, minWidth: 28, minHeight: 28 }}
-                                  onClick={() => deletePe(pe.id)} title="Delete">🗑️</button>
+                                  onClick={() => setDeletePeConfirm({ id: pe.id, name: pe.event_name })} title="Delete">🗑️</button>
                               </>
                             )}
                           </div>
@@ -10280,6 +10281,23 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                 );
               })()}
               </div>
+
+              {/* ── Delete Planned Event Confirm ── */}
+              {deletePeConfirm && (
+                <div className="modal-overlay" onClick={() => setDeletePeConfirm(null)}>
+                  <div className="modal" style={{ maxWidth: 340, textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                    <div className="modal-body" style={{ padding: "28px 24px" }}>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 6 }}>Delete this event?</div>
+                      <div style={{ fontSize: 14, color: "var(--slate)", marginBottom: 20 }}>{deletePeConfirm.name}</div>
+                      <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                        <button className="btn btn-ghost" style={{ minHeight: 40 }} onClick={() => setDeletePeConfirm(null)}>Cancel</button>
+                        <button className="btn btn-primary" style={{ minHeight: 40, background: "var(--red)" }}
+                          onClick={() => { deletePe(deletePeConfirm.id); setDeletePeConfirm(null); }}>Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* ── Add/Edit Planned Event Modal ── */}
               {showPeModal && (
