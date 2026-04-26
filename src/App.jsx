@@ -9685,6 +9685,75 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const [tab, setTab] = useState(defaultTab);
   const [copied, setCopied] = useState(false);
 
+  // Event Planner (manual/mode-1 competitions only)
+  const isManualComp = !comp.mode || String(comp.mode) === "1";
+  const [plannedEvents, setPlannedEvents] = useState([]);
+  const [peLoading, setPeLoading] = useState(false);
+  const [showPeModal, setShowPeModal] = useState(false);
+  const [editingPe, setEditingPe] = useState(null);
+  const [peForm, setPeForm] = useState({ event_name: "", event_time: "", lane: "", set_number: "", notes: "" });
+  const [peSubmitting, setPeSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isManualComp && activeTwirler && activeCompetitionId) {
+      setPeLoading(true);
+      supabase.from("competition_planned_events").select("*")
+        .eq("competition_id", activeCompetitionId)
+        .eq("twirler_id", activeTwirler.id)
+        .order("order_number")
+        .then(({ data }) => { setPlannedEvents(data || []); setPeLoading(false); });
+    }
+  }, [activeCompetitionId, activeTwirler?.id]);
+
+  function openAddPe() {
+    setEditingPe(null);
+    setPeForm({ event_name: "", event_time: "", lane: "", set_number: "", notes: "" });
+    setShowPeModal(true);
+  }
+  function openEditPe(pe) {
+    setEditingPe(pe);
+    setPeForm({ event_name: pe.event_name, event_time: pe.event_time || "", lane: pe.lane || "", set_number: pe.set_number || "", notes: pe.notes || "" });
+    setShowPeModal(true);
+  }
+  async function handlePeSave() {
+    if (!peForm.event_name.trim()) return;
+    setPeSubmitting(true);
+    const row = {
+      event_name: peForm.event_name.trim(),
+      event_time: peForm.event_time.trim() || null,
+      lane: peForm.lane.trim() || null,
+      set_number: peForm.set_number.trim() || null,
+      notes: peForm.notes.trim() || null,
+    };
+    if (editingPe) {
+      const { data } = await supabase.from("competition_planned_events").update(row).eq("id", editingPe.id).select().single();
+      if (data) setPlannedEvents(prev => prev.map(p => p.id === data.id ? data : p));
+    } else {
+      const maxOrder = plannedEvents.reduce((m, p) => Math.max(m, p.order_number || 0), 0);
+      const { data } = await supabase.from("competition_planned_events").insert({
+        ...row, competition_id: activeCompetitionId, twirler_id: activeTwirler.id,
+        order_number: maxOrder + 1, status: "pending",
+      }).select().single();
+      if (data) setPlannedEvents(prev => [...prev, data]);
+    }
+    setPeSubmitting(false);
+    setShowPeModal(false);
+  }
+  async function deletePe(peId) {
+    await supabase.from("competition_planned_events").delete().eq("id", peId);
+    setPlannedEvents(prev => prev.filter(p => p.id !== peId));
+  }
+  async function movePe(peId, dir) {
+    const idx = plannedEvents.findIndex(p => p.id === peId);
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= plannedEvents.length) return;
+    const updated = [...plannedEvents];
+    [updated[idx], updated[swapIdx]] = [updated[swapIdx], updated[idx]];
+    const reordered = updated.map((p, i) => ({ ...p, order_number: i }));
+    setPlannedEvents(reordered);
+    await Promise.all(reordered.map(p => supabase.from("competition_planned_events").update({ order_number: p.order_number }).eq("id", p.id)));
+  }
+
   const host = competitionHosts?.find(h => h.id === (comp.hostId || comp.host_id));
   const compAttendees = (attendees || []).filter(a => a.competitionId === activeCompetitionId);
   const attending = activeTwirler && compAttendees.some(a => a.twirlerId === activeTwirler?.id);
@@ -9872,6 +9941,138 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
             </div>
           ) : (
             <div>
+              {/* ── Event Planner (manual competitions) ── */}
+              {isManualComp && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      My Event Plan
+                    </div>
+                    <button className="btn btn-primary btn-sm" style={{ fontSize: 11 }} onClick={openAddPe}>+ Add Event</button>
+                  </div>
+                  {peLoading ? (
+                    <div style={{ textAlign: "center", padding: 16 }}><div className="spinner" /></div>
+                  ) : plannedEvents.length === 0 ? (
+                    <div className="card" style={{ textAlign: "center", padding: "20px 16px", color: "var(--muted)", fontSize: 13 }}>
+                      Add your events to plan your competition day
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {plannedEvents.map((pe, idx) => {
+                        const hasResult = myResults.some(r => r.event === pe.event_name);
+                        const isOnDeck = !hasResult && idx === plannedEvents.findIndex(p => !myResults.some(r => r.event === p.event_name));
+                        const statusLabel = hasResult ? "Done" : isOnDeck && isToday ? "On Deck" : isPast ? "—" : "Later";
+                        const statusColor = hasResult ? "#16a34a" : isOnDeck && isToday ? "#b45309" : "var(--muted)";
+                        const statusBg = hasResult ? "#dcfce7" : isOnDeck && isToday ? "#fef3c7" : "var(--bg)";
+                        return (
+                          <div key={pe.id} style={{
+                            display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                            background: "var(--card)", border: `1px solid ${hasResult ? "#86efac" : isOnDeck && isToday ? "#fde68a" : "var(--border)"}`,
+                            borderRadius: 10,
+                          }}>
+                            {/* Reorder arrows */}
+                            {!isPast && (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
+                                <button style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: idx === 0 ? "var(--border)" : "var(--muted)", fontSize: 10 }}
+                                  onClick={() => movePe(pe.id, -1)} disabled={idx === 0}>▲</button>
+                                <button style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: idx === plannedEvents.length - 1 ? "var(--border)" : "var(--muted)", fontSize: 10 }}
+                                  onClick={() => movePe(pe.id, 1)} disabled={idx === plannedEvents.length - 1}>▼</button>
+                              </div>
+                            )}
+                            {/* Status badge */}
+                            <div style={{ padding: "3px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700,
+                              background: statusBg, color: statusColor, flexShrink: 0 }}>
+                              {statusLabel}
+                            </div>
+                            {/* Event info */}
+                            <div style={{ flex: 1, minWidth: 0 }}
+                              onClick={() => {
+                                if (!hasResult && !isFuture) openModal("addResults", { competitionId: activeCompetitionId, prefillEvent: pe.event_name });
+                              }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {pe.event_name}
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
+                                {pe.event_time && <span>🕐 {pe.event_time}</span>}
+                                {pe.lane && <span>Lane {pe.lane}</span>}
+                                {pe.set_number && <span>Set {pe.set_number}</span>}
+                                {pe.notes && <span style={{ fontStyle: "italic" }}>{pe.notes}</span>}
+                              </div>
+                            </div>
+                            {/* Actions */}
+                            {!isPast && (
+                              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                                <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}
+                                  onClick={() => openEditPe(pe)} title="Edit">✏️</button>
+                                <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}
+                                  onClick={() => deletePe(pe.id)} title="Delete">🗑️</button>
+                              </div>
+                            )}
+                            {isPast && hasResult && (
+                              <span style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600 }}>View Results →</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Add/Edit Planned Event Modal ── */}
+              {showPeModal && (
+                <div className="modal-overlay" onClick={() => setShowPeModal(false)}>
+                  <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+                    <div className="modal-header">
+                      <div className="modal-title">{editingPe ? "Edit Event" : "Add Event"}</div>
+                      <button className="modal-close" onClick={() => setShowPeModal(false)} style={{ background: "none", border: "none", cursor: "pointer" }}>✕</button>
+                    </div>
+                    <div className="modal-body">
+                      <div className="form-group">
+                        <label className="label">Event Name *</label>
+                        <input className="input" value={peForm.event_name}
+                          onChange={e => setPeForm(f => ({ ...f, event_name: e.target.value }))}
+                          placeholder='e.g. "Solo", "Strut", "2-Baton"' />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <div className="form-group">
+                          <label className="label">Time</label>
+                          <input className="input" value={peForm.event_time}
+                            onChange={e => setPeForm(f => ({ ...f, event_time: e.target.value }))}
+                            placeholder="9:30 AM" />
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Lane</label>
+                          <input className="input" value={peForm.lane}
+                            onChange={e => setPeForm(f => ({ ...f, lane: e.target.value }))}
+                            placeholder="Lane 1" />
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <div className="form-group">
+                          <label className="label">Set Number</label>
+                          <input className="input" value={peForm.set_number}
+                            onChange={e => setPeForm(f => ({ ...f, set_number: e.target.value }))}
+                            placeholder="Set 3" />
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Notes</label>
+                          <input className="input" value={peForm.notes}
+                            onChange={e => setPeForm(f => ({ ...f, notes: e.target.value }))}
+                            placeholder="Optional" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="modal-footer">
+                      <button className="btn btn-ghost" onClick={() => setShowPeModal(false)}>Cancel</button>
+                      <button className="btn btn-primary" onClick={handlePeSave} disabled={peSubmitting || !peForm.event_name.trim()}>
+                        {peSubmitting ? "Saving…" : editingPe ? "Save" : "Add Event"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Event cards — reuses Competitor's Edge pattern */}
               {eventsToShow.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
