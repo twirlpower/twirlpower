@@ -5406,7 +5406,7 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
 
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
 
-function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode }) {
+function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, setResults, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode }) {
   if (!activeTwirler) return <div className="empty-state"><h3>No twirler selected</h3></div>;
 
   const [classifOrgFilter, setClassifOrgFilter] = useState("all");
@@ -5420,6 +5420,9 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
   const [ttPlacementPeId, setTtPlacementPeId] = useState(null);
   const [ttPlacementVal, setTtPlacementVal] = useState("");
   const [ttPlacementSaving, setTtPlacementSaving] = useState(false);
+  const [ttEditPe, setTtEditPe] = useState(null); // planned event being edited
+  const [ttEditForm, setTtEditForm] = useState({ placement: "", score: "", notes: "", allCatch: false, contested: true, judgeNote: "" });
+  const [ttEditSaving, setTtEditSaving] = useState(false);
   async function loadTtData(compId, twirlerId) {
     const [peRes, resRes] = await Promise.all([
       supabase.from("competition_planned_events").select("*").eq("competition_id", compId).eq("twirler_id", twirlerId).order("order_number"),
@@ -5481,6 +5484,63 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     setTtPlacementPeId(null);
     setTtPlacementVal("");
     setTtPlacementSaving(false);
+    await refetchTtPlannedEvents();
+  }
+
+  function openTtEdit(pe) {
+    // Find matching result from results table for full pre-population
+    const matchResult = (results || []).find(r =>
+      r.competitionId === todayComp?.id && r.twirlerId === activeTwirler?.id &&
+      (r.event === pe.event_name || r.event === pe.category)
+    );
+    setTtEditPe(pe);
+    setTtEditForm({
+      placement: pe.placement || matchResult?.placement || "",
+      score: pe.score != null ? String(pe.score) : matchResult?.score != null ? String(matchResult.score) : "",
+      notes: pe.result_notes || matchResult?.notes || "",
+      allCatch: matchResult?.allCatch || false,
+      contested: matchResult?.contested !== false,
+      judgeNote: matchResult?.judgeNote || "",
+      casLevel: pe.skill_level || matchResult?.casLevel || "",
+      casPassed: pe.cas_passed ?? matchResult?.casPassed ?? null,
+    });
+  }
+
+  async function ttSaveEdit() {
+    if (!ttEditPe) return;
+    setTtEditSaving(true);
+    const isCas = ttEditPe.category === "Movement & Compulsories";
+    const placement = !isCas && ttEditForm.placement ? parseInt(ttEditForm.placement) : null;
+    const score = !isCas && ttEditForm.score ? parseFloat(ttEditForm.score) : null;
+    const status = isCas ? "completed" : placement ? "completed" : score != null ? "scored" : ttEditPe.status;
+
+    // Update planned event
+    const peUpdate = { placement, score, result_notes: ttEditForm.notes.trim() || null, status };
+    if (isCas) peUpdate.cas_passed = ttEditForm.casPassed;
+    await supabase.from("competition_planned_events").update(peUpdate).eq("id", ttEditPe.id);
+
+    // Update or insert result in results table
+    const resultMatch = (results || []).find(r =>
+      r.competitionId === todayComp?.id && r.twirlerId === activeTwirler?.id &&
+      (r.event === ttEditPe.event_name || r.event === ttEditPe.category)
+    );
+    if (resultMatch) {
+      // Update existing result
+      const dbUpdate = {};
+      if (placement != null) dbUpdate.placement = placement;
+      if (score != null) dbUpdate.score = score;
+      dbUpdate.notes = ttEditForm.notes.trim() || null;
+      dbUpdate.all_catch = ttEditForm.allCatch;
+      dbUpdate.contested = ttEditForm.contested;
+      dbUpdate.judge_note = ttEditForm.judgeNote.trim() || null;
+      if (isCas) { dbUpdate.cas_passed = ttEditForm.casPassed; dbUpdate.cas_level = ttEditForm.casLevel || null; }
+      await supabase.from("results").update(dbUpdate).eq("id", resultMatch.id);
+      // Update local results state
+      setResults(prev => prev.map(r => r.id === resultMatch.id ? { ...r, ...dbUpdate, placement: dbUpdate.placement ?? r.placement, score: dbUpdate.score ?? r.score, allCatch: dbUpdate.all_catch, contested: dbUpdate.contested, judgeNote: dbUpdate.judge_note, casPassed: dbUpdate.cas_passed, casLevel: dbUpdate.cas_level } : r));
+    }
+
+    setTtEditPe(null);
+    setTtEditSaving(false);
     await refetchTtPlannedEvents();
   }
 
@@ -5670,7 +5730,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
               {isDone && (
                 <button style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--bg)", border: "none",
                   display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }}
-                  onClick={e => { e.stopPropagation(); openModal("addResults", { competitionId: todayComp.id, prefillEvent: pe.event_name }); }}
+                  onClick={e => { e.stopPropagation(); openTtEdit(pe); }}
                   title="Edit result">
                   <Icon name="edit" size={13} color="var(--slate)" />
                 </button>
@@ -5850,6 +5910,111 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                 </div>
               </div>
             )}
+
+            {/* Edit Result Modal */}
+            {ttEditPe && (() => {
+              const isCas = ttEditPe.category === "Movement & Compulsories";
+              return (
+              <div className="modal-overlay" onClick={() => setTtEditPe(null)}>
+                <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <div className="modal-title">Edit Result</div>
+                    <button className="modal-close" onClick={() => setTtEditPe(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18 }}>✕</button>
+                  </div>
+                  <div className="modal-body">
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>{ttEditPe.event_name}</div>
+                    {ttEditPe.skill_level && <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>{ttEditPe.skill_level}{ttEditPe.classification ? ` · ${ttEditPe.classification}` : ""}</div>}
+
+                    {isCas ? (
+                      <>
+                        <div className="form-group">
+                          <label className="label">CAS Level</label>
+                          <select className="select" value={ttEditForm.casLevel}
+                            onChange={e => setTtEditForm(f => ({ ...f, casLevel: e.target.value }))}>
+                            {["C","B","BI","BII","A","AA","AAA","Elite"].map(l => <option key={l} value={l}>{l}</option>)}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Result</label>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button type="button" onClick={() => setTtEditForm(f => ({ ...f, casPassed: true }))}
+                              style={{ flex: 1, padding: 12, borderRadius: 8, border: "2px solid", minHeight: 48,
+                                borderColor: ttEditForm.casPassed === true ? "#16a34a" : "var(--border)",
+                                background: ttEditForm.casPassed === true ? "#f0fdf4" : "white",
+                                color: ttEditForm.casPassed === true ? "#16a34a" : "var(--slate)",
+                                fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>✓ Passed</button>
+                            <button type="button" onClick={() => setTtEditForm(f => ({ ...f, casPassed: false }))}
+                              style={{ flex: 1, padding: 12, borderRadius: 8, border: "2px solid", minHeight: 48,
+                                borderColor: ttEditForm.casPassed === false ? "var(--red)" : "var(--border)",
+                                background: ttEditForm.casPassed === false ? "#fef2f2" : "white",
+                                color: ttEditForm.casPassed === false ? "var(--red)" : "var(--slate)",
+                                fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit" }}>✗ Not Yet</button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="form-group">
+                          <label className="label">Placement</label>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {[1, 2, 3].map(n => (
+                              <button key={n} style={{
+                                flex: 1, padding: "10px 0", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer",
+                                fontFamily: "inherit", minHeight: 44,
+                                border: `2px solid ${String(ttEditForm.placement) === String(n) ? "var(--brand)" : "var(--border)"}`,
+                                background: String(ttEditForm.placement) === String(n) ? "var(--brand-light)" : "white",
+                                color: String(ttEditForm.placement) === String(n) ? "var(--brand2)" : "var(--navy)",
+                              }} onClick={() => setTtEditForm(f => ({ ...f, placement: String(n) }))}>
+                                {n === 1 ? "1st" : n === 2 ? "2nd" : "3rd"}
+                              </button>
+                            ))}
+                            <input className="input" type="number" min="1" max="99" placeholder="Other"
+                              value={ttEditForm.placement && parseInt(ttEditForm.placement) > 3 ? ttEditForm.placement : ""}
+                              onChange={e => setTtEditForm(f => ({ ...f, placement: e.target.value }))}
+                              style={{ flex: 1, textAlign: "center", fontSize: 14, minHeight: 44 }} />
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Score</label>
+                          <input className="input" type="number" step="0.1" value={ttEditForm.score}
+                            onChange={e => setTtEditForm(f => ({ ...f, score: e.target.value }))}
+                            placeholder="e.g. 85.5" style={{ fontSize: 14 }} />
+                        </div>
+                        <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                            <input type="checkbox" checked={ttEditForm.allCatch} style={{ accentColor: "var(--brand)" }}
+                              onChange={e => setTtEditForm(f => ({ ...f, allCatch: e.target.checked }))} /> All Catch
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                            <input type="checkbox" checked={ttEditForm.contested} style={{ accentColor: "var(--brand)" }}
+                              onChange={e => setTtEditForm(f => ({ ...f, contested: e.target.checked }))} /> Contested
+                          </label>
+                        </div>
+                      </>
+                    )}
+                    <div className="form-group">
+                      <label className="label">Notes</label>
+                      <input className="input" value={ttEditForm.notes}
+                        onChange={e => setTtEditForm(f => ({ ...f, notes: e.target.value }))}
+                        placeholder="Optional" style={{ fontSize: 14 }} />
+                    </div>
+                    <div className="form-group">
+                      <label className="label">Judge Name</label>
+                      <input className="input" value={ttEditForm.judgeNote}
+                        onChange={e => setTtEditForm(f => ({ ...f, judgeNote: e.target.value }))}
+                        placeholder="Optional" style={{ fontSize: 14 }} />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button className="btn btn-ghost" onClick={() => setTtEditPe(null)}>Cancel</button>
+                    <button className="btn btn-primary" onClick={ttSaveEdit} disabled={ttEditSaving} style={{ minHeight: 44 }}>
+                      {ttEditSaving ? "Saving…" : "Save Changes"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              );
+            })()}
 
             {/* Bottom quick actions */}
             <div style={{ display: "flex", gap: 8, marginTop: 8, marginBottom: 20 }}>
