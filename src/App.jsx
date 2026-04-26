@@ -1957,12 +1957,20 @@ export default function App() {
     // Upload any scorecard files first, replace file object with URL
     const withUrls = await Promise.all(newResults.map(async r => {
       if (!r.scorecardFile) return r;
-      const ext = r.scorecardFile.name.split('.').pop();
-      const path = `scorecards/${resolvedActiveTwirlerId}/${compId}_${r.event.replace(/\s+/g,'_')}_${Date.now()}.${ext}`;
-      const { data: up } = await supabase.storage.from('documents').upload(path, r.scorecardFile, { upsert: true });
-      if (!up) return r;
-      const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(path);
-      return { ...r, scorecardUrl: publicUrl, scorecardFile: null };
+      try {
+        const ext = r.scorecardFile.name.split('.').pop();
+        const path = `scorecards/${resolvedActiveTwirlerId}/${compId}_${r.event.replace(/\s+/g,'_')}_${Date.now()}.${ext}`;
+        const { data: up, error: upErr } = await supabase.storage.from('documents').upload(path, r.scorecardFile, { upsert: true });
+        if (upErr) { console.error("Scorecard upload failed:", upErr.message); return { ...r, scorecardFile: null }; }
+        if (!up) return { ...r, scorecardFile: null };
+        const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(path);
+        // Revoke preview URL if exists
+        if (r.scorecardPreview) URL.revokeObjectURL(r.scorecardPreview);
+        return { ...r, scorecardUrl: publicUrl, scorecardFile: null, scorecardPreview: null };
+      } catch (err) {
+        console.error("Scorecard upload error:", err);
+        return { ...r, scorecardFile: null };
+      }
     }));
     await addResults(compId, withUrls);
   }
@@ -6337,11 +6345,13 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                                   </div>
                                 ) : editResultForm.scorecardFile ? (
                                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                    <img src={URL.createObjectURL(editResultForm.scorecardFile)} alt="New scorecard"
-                                      style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)" }} />
+                                    {editResultForm.scorecardPreview && (
+                                      <img src={editResultForm.scorecardPreview} alt="New scorecard"
+                                        style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 6, border: "1px solid var(--border)" }} />
+                                    )}
                                     <span style={{ fontSize: 12, color: "var(--slate)" }}>{editResultForm.scorecardFile.name}</span>
                                     <button type="button" className="btn btn-ghost btn-sm"
-                                      onClick={() => setEditResultForm(p => ({ ...p, scorecardFile: null }))}>
+                                      onClick={() => { if (editResultForm.scorecardPreview) URL.revokeObjectURL(editResultForm.scorecardPreview); setEditResultForm(p => ({ ...p, scorecardFile: null, scorecardPreview: null })); }}>
                                       <Icon name="trash" size={12} color="var(--red)" /> Remove
                                     </button>
                                   </div>
@@ -6354,13 +6364,16 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                                     <input type="file" accept="image/*" style={{ display: "none" }}
                                       onChange={e => {
                                         const file = e.target.files?.[0];
-                                        if (file) setEditResultForm(p => ({ ...p, scorecardFile: file }));
+                                        if (file) {
+                                          const preview = URL.createObjectURL(file);
+                                          setEditResultForm(p => ({ ...p, scorecardFile: file, scorecardPreview: preview }));
+                                        }
                                       }} />
                                   </label>
                                 )}
                               </div>
                               <div className="flex gap-2">
-                                <button className="btn btn-primary btn-sm" onClick={saveEditResult}>Save</button>
+                                <button className="btn btn-primary btn-sm" onClick={saveEditResult} disabled={editSaving}>{editSaving ? "Saving…" : "Save"}</button>
                                 <button className="btn btn-secondary btn-sm" onClick={() => setEditingResult(null)}>Cancel</button>
                               </div>
                             </div>
@@ -6456,23 +6469,34 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
       event: r.event,
       scorecardUrl: r.scorecardUrl || null,
       scorecardFile: null,
+      scorecardPreview: null,
       judgeNote: r.judgeNote || "",
     });
   }
 
+  const [editSaving, setEditSaving] = useState(false);
+
   async function saveEditResult() {
-    let scorecardUrl = editResultForm.scorecardUrl;
-    if (editResultForm.scorecardFile) {
-      const file = editResultForm.scorecardFile;
-      const ext = file.name.split('.').pop();
-      const path = `scorecards/${activeTwirler.id}/${editingResult}_${Date.now()}.${ext}`;
-      const { data: up } = await supabase.storage.from('documents').upload(path, file, { upsert: true });
-      if (up) {
-        scorecardUrl = supabase.storage.from('documents').getPublicUrl(path).data.publicUrl;
+    setEditSaving(true);
+    try {
+      let scorecardUrl = editResultForm.scorecardUrl;
+      if (editResultForm.scorecardFile) {
+        const file = editResultForm.scorecardFile;
+        const ext = file.name.split('.').pop();
+        const path = `scorecards/${activeTwirler.id}/${editingResult}_${Date.now()}.${ext}`;
+        const { data: up, error: upErr } = await supabase.storage.from('documents').upload(path, file, { upsert: true });
+        if (upErr) { console.error("Scorecard upload failed:", upErr.message); }
+        else if (up) { scorecardUrl = supabase.storage.from('documents').getPublicUrl(path).data.publicUrl; }
       }
+      // Revoke preview URL to free memory
+      if (editResultForm.scorecardPreview) URL.revokeObjectURL(editResultForm.scorecardPreview);
+      updateResult(editingResult, { ...editResultForm, placement: parseInt(editResultForm.placement), scorecardUrl });
+      setEditingResult(null);
+    } catch (err) {
+      console.error("Save result error:", err);
+    } finally {
+      setEditSaving(false);
     }
-    updateResult(editingResult, { ...editResultForm, placement: parseInt(editResultForm.placement), scorecardUrl });
-    setEditingResult(null);
   }
 
   return (
@@ -12121,6 +12145,8 @@ function AddResultsModal({ open, onClose, competition: competitionProp, activeTw
   ));
 
   function save() {
+    // Revoke any blob URLs to prevent memory leaks on mobile
+    eventRows.forEach(r => { if (r.scorecardPreview) try { URL.revokeObjectURL(r.scorecardPreview); } catch {} });
     onSave(competition.id, validRows.map(r => ({
       ...r,
       placement: (isCasOrg2 && CAS_EVENTS.has(r.event)) ? null : parseInt(r.placement),
