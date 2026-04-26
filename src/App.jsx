@@ -9804,12 +9804,12 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const [peLoading, setPeLoading] = useState(false);
   const [showPeModal, setShowPeModal] = useState(false);
   const [editingPe, setEditingPe] = useState(null);
-  const [peForm, setPeForm] = useState({ event_name: "", event_time: "", lane: "", set_number: "", notes: "", category: "", skill_level: "", classification: "Open", is_qualifier: false });
+  const [peForm, setPeForm] = useState({ event_name: "", event_time: "", lane: "", set_number: "", notes: "", category: "", skill_level: "", classification: "Open", is_qualifier: false, group_size: "" });
   const [peSubmitting, setPeSubmitting] = useState(false);
   const [deletePeConfirm, setDeletePeConfirm] = useState(null); // { id, name }
   const [showResultModal, setShowResultModal] = useState(false);
   const [resultPeId, setResultPeId] = useState(null);
-  const [resultForm, setResultForm] = useState({ placement: "", score: "", result_notes: "" });
+  const [resultForm, setResultForm] = useState({ placement: "", score: "", result_notes: "", cas_passed: null });
   const [resultSubmitting, setResultSubmitting] = useState(false);
 
   useEffect(() => {
@@ -9825,17 +9825,17 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
 
   function openAddPe() {
     setEditingPe(null);
-    setPeForm({ event_name: "", event_time: "", lane: "", set_number: "", notes: "", category: "", skill_level: "", classification: "Open", is_qualifier: false });
+    setPeForm({ event_name: "", event_time: "", lane: "", set_number: "", notes: "", category: "", skill_level: "", classification: "Open", is_qualifier: false, group_size: "" });
     setShowPeModal(true);
   }
   function openEditPe(pe) {
     setEditingPe(pe);
-    setPeForm({ event_name: pe.event_name, event_time: pe.event_time || "", lane: pe.lane || "", set_number: pe.set_number || "", notes: pe.notes || "", category: pe.category || "", skill_level: pe.skill_level || "", classification: pe.classification || "Open", is_qualifier: pe.is_qualifier || false });
+    setPeForm({ event_name: pe.event_name, event_time: pe.event_time || "", lane: pe.lane || "", set_number: pe.set_number || "", notes: pe.notes || "", category: pe.category || "", skill_level: pe.skill_level || "", classification: pe.classification || "Open", is_qualifier: pe.is_qualifier || false, group_size: pe.group_size || "" });
     setShowPeModal(true);
   }
   function openResultEntry(pe) {
     setResultPeId(pe.id);
-    setResultForm({ placement: pe.placement || "", score: pe.score != null ? String(pe.score) : "", result_notes: pe.result_notes || "" });
+    setResultForm({ placement: pe.placement || "", score: pe.score != null ? String(pe.score) : "", result_notes: pe.result_notes || "", cas_passed: pe.cas_passed ?? null });
     setShowResultModal(true);
   }
   const resultSubmitGuard = useRef(false);
@@ -9844,11 +9844,15 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
     resultSubmitGuard.current = true;
     setResultSubmitting(true);
     try {
-      const placement = resultForm.placement ? parseInt(resultForm.placement) : null;
-      const score = resultForm.score ? parseFloat(resultForm.score) : null;
-      const { data, error } = await supabase.from("competition_planned_events").update({
+      const pe = plannedEvents.find(p => p.id === resultPeId);
+      const isCas = pe?.category === "Movement & Compulsories";
+      const placement = !isCas && resultForm.placement ? parseInt(resultForm.placement) : null;
+      const score = !isCas && resultForm.score ? parseFloat(resultForm.score) : null;
+      const updateRow = {
         placement, score, result_notes: resultForm.result_notes.trim() || null, status: "completed",
-      }).eq("id", resultPeId).select().single();
+      };
+      if (isCas) updateRow.cas_passed = resultForm.cas_passed;
+      const { data, error } = await supabase.from("competition_planned_events").update(updateRow).eq("id", resultPeId).select().single();
       if (error) console.error("[handleResultSave] error:", error.message);
       if (data) {
         setPlannedEvents(prev => prev.map(p => p.id === data.id ? data : p));
@@ -9891,6 +9895,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
         skill_level: peForm.skill_level.trim() || null,
         classification: peForm.classification || "Open",
         is_qualifier: peForm.is_qualifier || false,
+        group_size: peForm.group_size.trim() || null,
       };
       if (editingPe) {
         const { data, error } = await supabase.from("competition_planned_events").update(row).eq("id", editingPe.id).select().single();
@@ -10192,7 +10197,9 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                             {/* Result summary if completed */}
                             {hasResult && (
                               <div style={{ fontSize: 11, color: "#16a34a", marginTop: 3 }}>
-                                {pe.placement ? `${pe.placement}${["st","nd","rd"][pe.placement-1]||"th"} place` : "Completed"}
+                                {pe.category === "Movement & Compulsories"
+                                  ? (pe.cas_passed === true ? "✓ Passed" : pe.cas_passed === false ? "✗ Not Yet" : "Completed")
+                                  : (pe.placement ? `${pe.placement}${["st","nd","rd"][pe.placement-1]||"th"} place` : "Completed")}
                                 {pe.score != null ? ` · ${pe.score}` : ""}
                                 {pe.result_notes ? ` · ${pe.result_notes}` : ""}
                               </div>
@@ -10236,39 +10243,75 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                       <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>{pe?.event_name}</div>
                       {pe?.category && <span className="badge badge-gray" style={{ fontSize: 10, marginBottom: 12, display: "inline-block" }}>{pe.category}{pe.skill_level ? ` · ${pe.skill_level}` : ""}</span>}
 
-                      <div className="form-group" style={{ marginTop: 12 }}>
-                        <label className="label">Placement</label>
-                        <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
-                          {[1, 2, 3].map(n => (
-                            <button key={n} style={{
-                              flex: 1, padding: "10px 0", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer",
-                              fontFamily: "inherit", minHeight: 44,
-                              border: `2px solid ${String(resultForm.placement) === String(n) ? "var(--brand)" : "var(--border)"}`,
-                              background: String(resultForm.placement) === String(n) ? "var(--brand-light)" : "white",
-                              color: String(resultForm.placement) === String(n) ? "var(--brand2)" : "var(--navy)",
-                            }} onClick={() => setResultForm(f => ({ ...f, placement: String(n) }))}>
-                              {n === 1 ? "1st" : n === 2 ? "2nd" : "3rd"}
-                            </button>
-                          ))}
-                          <input className="input" type="number" min="1" max="99"
-                            placeholder="Other"
-                            value={resultForm.placement && parseInt(resultForm.placement) > 3 ? resultForm.placement : ""}
-                            onChange={e => setResultForm(f => ({ ...f, placement: e.target.value }))}
-                            style={{ flex: 1, textAlign: "center", fontSize: 14, minHeight: 44 }} />
-                        </div>
-                      </div>
-                      <div className="form-group">
-                        <label className="label">Score <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-                        <input className="input" type="number" step="0.1" value={resultForm.score}
-                          onChange={e => setResultForm(f => ({ ...f, score: e.target.value }))}
-                          placeholder="e.g. 85.5" style={{ fontSize: 14 }} />
-                      </div>
-                      <div className="form-group">
-                        <label className="label">Notes <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
-                        <input className="input" value={resultForm.result_notes}
-                          onChange={e => setResultForm(f => ({ ...f, result_notes: e.target.value }))}
-                          placeholder="e.g. All catch, dropped baton..." style={{ fontSize: 14 }} />
-                      </div>
+                      {pe?.category === "Movement & Compulsories" ? (
+                        /* CAS Result Entry */
+                        <>
+                          <div className="form-group" style={{ marginTop: 12 }}>
+                            <label className="label">Result</label>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button type="button" onClick={() => setResultForm(f => ({ ...f, cas_passed: true }))}
+                                style={{ flex: 1, padding: "12px", borderRadius: 8, border: "2px solid",
+                                  borderColor: resultForm.cas_passed === true ? "#16a34a" : "var(--border)",
+                                  background: resultForm.cas_passed === true ? "#f0fdf4" : "white",
+                                  color: resultForm.cas_passed === true ? "#16a34a" : "var(--slate)",
+                                  fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit", minHeight: 48 }}>
+                                ✓ Passed
+                              </button>
+                              <button type="button" onClick={() => setResultForm(f => ({ ...f, cas_passed: false }))}
+                                style={{ flex: 1, padding: "12px", borderRadius: 8, border: "2px solid",
+                                  borderColor: resultForm.cas_passed === false ? "var(--red)" : "var(--border)",
+                                  background: resultForm.cas_passed === false ? "#fef2f2" : "white",
+                                  color: resultForm.cas_passed === false ? "var(--red)" : "var(--slate)",
+                                  fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit", minHeight: 48 }}>
+                                ✗ Not Yet
+                              </button>
+                            </div>
+                          </div>
+                          <div className="form-group">
+                            <label className="label">Notes <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+                            <input className="input" value={resultForm.result_notes}
+                              onChange={e => setResultForm(f => ({ ...f, result_notes: e.target.value }))}
+                              placeholder="e.g. Need to work on footwork section" style={{ fontSize: 14 }} />
+                          </div>
+                        </>
+                      ) : (
+                        /* Standard Result Entry */
+                        <>
+                          <div className="form-group" style={{ marginTop: 12 }}>
+                            <label className="label">Placement</label>
+                            <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                              {[1, 2, 3].map(n => (
+                                <button key={n} style={{
+                                  flex: 1, padding: "10px 0", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer",
+                                  fontFamily: "inherit", minHeight: 44,
+                                  border: `2px solid ${String(resultForm.placement) === String(n) ? "var(--brand)" : "var(--border)"}`,
+                                  background: String(resultForm.placement) === String(n) ? "var(--brand-light)" : "white",
+                                  color: String(resultForm.placement) === String(n) ? "var(--brand2)" : "var(--navy)",
+                                }} onClick={() => setResultForm(f => ({ ...f, placement: String(n) }))}>
+                                  {n === 1 ? "1st" : n === 2 ? "2nd" : "3rd"}
+                                </button>
+                              ))}
+                              <input className="input" type="number" min="1" max="99"
+                                placeholder="Other"
+                                value={resultForm.placement && parseInt(resultForm.placement) > 3 ? resultForm.placement : ""}
+                                onChange={e => setResultForm(f => ({ ...f, placement: e.target.value }))}
+                                style={{ flex: 1, textAlign: "center", fontSize: 14, minHeight: 44 }} />
+                            </div>
+                          </div>
+                          <div className="form-group">
+                            <label className="label">Score <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+                            <input className="input" type="number" step="0.1" value={resultForm.score}
+                              onChange={e => setResultForm(f => ({ ...f, score: e.target.value }))}
+                              placeholder="e.g. 85.5" style={{ fontSize: 14 }} />
+                          </div>
+                          <div className="form-group">
+                            <label className="label">Notes <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+                            <input className="input" value={resultForm.result_notes}
+                              onChange={e => setResultForm(f => ({ ...f, result_notes: e.target.value }))}
+                              placeholder="e.g. All catch, dropped baton..." style={{ fontSize: 14 }} />
+                          </div>
+                        </>
+                      )}
                     </div>
                     <div className="modal-footer">
                       <button className="btn btn-ghost" onClick={() => setShowResultModal(false)}>Cancel</button>
@@ -10347,22 +10390,38 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                           <select className="select" value={peForm.category} style={{ fontSize: 13 }}
                             onChange={e => setPeForm(f => ({ ...f, category: e.target.value }))}>
                             <option value="">Select…</option>
-                            {["Solo","Strut","2-Baton","3-Baton","Artistic Twirl","Basic March","Military March","Parade March","Presentation","Duet","Show Twirl","Corps","Custom"].map(c => (
+                            {["Solo","Strut","2-Baton","3-Baton","Artistic Twirl","Basic March","Military March","Parade March","Presentation","Duet","Trio","Show Twirl","Dance Twirl","Movement & Compulsories","Modeling","Flag Twirling","Hoop Twirling","Ribbon","Small Group","Large Group","Corps","Pom","Duet Show Routine","Custom"].map(c => (
                               <option key={c} value={c}>{c}</option>
                             ))}
                           </select>
                         </div>
                         <div className="form-group">
-                          <label className="label">Skill Level</label>
+                          <label className="label">{peForm.category === "Movement & Compulsories" ? "CAS Level" : "Skill Level"}</label>
                           <select className="select" value={peForm.skill_level} style={{ fontSize: 13 }}
                             onChange={e => setPeForm(f => ({ ...f, skill_level: e.target.value }))}>
                             <option value="">Select…</option>
-                            {["Special Beginner","Novice","Beginner","Intermediate","Advanced","Level 1","Level 2","Level 3","Level 4","Level 5","Elite","All-Star","Open"].map(l => (
+                            {(peForm.category === "Movement & Compulsories"
+                              ? CAS_LEVELS
+                              : ["Special Beginner","Novice","Beginner","Intermediate","Advanced","Level 1","Level 2","Level 3","Level 4","Level 5","Elite","All-Star","Open"]
+                            ).map(l => (
                               <option key={l} value={l}>{l}</option>
                             ))}
                           </select>
                         </div>
                       </div>
+                      {/* Group size — shown for group categories */}
+                      {["Small Group","Large Group","Corps","Trio","Duet Show Routine","Pom"].includes(peForm.category) && (
+                        <div className="form-group">
+                          <label className="label">Group Size</label>
+                          <select className="select" value={peForm.group_size || ""} style={{ fontSize: 13 }}
+                            onChange={e => setPeForm(f => ({ ...f, group_size: e.target.value }))}>
+                            <option value="">Select…</option>
+                            <option value="Small (3-5)">Small (3-5)</option>
+                            <option value="Medium (6-9)">Medium (6-9)</option>
+                            <option value="Large (10+)">Large (10+)</option>
+                          </select>
+                        </div>
+                      )}
                       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
                         <div>
                           <label className="label" style={{ marginBottom: 6 }}>Classification</label>
