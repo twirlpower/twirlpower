@@ -1918,7 +1918,7 @@ export default function App() {
       twirler_id: resolvedActiveTwirlerId,
       event: r.event,
       classification_level_entered: r.classificationLevelEntered,
-      placement: parseInt(r.placement),
+      placement: r.placement ? parseInt(r.placement) : null,
       contested: r.contested !== false,
       protection_rule: !!r.protectionRule,
       is_final_round: r.isFinalRound ?? null,
@@ -5888,7 +5888,45 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Completed ({completedPe.length})</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {completedPe.map(pe => renderPeCard(pe, "done"))}
+                      {completedPe.map(pe => {
+                        const placePending = pe.score != null && !pe.placement;
+                        return (
+                          <div key={pe.id} style={{
+                            display: "flex", alignItems: "center", gap: 14, padding: "14px 18px",
+                            background: placePending ? "#fffbeb" : "#f0fdf4",
+                            border: `1px solid ${placePending ? "#fde68a" : "#86efac"}`,
+                            borderRadius: 12, minHeight: 44,
+                          }}>
+                            <div style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                              background: placePending ? "#fef3c7" : "#dcfce7",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 18, color: placePending ? "#b45309" : "#16a34a" }}>
+                              {placePending ? "⚠" : "✓"}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{pe.event_name}</div>
+                              <div style={{ fontSize: 11, color: placePending ? "#b45309" : "#16a34a", marginTop: 2 }}>
+                                {pe.placement ? `${fmtPlacement(pe.placement)} place` : ""}
+                                {pe.score != null ? `${pe.placement ? " · " : ""}Score: ${pe.score}` : ""}
+                                {placePending && " · ⚠ Place pending"}
+                                {pe.category === "Movement & Compulsories" && (pe.cas_passed ? " · ✓ Passed" : " · ✗ Not Yet")}
+                              </div>
+                            </div>
+                            {placePending && (
+                              <button style={{ padding: "6px 12px", borderRadius: 6, background: "#b45309", color: "white",
+                                fontSize: 11, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: "inherit", minHeight: 32 }}
+                                onClick={() => { setTtPlacementPeId(pe.id); setTtPlacementVal(""); }}>
+                                Add Place
+                              </button>
+                            )}
+                            <button style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--bg)", border: "none",
+                              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }}
+                              onClick={() => openTtEdit(pe)} title="Edit result">
+                              <Icon name="edit" size={12} color="var(--slate)" />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -12782,7 +12820,7 @@ function AddResultsModal({ open, onClose, competition: competitionProp, activeTw
   const selectedOrg = ORGS[competition?.orgId];
   const isCasOrg2 = competition?.orgId === "USTA";
   const validRows = eventRows.filter(r => r.event && (
-    (isCasOrg2 && CAS_EVENTS.has(r.event)) ? r.casPassed !== null : r.placement !== ""
+    (isCasOrg2 && CAS_EVENTS.has(r.event)) ? r.casPassed !== null : (r.placement !== "" || r.score !== "")
   ));
 
   function save() {
@@ -12790,7 +12828,7 @@ function AddResultsModal({ open, onClose, competition: competitionProp, activeTw
     eventRows.forEach(r => { if (r.scorecardPreview) try { URL.revokeObjectURL(r.scorecardPreview); } catch {} });
     onSave(competition.id, validRows.map(r => ({
       ...r,
-      placement: (isCasOrg2 && CAS_EVENTS.has(r.event)) ? null : parseInt(r.placement),
+      placement: (isCasOrg2 && CAS_EVENTS.has(r.event)) ? null : (r.placement ? parseInt(r.placement) : null),
       orgId: competition.orgId
     })));
     onClose();
