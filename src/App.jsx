@@ -9804,8 +9804,12 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const [peLoading, setPeLoading] = useState(false);
   const [showPeModal, setShowPeModal] = useState(false);
   const [editingPe, setEditingPe] = useState(null);
-  const [peForm, setPeForm] = useState({ event_name: "", event_time: "", lane: "", set_number: "", notes: "" });
+  const [peForm, setPeForm] = useState({ event_name: "", event_time: "", lane: "", set_number: "", notes: "", category: "", skill_level: "", classification: "Open", is_qualifier: false });
   const [peSubmitting, setPeSubmitting] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [resultPeId, setResultPeId] = useState(null);
+  const [resultForm, setResultForm] = useState({ placement: "", score: "", result_notes: "" });
+  const [resultSubmitting, setResultSubmitting] = useState(false);
 
   useEffect(() => {
     if (isManualComp && activeTwirler && activeCompetitionId) {
@@ -9820,13 +9824,55 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
 
   function openAddPe() {
     setEditingPe(null);
-    setPeForm({ event_name: "", event_time: "", lane: "", set_number: "", notes: "" });
+    setPeForm({ event_name: "", event_time: "", lane: "", set_number: "", notes: "", category: "", skill_level: "", classification: "Open", is_qualifier: false });
     setShowPeModal(true);
   }
   function openEditPe(pe) {
     setEditingPe(pe);
-    setPeForm({ event_name: pe.event_name, event_time: pe.event_time || "", lane: pe.lane || "", set_number: pe.set_number || "", notes: pe.notes || "" });
+    setPeForm({ event_name: pe.event_name, event_time: pe.event_time || "", lane: pe.lane || "", set_number: pe.set_number || "", notes: pe.notes || "", category: pe.category || "", skill_level: pe.skill_level || "", classification: pe.classification || "Open", is_qualifier: pe.is_qualifier || false });
     setShowPeModal(true);
+  }
+  function openResultEntry(pe) {
+    setResultPeId(pe.id);
+    setResultForm({ placement: pe.placement || "", score: pe.score != null ? String(pe.score) : "", result_notes: pe.result_notes || "" });
+    setShowResultModal(true);
+  }
+  const resultSubmitGuard = useRef(false);
+  async function handleResultSave() {
+    if (resultSubmitGuard.current) return;
+    resultSubmitGuard.current = true;
+    setResultSubmitting(true);
+    try {
+      const placement = resultForm.placement ? parseInt(resultForm.placement) : null;
+      const score = resultForm.score ? parseFloat(resultForm.score) : null;
+      const { data, error } = await supabase.from("competition_planned_events").update({
+        placement, score, result_notes: resultForm.result_notes.trim() || null, status: "completed",
+      }).eq("id", resultPeId).select().single();
+      if (error) console.error("[handleResultSave] error:", error.message);
+      if (data) {
+        setPlannedEvents(prev => prev.map(p => p.id === data.id ? data : p));
+        // Sync state win to results table if applicable
+        const pe = plannedEvents.find(p => p.id === resultPeId);
+        if (pe && placement === 1 && pe.classification === "State") {
+          await supabase.from("results").insert({
+            twirler_id: activeTwirler.id,
+            competition_id: activeCompetitionId,
+            event: pe.event_name,
+            placement: 1,
+            score,
+            classification_level_entered: pe.skill_level || null,
+            org_id: comp.orgId || comp.org_id || null,
+            is_state_win: true,
+          });
+        }
+      }
+      setShowResultModal(false);
+    } catch (err) {
+      console.error("[handleResultSave] error:", err);
+    } finally {
+      setResultSubmitting(false);
+      resultSubmitGuard.current = false;
+    }
   }
   const peSubmitGuard = useRef(false);
   async function handlePeSave() {
@@ -9840,6 +9886,10 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
         lane: peForm.lane.trim() || null,
         set_number: peForm.set_number.trim() || null,
         notes: peForm.notes.trim() || null,
+        category: peForm.category.trim() || null,
+        skill_level: peForm.skill_level.trim() || null,
+        classification: peForm.classification || "Open",
+        is_qualifier: peForm.is_qualifier || false,
       };
       if (editingPe) {
         const { data, error } = await supabase.from("competition_planned_events").update(row).eq("id", editingPe.id).select().single();
@@ -10096,9 +10146,8 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {plannedEvents.map((pe, idx) => {
-                      const hasResult = myResults.some(r => r.event === pe.event_name);
-                      const result = hasResult ? myResults.find(r => r.event === pe.event_name) : null;
-                      const isOnDeck = !hasResult && idx === plannedEvents.findIndex(p => !myResults.some(r => r.event === p.event_name));
+                      const hasResult = pe.status === "completed" || pe.placement != null;
+                      const isOnDeck = !hasResult && idx === plannedEvents.findIndex(p => p.status !== "completed" && p.placement == null);
                       const statusLabel = hasResult ? "Completed" : isOnDeck && (isToday || isPast) ? "On Deck" : isPast ? "—" : "Later";
                       const statusColor = hasResult ? "#16a34a" : isOnDeck && isToday ? "var(--brand2)" : "var(--muted)";
                       const statusBg = hasResult ? "#dcfce7" : isOnDeck && isToday ? "var(--brand-light)" : "var(--bg)";
@@ -10111,11 +10160,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                           borderRadius: 10, cursor: "pointer", minHeight: 44,
                         }}
                         onClick={() => {
-                          if (hasResult) {
-                            // Show result summary — just scroll to results tab
-                          } else if (!isFuture) {
-                            openModal("addResults", { competitionId: activeCompetitionId, prefillEvent: pe.event_name });
-                          }
+                          if (!hasResult && !isFuture) openResultEntry(pe);
                         }}>
                           {/* Reorder arrows */}
                           {!isPast && (
@@ -10144,10 +10189,11 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                               {pe.event_time && <span>🕐 {pe.event_time}</span>}
                             </div>
                             {/* Result summary if completed */}
-                            {hasResult && result && (
+                            {hasResult && (
                               <div style={{ fontSize: 11, color: "#16a34a", marginTop: 3 }}>
-                                {result.placement ? `${result.placement}${["st","nd","rd"][result.placement-1]||"th"} place` : "Logged"}
-                                {result.score != null ? ` · ${result.score.toFixed(1)}` : ""}
+                                {pe.placement ? `${pe.placement}${["st","nd","rd"][pe.placement-1]||"th"} place` : "Completed"}
+                                {pe.score != null ? ` · ${pe.score}` : ""}
+                                {pe.result_notes ? ` · ${pe.result_notes}` : ""}
                               </div>
                             )}
                           </div>
@@ -10169,13 +10215,70 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                   </div>
                 )}
 
-                {/* Log Another Event button */}
-                {!isFuture && (
-                  <button className="btn btn-secondary w-full" style={{ marginTop: 12, minHeight: 44 }}
-                    onClick={() => openModal("addResults", { competitionId: activeCompetitionId })}>
-                    <Icon name="plus" size={13} /> Log Another Event
-                  </button>
-                )}
+                {/* Add Another Event button */}
+                <button className="btn btn-secondary w-full" style={{ marginTop: 12, minHeight: 44 }}
+                  onClick={openAddPe}>
+                  <Icon name="plus" size={13} /> + Add Another Event
+                </button>
+
+              {/* ── Quick Result Entry Modal ── */}
+              {showResultModal && (() => {
+                const pe = plannedEvents.find(p => p.id === resultPeId);
+                return (
+                <div className="modal-overlay" onClick={() => setShowResultModal(false)}>
+                  <div className="modal" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+                    <div className="modal-header">
+                      <div className="modal-title">Add Result</div>
+                      <button className="modal-close" onClick={() => setShowResultModal(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18 }}>✕</button>
+                    </div>
+                    <div className="modal-body">
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>{pe?.event_name}</div>
+                      {pe?.category && <span className="badge badge-gray" style={{ fontSize: 10, marginBottom: 12, display: "inline-block" }}>{pe.category}{pe.skill_level ? ` · ${pe.skill_level}` : ""}</span>}
+
+                      <div className="form-group" style={{ marginTop: 12 }}>
+                        <label className="label">Placement</label>
+                        <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+                          {[1, 2, 3].map(n => (
+                            <button key={n} style={{
+                              flex: 1, padding: "10px 0", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer",
+                              fontFamily: "inherit", minHeight: 44,
+                              border: `2px solid ${String(resultForm.placement) === String(n) ? "var(--brand)" : "var(--border)"}`,
+                              background: String(resultForm.placement) === String(n) ? "var(--brand-light)" : "white",
+                              color: String(resultForm.placement) === String(n) ? "var(--brand2)" : "var(--navy)",
+                            }} onClick={() => setResultForm(f => ({ ...f, placement: String(n) }))}>
+                              {n === 1 ? "1st" : n === 2 ? "2nd" : "3rd"}
+                            </button>
+                          ))}
+                          <input className="input" type="number" min="1" max="99"
+                            placeholder="Other"
+                            value={resultForm.placement && parseInt(resultForm.placement) > 3 ? resultForm.placement : ""}
+                            onChange={e => setResultForm(f => ({ ...f, placement: e.target.value }))}
+                            style={{ flex: 1, textAlign: "center", fontSize: 14, minHeight: 44 }} />
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label className="label">Score <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+                        <input className="input" type="number" step="0.1" value={resultForm.score}
+                          onChange={e => setResultForm(f => ({ ...f, score: e.target.value }))}
+                          placeholder="e.g. 85.5" style={{ fontSize: 14 }} />
+                      </div>
+                      <div className="form-group">
+                        <label className="label">Notes <span style={{ fontWeight: 400, color: "var(--muted)" }}>(optional)</span></label>
+                        <input className="input" value={resultForm.result_notes}
+                          onChange={e => setResultForm(f => ({ ...f, result_notes: e.target.value }))}
+                          placeholder="e.g. All catch, dropped baton..." style={{ fontSize: 14 }} />
+                      </div>
+                    </div>
+                    <div className="modal-footer">
+                      <button className="btn btn-ghost" onClick={() => setShowResultModal(false)}>Cancel</button>
+                      <button className="btn btn-primary" onClick={handleResultSave} disabled={resultSubmitting} style={{ minHeight: 44 }}>
+                        {resultSubmitting ? "Saving…" : "Save Result"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                );
+              })()}
               </div>
 
               {/* ── Add/Edit Planned Event Modal ── */}
@@ -10201,7 +10304,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                                 background: peForm.event_name === ev ? "var(--brand-light)" : "white",
                                 color: peForm.event_name === ev ? "var(--brand2)" : "var(--navy)",
                                 cursor: "pointer", fontFamily: "inherit",
-                              }} onClick={() => setPeForm(f => ({ ...f, event_name: ev }))}>
+                              }} onClick={() => setPeForm(f => ({ ...f, event_name: ev, category: ev }))}>
                                 {ev}
                               </button>
                             ))}
@@ -10218,6 +10321,51 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                           Be specific — include classification, level, and age group
                         </div>
                       </div>
+
+                      {/* Structured fields for advancement tracking */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <div className="form-group">
+                          <label className="label">Category</label>
+                          <select className="select" value={peForm.category} style={{ fontSize: 13 }}
+                            onChange={e => setPeForm(f => ({ ...f, category: e.target.value }))}>
+                            <option value="">Select…</option>
+                            {["Solo","Strut","2-Baton","3-Baton","Artistic Twirl","Basic March","Military March","Parade March","Presentation","Duet","Show Twirl","Corps","Custom"].map(c => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Skill Level</label>
+                          <select className="select" value={peForm.skill_level} style={{ fontSize: 13 }}
+                            onChange={e => setPeForm(f => ({ ...f, skill_level: e.target.value }))}>
+                            <option value="">Select…</option>
+                            {["Special Beginner","Novice","Beginner","Intermediate","Advanced","Level 1","Level 2","Level 3","Level 4","Level 5","Elite","All-Star","Open"].map(l => (
+                              <option key={l} value={l}>{l}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+                        <div>
+                          <label className="label" style={{ marginBottom: 6 }}>Classification</label>
+                          <div style={{ display: "flex", gap: 0, border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
+                            {["Open", "State"].map(c => (
+                              <button key={c} style={{
+                                padding: "5px 14px", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                                fontFamily: "inherit",
+                                background: peForm.classification === c ? "var(--brand)" : "white",
+                                color: peForm.classification === c ? "white" : "var(--slate)",
+                              }} onClick={() => setPeForm(f => ({ ...f, classification: c }))}>{c}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", marginTop: 18, fontSize: 12, color: "var(--navy)" }}>
+                          <input type="checkbox" checked={peForm.is_qualifier} style={{ accentColor: "var(--brand)" }}
+                            onChange={e => setPeForm(f => ({ ...f, is_qualifier: e.target.checked }))} />
+                          Qualifying event
+                        </label>
+                      </div>
+
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                         <div className="form-group">
                           <label className="label">Set #</label>
