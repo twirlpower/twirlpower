@@ -1950,17 +1950,26 @@ export default function App() {
       if (prev.length === 0 && mapped.length > 0 && canShowInstall) setShowInstallBanner(true);
       return updated;
     });
-    // Sync results back to competition_planned_events
+    // Sync results back to competition_planned_events (one-to-one matching)
     for (const r of rows) {
       const placement = r.placement || null;
       const score = r.score ?? null;
       const status = placement ? "completed" : score != null ? "scored" : null;
       if (status) {
-        await supabase.from("competition_planned_events")
-          .update({ placement, score, status })
+        // Find the first unscored planned event with this name
+        const { data: matches } = await supabase.from("competition_planned_events")
+          .select("id, status")
           .eq("competition_id", compId)
           .eq("twirler_id", r.twirler_id)
-          .eq("event_name", r.event);
+          .eq("event_name", r.event)
+          .in("status", ["pending", "on_deck"])
+          .order("order_number")
+          .limit(1);
+        if (matches && matches.length > 0) {
+          await supabase.from("competition_planned_events")
+            .update({ placement, score, status })
+            .eq("id", matches[0].id);
+        }
       }
     }
   }
@@ -5419,9 +5428,15 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     const pe = peRes.data || [];
     const res = resRes.data || [];
     // Cross-reference: merge result data into planned events
+    // Track consumed result IDs so each result matches only ONE planned event
+    const usedResultIds = new Set();
     const merged = pe.map(p => {
-      const match = res.find(r => r.event === p.event_name || r.event === p.category);
+      // If planned event already has a result on its own row, use that
+      if (p.status === "completed" || p.status === "scored") return p;
+      // Find first unmatched result by event_name
+      const match = res.find(r => !usedResultIds.has(r.id) && (r.event === p.event_name || r.event === p.category));
       if (!match) return p;
+      usedResultIds.add(match.id);
       const placement = p.placement || match.placement || null;
       const score = p.score ?? match.score ?? null;
       const status = placement ? "completed" : score != null ? "scored" : p.status;
