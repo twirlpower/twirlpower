@@ -6229,7 +6229,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                 ? <span className="badge badge-warn" title="Wins may not count toward advancement">Unsanctioned ⚠</span>
                 : <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
               {wins > 0 && <span className="badge badge-amber">{wins} win{wins !== 1 ? "s" : ""}</span>}
-              {comp.date >= today && compResults.length === 0 && (!comp.mode || String(comp.mode) === "1") ? (
+              {comp.date >= today && compResults.length === 0 ? (
                 <span className="badge badge-brand" style={{ cursor: "pointer" }}
                   onClick={e => { e.stopPropagation(); if (setActiveCompetitionId) { setActiveCompetitionId(comp.id); setPage("competition-detail"); } }}>
                   Plan Events →
@@ -6269,7 +6269,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
             {compResults.length === 0 ? (
               <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
                 {/* Plan Events button for upcoming manual competitions */}
-                {comp.date >= today && (!comp.mode || String(comp.mode) === "1") && setActiveCompetitionId && (
+                {comp.date >= today && setActiveCompetitionId && (
                   <button className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }}
                     onClick={() => { setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
                     <Icon name="calendar" size={13} /> Plan Events
@@ -9785,12 +9785,12 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const isPast = endDate < today;
   const isFuture = comp.date > today;
 
-  const defaultTab = isToday ? "my-competition" : isPast ? "results" : (isFuture && isManualComp) ? "my-competition" : "overview";
+  const defaultTab = isToday ? "my-competition" : isPast ? "results" : isFuture ? "my-competition" : "overview";
   const [tab, setTab] = useState(defaultTab);
   const [copied, setCopied] = useState(false);
 
-  // Event Planner (manual/mode-1 competitions only)
-  const isManualComp = !comp.mode || String(comp.mode) === "1";
+  // Event Planner — families can always plan their own events for any competition
+  const isManualComp = true;
   const [plannedEvents, setPlannedEvents] = useState([]);
   const [peLoading, setPeLoading] = useState(false);
   const [showPeModal, setShowPeModal] = useState(false);
