@@ -10050,106 +10050,162 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                 </div>
               )}
 
-              {/* ── Event Planner (manual competitions) ── */}
-              {isManualComp && (
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                      My Event Plan
-                    </div>
-                    <button className="btn btn-primary btn-sm" style={{ fontSize: 11 }} onClick={openAddPe}>+ Add Event</button>
+              {/* ── MY EVENTS — planned events only ── */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    My Events
                   </div>
-                  {peLoading ? (
-                    <div style={{ textAlign: "center", padding: 16 }}><div className="spinner" /></div>
-                  ) : plannedEvents.length === 0 ? (
-                    <div className="card" style={{ textAlign: "center", padding: "20px 16px", color: "var(--muted)", fontSize: 13 }}>
-                      Add your events to plan your competition day
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {plannedEvents.map((pe, idx) => {
-                        const hasResult = myResults.some(r => r.event === pe.event_name);
-                        const isOnDeck = !hasResult && idx === plannedEvents.findIndex(p => !myResults.some(r => r.event === p.event_name));
-                        const statusLabel = hasResult ? "Done" : isOnDeck && isToday ? "On Deck" : isPast ? "—" : "Later";
-                        const statusColor = hasResult ? "#16a34a" : isOnDeck && isToday ? "#b45309" : "var(--muted)";
-                        const statusBg = hasResult ? "#dcfce7" : isOnDeck && isToday ? "#fef3c7" : "var(--bg)";
-                        return (
-                          <div key={pe.id} style={{
-                            display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
-                            background: "var(--card)", border: `1px solid ${hasResult ? "#86efac" : isOnDeck && isToday ? "#fde68a" : "var(--border)"}`,
-                            borderRadius: 10,
-                          }}>
-                            {/* Reorder arrows */}
-                            {!isPast && (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}>
-                                <button style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: idx === 0 ? "var(--border)" : "var(--muted)", fontSize: 10 }}
-                                  onClick={() => movePe(pe.id, -1)} disabled={idx === 0}>▲</button>
-                                <button style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: idx === plannedEvents.length - 1 ? "var(--border)" : "var(--muted)", fontSize: 10 }}
-                                  onClick={() => movePe(pe.id, 1)} disabled={idx === plannedEvents.length - 1}>▼</button>
+                  <button className="btn btn-primary btn-sm" style={{ fontSize: 11, minHeight: 32 }} onClick={openAddPe}>+ Add Event</button>
+                </div>
+
+                {peLoading ? (
+                  <div style={{ textAlign: "center", padding: 24 }}><div className="spinner" /></div>
+                ) : plannedEvents.length === 0 ? (
+                  <div className="card" style={{ textAlign: "center", padding: "32px 16px" }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>📋</div>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: "var(--navy)", marginBottom: 4 }}>Add your events to plan your competition day</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>Tap "+ Add Event" to get started</div>
+                    <button className="btn btn-primary btn-sm" onClick={openAddPe}>+ Add Event</button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {plannedEvents.map((pe, idx) => {
+                      const hasResult = myResults.some(r => r.event === pe.event_name);
+                      const result = hasResult ? myResults.find(r => r.event === pe.event_name) : null;
+                      const isOnDeck = !hasResult && idx === plannedEvents.findIndex(p => !myResults.some(r => r.event === p.event_name));
+                      const statusLabel = hasResult ? "Completed" : isOnDeck && (isToday || isPast) ? "On Deck" : isPast ? "—" : "Later";
+                      const statusColor = hasResult ? "#16a34a" : isOnDeck && isToday ? "var(--brand2)" : "var(--muted)";
+                      const statusBg = hasResult ? "#dcfce7" : isOnDeck && isToday ? "var(--brand-light)" : "var(--bg)";
+                      const borderColor = hasResult ? "#86efac" : isOnDeck && isToday ? "var(--brand)" : "var(--border)";
+
+                      return (
+                        <div key={pe.id} style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                          background: "var(--card)", border: `1px solid ${borderColor}`,
+                          borderRadius: 10, cursor: "pointer", minHeight: 44,
+                        }}
+                        onClick={() => {
+                          if (hasResult) {
+                            // Show result summary — just scroll to results tab
+                          } else if (!isFuture) {
+                            openModal("addResults", { competitionId: activeCompetitionId, prefillEvent: pe.event_name });
+                          }
+                        }}>
+                          {/* Reorder arrows */}
+                          {!isPast && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0 }}
+                              onClick={e => e.stopPropagation()}>
+                              <button style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: idx === 0 ? "var(--border)" : "var(--muted)", fontSize: 10, lineHeight: 1 }}
+                                onClick={() => movePe(pe.id, -1)} disabled={idx === 0}>▲</button>
+                              <button style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: idx === plannedEvents.length - 1 ? "var(--border)" : "var(--muted)", fontSize: 10, lineHeight: 1 }}
+                                onClick={() => movePe(pe.id, 1)} disabled={idx === plannedEvents.length - 1}>▼</button>
+                            </div>
+                          )}
+                          {/* Status badge */}
+                          <div style={{ padding: "3px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700,
+                            background: statusBg, color: statusColor, flexShrink: 0, minWidth: 52, textAlign: "center" }}>
+                            {statusLabel}
+                          </div>
+                          {/* Event info */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {pe.event_name}
+                            </div>
+                            <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
+                              {pe.set_number && pe.lane && <span>Set {pe.set_number} · Lane {pe.lane}</span>}
+                              {pe.set_number && !pe.lane && <span>Set {pe.set_number}</span>}
+                              {!pe.set_number && pe.lane && <span>Lane {pe.lane}</span>}
+                              {pe.event_time && <span>🕐 {pe.event_time}</span>}
+                            </div>
+                            {/* Result summary if completed */}
+                            {hasResult && result && (
+                              <div style={{ fontSize: 11, color: "#16a34a", marginTop: 3 }}>
+                                {result.placement ? `${result.placement}${["st","nd","rd"][result.placement-1]||"th"} place` : "Logged"}
+                                {result.score != null ? ` · ${result.score.toFixed(1)}` : ""}
                               </div>
                             )}
-                            {/* Status badge */}
-                            <div style={{ padding: "3px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700,
-                              background: statusBg, color: statusColor, flexShrink: 0 }}>
-                              {statusLabel}
-                            </div>
-                            {/* Event info — tap to edit the planned event */}
-                            <div style={{ flex: 1, minWidth: 0, cursor: !isPast ? "pointer" : "default" }}
-                              onClick={() => { if (!isPast) openEditPe(pe); }}>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {pe.event_name}
-                              </div>
-                              <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
-                                {pe.event_time && <span>🕐 {pe.event_time}</span>}
-                                {pe.lane && <span>Lane {pe.lane}</span>}
-                                {pe.set_number && <span>Set {pe.set_number}</span>}
-                                {pe.notes && <span style={{ fontStyle: "italic" }}>{pe.notes}</span>}
-                              </div>
-                            </div>
-                            {/* Actions */}
-                            <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
-                              {/* Log Result button — only on competition day or past */}
-                              {!isFuture && !hasResult && (
-                                <button style={{ background: "var(--brand)", color: "white", border: "none", borderRadius: 6,
-                                  padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                                  onClick={() => openModal("addResults", { competitionId: activeCompetitionId, prefillEvent: pe.event_name })}>
-                                  Log Result
-                                </button>
-                              )}
-                              {!isPast && (
-                                <>
-                                  <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}
-                                    onClick={() => openEditPe(pe)} title="Edit">✏️</button>
-                                  <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}
-                                    onClick={() => deletePe(pe.id)} title="Delete">🗑️</button>
-                                </>
-                              )}
-                              {hasResult && (
-                                <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✓ Logged</span>
-                              )}
-                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+                          {/* Actions */}
+                          <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}
+                            onClick={e => e.stopPropagation()}>
+                            {!isPast && (
+                              <>
+                                <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 4, minWidth: 28, minHeight: 28 }}
+                                  onClick={() => openEditPe(pe)} title="Edit">✏️</button>
+                                <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 4, minWidth: 28, minHeight: 28 }}
+                                  onClick={() => deletePe(pe.id)} title="Delete">🗑️</button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Log Another Event button */}
+                {!isFuture && (
+                  <button className="btn btn-secondary w-full" style={{ marginTop: 12, minHeight: 44 }}
+                    onClick={() => openModal("addResults", { competitionId: activeCompetitionId })}>
+                    <Icon name="plus" size={13} /> Log Another Event
+                  </button>
+                )}
+              </div>
 
               {/* ── Add/Edit Planned Event Modal ── */}
               {showPeModal && (
                 <div className="modal-overlay" onClick={() => setShowPeModal(false)}>
-                  <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+                  <div className="modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
                     <div className="modal-header">
                       <div className="modal-title">{editingPe ? "Edit Event" : "Add Event"}</div>
-                      <button className="modal-close" onClick={() => setShowPeModal(false)} style={{ background: "none", border: "none", cursor: "pointer" }}>✕</button>
+                      <button className="modal-close" onClick={() => setShowPeModal(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18 }}>✕</button>
                     </div>
                     <div className="modal-body">
+                      {/* Quick start — category chips (only when adding, not editing) */}
+                      {!editingPe && eventsToShow.length > 0 && (
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                            Start from a category:
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {eventsToShow.map(ev => (
+                              <button key={ev} style={{
+                                padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                                border: `1px solid ${peForm.event_name === ev ? "var(--brand)" : "var(--border)"}`,
+                                background: peForm.event_name === ev ? "var(--brand-light)" : "white",
+                                color: peForm.event_name === ev ? "var(--brand2)" : "var(--navy)",
+                                cursor: "pointer", fontFamily: "inherit",
+                              }} onClick={() => setPeForm(f => ({ ...f, event_name: ev }))}>
+                                {ev}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="form-group">
                         <label className="label">Event Name *</label>
                         <input className="input" value={peForm.event_name}
                           onChange={e => setPeForm(f => ({ ...f, event_name: e.target.value }))}
-                          placeholder='e.g. "Solo", "Strut", "2-Baton"' />
+                          placeholder='e.g. "Open Novice Solo 9-11"' />
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
+                          Be specific — include classification, level, and age group
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <div className="form-group">
+                          <label className="label">Set #</label>
+                          <input className="input" value={peForm.set_number}
+                            onChange={e => setPeForm(f => ({ ...f, set_number: e.target.value }))}
+                            placeholder="29" />
+                        </div>
+                        <div className="form-group">
+                          <label className="label">Lane</label>
+                          <input className="input" value={peForm.lane}
+                            onChange={e => setPeForm(f => ({ ...f, lane: e.target.value }))}
+                            placeholder="1" />
+                        </div>
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                         <div className="form-group">
@@ -10157,20 +10213,6 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                           <input className="input" value={peForm.event_time}
                             onChange={e => setPeForm(f => ({ ...f, event_time: e.target.value }))}
                             placeholder="9:30 AM" />
-                        </div>
-                        <div className="form-group">
-                          <label className="label">Lane</label>
-                          <input className="input" value={peForm.lane}
-                            onChange={e => setPeForm(f => ({ ...f, lane: e.target.value }))}
-                            placeholder="Lane 1" />
-                        </div>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                        <div className="form-group">
-                          <label className="label">Set Number</label>
-                          <input className="input" value={peForm.set_number}
-                            onChange={e => setPeForm(f => ({ ...f, set_number: e.target.value }))}
-                            placeholder="Set 3" />
                         </div>
                         <div className="form-group">
                           <label className="label">Notes</label>
@@ -10187,77 +10229,6 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                       </button>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {/* Event cards */}
-              {eventsToShow.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-                  {[...pendingEvents, ...doneEvents].map(event => {
-                    const isDone = myResults.some(r => r.event === event);
-                    const result = myResults.find(r => r.event === event);
-                    const prog = progress?.[comp.orgId || comp.org_id]?.[event];
-                    const level = prog?.currentLevel || (activeTwirler.classificationState?.[`${comp.orgId || comp.org_id}__${event}`]?.level) || "Novice";
-
-                    return (
-                      <div key={event} onClick={() => !isDone && openModal("addResults", { competitionId: activeCompetitionId, prefillEvent: event, prefillLevel: level })}
-                        style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px",
-                          background: isDone ? "#f0fdf4" : "var(--card)", border: `1px solid ${isDone ? "#86efac" : "var(--border)"}`,
-                          borderRadius: 10, cursor: isDone ? "default" : "pointer", opacity: isDone ? 0.85 : 1 }}>
-                        <div style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
-                          background: isDone ? "#dcfce7" : "var(--brand-light)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: isDone ? 20 : 14, fontWeight: 700, color: isDone ? "#16a34a" : "var(--brand)" }}>
-                          {isDone ? "✓" : event.slice(0, 2)}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 15, fontWeight: 600, color: isDone ? "#166534" : "var(--navy)" }}>{event}</div>
-                          <div style={{ fontSize: 12, color: isDone ? "#16a34a" : "var(--slate)", marginTop: 2 }}>
-                            {isDone
-                              ? `${result?.placement ? `${result.placement}${["st","nd","rd"][result.placement-1]||"th"} place` : "Logged"}${result?.score != null ? ` · ${result.score.toFixed(1)}` : ""} · ${level}`
-                              : `${level} · ${isFuture ? "upcoming" : "tap to log result"}`}
-                          </div>
-                        </div>
-                        {!isDone && !isFuture && (
-                          <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--brand)",
-                            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            <Icon name="plus" size={14} color="white" />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="card mb-4">
-                  <p style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", padding: "16px 0" }}>
-                    No regular events set for {comp.orgId || comp.org_id}. Add events to your twirler's profile or use the button below.
-                  </p>
-                </div>
-              )}
-
-              {!isFuture && (
-                <button className="btn btn-secondary w-full mb-4" onClick={() => openModal("addResults", { competitionId: activeCompetitionId })}>
-                  <Icon name="plus" size={13} /> Log Another Event
-                </button>
-              )}
-
-              {/* Show all results for this competition */}
-              {myResults.length > 0 && eventsToShow.length === 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {myResults.map(r => (
-                    <div key={r.id} className="card-sm" style={{ padding: "10px 14px" }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>{r.event}</div>
-                      <div className="flex gap-2 flex-wrap">
-                        <span className="badge badge-gray" style={{ fontSize: 10 }}>{r.classificationLevelEntered}</span>
-                        {r.placement && <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)", fontSize: 10 }}>
-                          {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
-                        </span>}
-                        {r.score != null && <span style={{ fontSize: 12, color: "var(--slate)" }}>Score: {r.score.toFixed(1)}</span>}
-                        {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9 }}>All Catch</span>}
-                      </div>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
