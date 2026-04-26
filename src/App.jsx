@@ -9855,6 +9855,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
           status: "pending",
         };
         console.log("[handlePeSave] insert payload:", JSON.stringify(payload));
+        console.log("[handlePeSave] comp source:", comp?.fromPublic ? "publicCompetitions" : "twirlerComps/local", "comp.id:", comp?.id);
         const { data, error } = await supabase.from("competition_planned_events").insert(payload).select().single();
         if (error) console.error("[handlePeSave] insert error:", error.message, error.code, error.details, error.hint);
         if (data) setPlannedEvents(prev => [...prev, data]);
