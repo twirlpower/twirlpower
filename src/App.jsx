@@ -6229,8 +6229,15 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                 ? <span className="badge badge-warn" title="Wins may not count toward advancement">Unsanctioned ⚠</span>
                 : <span className="badge badge-green" style={{ fontSize: 10 }}>Sanctioned</span>}
               {wins > 0 && <span className="badge badge-amber">{wins} win{wins !== 1 ? "s" : ""}</span>}
-              <span className="badge badge-gray">{compResults.length} event{compResults.length !== 1 ? "s" : ""}</span>
-              {publicCompetitions?.find(p => p.id === comp.id) && setActiveCompetitionId && (
+              {comp.date >= today && compResults.length === 0 && (!comp.mode || String(comp.mode) === "1") ? (
+                <span className="badge badge-brand" style={{ cursor: "pointer" }}
+                  onClick={e => { e.stopPropagation(); if (setActiveCompetitionId) { setActiveCompetitionId(comp.id); setPage("competition-detail"); } }}>
+                  Plan Events →
+                </span>
+              ) : (
+                <span className="badge badge-gray">{compResults.length} event{compResults.length !== 1 ? "s" : ""}</span>
+              )}
+              {setActiveCompetitionId && (
                 <button className="btn btn-ghost btn-sm" title="View competition details"
                   onClick={e => { e.stopPropagation(); setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
                   <Icon name="chevron_right" size={13} color="var(--brand)" />
@@ -6260,11 +6267,20 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
         {expanded && !isEditingThisComp && (
           <div style={{ borderTop: "1px solid var(--border)" }}>
             {compResults.length === 0 ? (
-              <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
-                <span style={{ color: "var(--muted)", fontSize: 14 }}>No results recorded yet.</span>
-                <button className="btn btn-primary btn-sm" onClick={() => openModal("addResults", { competition: comp })}>
-                  <Icon name="plus" size={13} /> Add Results
-                </button>
+              <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* Plan Events button for upcoming manual competitions */}
+                {comp.date >= today && (!comp.mode || String(comp.mode) === "1") && setActiveCompetitionId && (
+                  <button className="btn btn-primary btn-sm" style={{ alignSelf: "flex-start" }}
+                    onClick={() => { setActiveCompetitionId(comp.id); setPage("competition-detail"); }}>
+                    <Icon name="calendar" size={13} /> Plan Events
+                  </button>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ color: "var(--muted)", fontSize: 14 }}>No results recorded yet.</span>
+                  <button className="btn btn-secondary btn-sm" onClick={() => openModal("addResults", { competition: comp })}>
+                    <Icon name="plus" size={13} /> Add Results
+                  </button>
+                </div>
               </div>
             ) : (
               <>
