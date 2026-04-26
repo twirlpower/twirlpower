@@ -1118,7 +1118,7 @@ export default function App() {
           setPendingInviteToken(null);
 
           const rel = invite.relationship || 'Parent';
-          const isCoGuardian = ['Parent', 'Guardian', 'Co-Guardian'].includes(rel);
+          const isCoGuardian = ['Parent', 'Guardian', 'Co-Guardian', 'Co-Parent'].includes(rel);
           setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
           setFamilyAccount({ ...linkedFamily, parentName: linkedFamily.parent_name,
             additionalGuardians: linkedFamily.additional_guardians || [] });
@@ -1218,8 +1218,8 @@ export default function App() {
               // Own account is empty — use the linked family instead
               const guardian = (linkedFamily.additional_guardians || [])
                 .find(g => g.email?.toLowerCase() === userEmail.toLowerCase());
-              const rel = guardian?.relationship || "Other";
-              const isCoGuardian = ["Parent", "Guardian", "Co-Guardian"].includes(rel);
+              const rel = guardian?.relationship || "Parent";
+              const isCoGuardian = ["Parent", "Guardian", "Co-Guardian", "Co-Parent"].includes(rel);
               setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
 
               // Mark confirmed
@@ -1432,7 +1432,7 @@ export default function App() {
             const guardian = (linkedFamily.additional_guardians || [])
               .find(g => g.email?.toLowerCase() === userEmail.toLowerCase());
             const rel = guardian?.relationship || "Parent"; // default to Parent if not found
-            const isCoGuardian = ["Parent", "Guardian", "Co-Guardian"].includes(rel);
+            const isCoGuardian = ["Parent", "Guardian", "Co-Guardian", "Co-Parent"].includes(rel);
             setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
 
             // Mark this guardian as confirmed in the family account
