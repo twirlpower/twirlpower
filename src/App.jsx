@@ -2244,10 +2244,19 @@ export default function App() {
       const compToAdd = { ...pub, fromPublic: true };
       setCompetitions(prev => [...prev, compToAdd]);
     }
-    await supabase.from('attendees').insert({
+    const { error } = await supabase.from('attendees').upsert({
       competition_id: competitionId,
       twirler_id: twirlerId,
-    });
+    }, { onConflict: 'competition_id,twirler_id', ignoreDuplicates: true });
+    if (error) {
+      console.error("[addAttendee] insert failed:", error.message, error.details, error.hint);
+      // Retry without upsert in case the table doesn't have a unique constraint
+      const { error: err2 } = await supabase.from('attendees').insert({
+        competition_id: competitionId,
+        twirler_id: twirlerId,
+      });
+      if (err2) console.error("[addAttendee] retry insert failed:", err2.message);
+    }
   }
 
   async function removeAttendee(competitionId, twirlerId) {
