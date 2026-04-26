@@ -10093,11 +10093,9 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                               background: statusBg, color: statusColor, flexShrink: 0 }}>
                               {statusLabel}
                             </div>
-                            {/* Event info */}
-                            <div style={{ flex: 1, minWidth: 0 }}
-                              onClick={() => {
-                                if (!hasResult && !isFuture) openModal("addResults", { competitionId: activeCompetitionId, prefillEvent: pe.event_name });
-                              }}>
+                            {/* Event info — tap to edit the planned event */}
+                            <div style={{ flex: 1, minWidth: 0, cursor: !isPast ? "pointer" : "default" }}
+                              onClick={() => { if (!isPast) openEditPe(pe); }}>
                               <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                 {pe.event_name}
                               </div>
@@ -10109,17 +10107,27 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                               </div>
                             </div>
                             {/* Actions */}
-                            {!isPast && (
-                              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                                <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}
-                                  onClick={() => openEditPe(pe)} title="Edit">✏️</button>
-                                <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}
-                                  onClick={() => deletePe(pe.id)} title="Delete">🗑️</button>
-                              </div>
-                            )}
-                            {isPast && hasResult && (
-                              <span style={{ fontSize: 11, color: "var(--brand)", fontWeight: 600 }}>View Results →</span>
-                            )}
+                            <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
+                              {/* Log Result button — only on competition day or past */}
+                              {!isFuture && !hasResult && (
+                                <button style={{ background: "var(--brand)", color: "white", border: "none", borderRadius: 6,
+                                  padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                                  onClick={() => openModal("addResults", { competitionId: activeCompetitionId, prefillEvent: pe.event_name })}>
+                                  Log Result
+                                </button>
+                              )}
+                              {!isPast && (
+                                <>
+                                  <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}
+                                    onClick={() => openEditPe(pe)} title="Edit">✏️</button>
+                                  <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 2 }}
+                                    onClick={() => deletePe(pe.id)} title="Delete">🗑️</button>
+                                </>
+                              )}
+                              {hasResult && (
+                                <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>✓ Logged</span>
+                              )}
+                            </div>
                           </div>
                         );
                       })}
