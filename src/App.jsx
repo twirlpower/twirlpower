@@ -1947,10 +1947,22 @@ export default function App() {
     }));
     setResults(prev => {
       const updated = [...prev, ...mapped];
-      // Boost install banner after first result logged
       if (prev.length === 0 && mapped.length > 0 && canShowInstall) setShowInstallBanner(true);
       return updated;
     });
+    // Sync results back to competition_planned_events
+    for (const r of rows) {
+      const placement = r.placement || null;
+      const score = r.score ?? null;
+      const status = placement ? "completed" : score != null ? "scored" : null;
+      if (status) {
+        await supabase.from("competition_planned_events")
+          .update({ placement, score, status })
+          .eq("competition_id", compId)
+          .eq("twirler_id", r.twirler_id)
+          .eq("event_name", r.event);
+      }
+    }
   }
 
   async function addResultsToComp(compId, newResults) {
@@ -5399,21 +5411,32 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
   const [ttPlacementPeId, setTtPlacementPeId] = useState(null);
   const [ttPlacementVal, setTtPlacementVal] = useState("");
   const [ttPlacementSaving, setTtPlacementSaving] = useState(false);
+  async function loadTtData(compId, twirlerId) {
+    const [peRes, resRes] = await Promise.all([
+      supabase.from("competition_planned_events").select("*").eq("competition_id", compId).eq("twirler_id", twirlerId).order("order_number"),
+      supabase.from("results").select("*").eq("competition_id", compId).eq("twirler_id", twirlerId),
+    ]);
+    const pe = peRes.data || [];
+    const res = resRes.data || [];
+    // Cross-reference: merge result data into planned events
+    const merged = pe.map(p => {
+      const match = res.find(r => r.event === p.event_name || r.event === p.category);
+      if (!match) return p;
+      const placement = p.placement || match.placement || null;
+      const score = p.score ?? match.score ?? null;
+      const status = placement ? "completed" : score != null ? "scored" : p.status;
+      return { ...p, placement, score, status };
+    });
+    setTtPlannedEvents(merged);
+  }
+
   useEffect(() => {
-    if (todayComp && activeTwirler) {
-      supabase.from("competition_planned_events").select("*")
-        .eq("competition_id", todayComp.id)
-        .eq("twirler_id", activeTwirler.id)
-        .order("order_number")
-        .then(({ data }) => setTtPlannedEvents(data || []));
-    }
+    if (todayComp && activeTwirler) loadTtData(todayComp.id, activeTwirler.id);
   }, [todayComp?.id, activeTwirler?.id]);
 
   async function refetchTtPlannedEvents() {
     if (!todayComp || !activeTwirler) return;
-    const { data } = await supabase.from("competition_planned_events").select("*")
-      .eq("competition_id", todayComp.id).eq("twirler_id", activeTwirler.id).order("order_number");
-    setTtPlannedEvents(data || []);
+    await loadTtData(todayComp.id, activeTwirler.id);
   }
 
   async function ttSavePlacement() {
