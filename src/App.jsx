@@ -5394,6 +5394,18 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
   const today = new Date().toISOString().slice(0, 10);
   const todayComp = twirlerComps.find(c => c.date === today);
 
+  // Load planned events for today's competition
+  const [ttPlannedEvents, setTtPlannedEvents] = useState([]);
+  useEffect(() => {
+    if (todayComp && activeTwirler) {
+      supabase.from("competition_planned_events").select("*")
+        .eq("competition_id", todayComp.id)
+        .eq("twirler_id", activeTwirler.id)
+        .order("order_number")
+        .then(({ data }) => setTtPlannedEvents(data || []));
+    }
+  }, [todayComp?.id, activeTwirler?.id]);
+
   // Persist edge view preference per competition so nav doesn't reset it
   const edgeKey = todayComp ? `tp_edge_view_${todayComp.id}` : null;
   const [edgeView, setEdgeView] = useState(() => {
@@ -5514,37 +5526,38 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
 
       {/* ── TWIRLTRACKER VIEW ── */}
       {edgeView && todayComp && (() => {
-        const org = ORGS[todayComp.orgId];
-        const compResults = twirlerResults.filter(r => r.competitionId === todayComp.id);
-        const regularEvents = new Set(activeTwirler.regularEvents || []);
-        const leveledEvents = org?.leveledEvents || [];
-        const allOrgEvents = (org?.eventCategories || []).flatMap(c => c.events);
-        const eventsToShow = [
-          ...leveledEvents.filter(e => regularEvents.has(e)),
-          ...allOrgEvents.filter(e => !leveledEvents.includes(e) && regularEvents.has(e)),
-        ];
-
-        // Status partitioning
-        const completedEvents = eventsToShow.filter(e => compResults.some(r => r.event === e));
-        const incompleteEvents = eventsToShow.filter(e => !compResults.some(r => r.event === e));
-        const onDeckEvent = incompleteEvents[0] || null;
-        const upcomingEvents = incompleteEvents.slice(1);
-        const allDone = eventsToShow.length > 0 && completedEvents.length === eventsToShow.length;
+        // Use planned events as the source of truth
+        const sortedPe = [...ttPlannedEvents].sort((a, b) => {
+          const aSet = a.set_number ? parseInt(a.set_number) || 99999 : 99999;
+          const bSet = b.set_number ? parseInt(b.set_number) || 99999 : 99999;
+          if (aSet !== bSet) return aSet - bSet;
+          return (a.order_number || 0) - (b.order_number || 0);
+        });
+        const totalEvents = sortedPe.length;
+        const completedPe = sortedPe.filter(pe => pe.status === "completed" || pe.placement != null || pe.cas_passed != null);
+        const incompletePe = sortedPe.filter(pe => pe.status !== "completed" && pe.placement == null && pe.cas_passed == null);
+        const onDeckPe = incompletePe[0] || null;
+        const upcomingPe = incompletePe.slice(1);
+        const allDone = totalEvents > 0 && completedPe.length === totalEvents;
 
         function fmtPlacement(p) { return p === 1 ? "1st" : p === 2 ? "2nd" : p === 3 ? "3rd" : `${p}th`; }
 
-        function renderEventCard(event, status) {
+        function renderPeCard(pe, status) {
           const isDone = status === "done";
           const isOnDeck = status === "on-deck";
-          const result = compResults.find(r => r.event === event);
-          const prog = progress?.[todayComp.orgId]?.[event];
-          const level = prog?.currentLevel || (activeTwirler.classificationState?.[`${todayComp.orgId}__${event}`]?.level) || "Novice";
           const borderColor = isDone ? "#86efac" : isOnDeck ? "var(--brand)" : "var(--border)";
           const bg = isDone ? "#f0fdf4" : isOnDeck ? "var(--brand-light)" : "var(--card)";
+          const metaParts = [
+            pe.set_number && `Set ${pe.set_number}`,
+            pe.lane && `Lane ${pe.lane}`,
+            pe.skill_level,
+            pe.event_time && `🕐 ${pe.event_time}`,
+            isDone ? null : isOnDeck ? "On Deck" : "Later",
+          ].filter(Boolean).join(" · ");
 
           return (
-            <div key={event}
-              onClick={() => !isDone && openModal("addResults", { competitionId: todayComp.id, prefillEvent: event, prefillLevel: level })}
+            <div key={pe.id}
+              onClick={() => !isDone && openModal("addResults", { competitionId: todayComp.id, prefillEvent: pe.event_name })}
               style={{ display: "flex", alignItems: "center", gap: 14, padding: isOnDeck ? "20px 18px" : "14px 18px",
                 background: bg, border: `${isOnDeck ? "2px" : "1px"} solid ${borderColor}`,
                 borderRadius: 12, cursor: isDone ? "default" : "pointer", transition: "all 0.15s",
@@ -5554,14 +5567,16 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: isDone ? 20 : isOnDeck ? 16 : 13, fontWeight: 700,
                 color: isDone ? "#16a34a" : isOnDeck ? "white" : "var(--slate)" }}>
-                {isDone ? "✓" : event.slice(0, 2)}
+                {isDone ? "✓" : (pe.event_name || "").slice(0, 2)}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: isOnDeck ? 17 : 14, fontWeight: 600, color: isDone ? "#166534" : "var(--navy)" }}>{event}</div>
-                <div style={{ fontSize: 12, color: isDone ? "#16a34a" : isOnDeck ? "var(--brand2)" : "var(--slate)", marginTop: 2 }}>
-                  {isDone && result
-                    ? `${result.placement ? fmtPlacement(result.placement) + " place" : "Logged"}${result.score != null ? ` · ${result.score.toFixed(1)}` : ""} · ${level}`
-                    : isOnDeck ? `${level} · On Deck` : `${level} · Later`}
+                <div style={{ fontSize: isOnDeck ? 17 : 14, fontWeight: 600, color: isDone ? "#166534" : "var(--navy)" }}>{pe.event_name}</div>
+                <div style={{ fontSize: 11, color: isDone ? "#16a34a" : isOnDeck ? "var(--brand2)" : "var(--muted)", marginTop: 2 }}>
+                  {isDone
+                    ? (pe.category === "Movement & Compulsories"
+                        ? (pe.cas_passed ? "✓ Passed" : "✗ Not Yet")
+                        : `${pe.placement ? fmtPlacement(pe.placement) + " place" : "Completed"}${pe.score != null ? ` · ${pe.score}` : ""}`)
+                    : metaParts}
                 </div>
               </div>
               {isOnDeck && (
@@ -5587,25 +5602,30 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>TwirlTracker</div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "white", marginBottom: 4 }}>{todayComp.name}</div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Today · {activeTwirler.firstName}</div>
-              {eventsToShow.length > 0 && (
+              {totalEvents > 0 && (
                 <div style={{ marginTop: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{completedEvents.length} of {eventsToShow.length} complete</span>
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{completedPe.length} of {totalEvents} complete</span>
                     <span style={{ fontSize: 11, color: allDone ? "var(--brand)" : "rgba(255,255,255,0.5)" }}>{allDone ? "All done!" : ""}</span>
                   </div>
                   <div style={{ height: 6, background: "rgba(255,255,255,0.15)", borderRadius: 999 }}>
                     <div style={{ height: "100%", borderRadius: 999, background: "var(--brand)",
-                      width: `${Math.round((completedEvents.length / eventsToShow.length) * 100)}%`, transition: "width 0.4s" }} />
+                      width: `${Math.round((completedPe.length / totalEvents) * 100)}%`, transition: "width 0.4s" }} />
                   </div>
                 </div>
               )}
             </div>
 
             {/* Next up hero (on deck event) */}
-            {onDeckEvent && !allDone && (
+            {onDeckPe && !allDone && (
               <div style={{ marginBottom: 16, textAlign: "center", padding: "8px 0" }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "1px" }}>Next Up</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: "var(--navy)", marginTop: 4 }}>{onDeckEvent}</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: "var(--navy)", marginTop: 4 }}>{onDeckPe.event_name}</div>
+                {(onDeckPe.set_number || onDeckPe.lane) && (
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                    {[onDeckPe.set_number && `Set ${onDeckPe.set_number}`, onDeckPe.lane && `Lane ${onDeckPe.lane}`].filter(Boolean).join(" · ")}
+                  </div>
+                )}
               </div>
             )}
 
@@ -5614,19 +5634,17 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>Today's Results</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-                  {completedEvents.map(event => {
-                    const result = compResults.find(r => r.event === event);
-                    return (
-                      <div key={event} className="card-sm" style={{ padding: "12px 16px" }}>
-                        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{event}</div>
-                        <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 4 }}>
-                          {result?.placement ? `${fmtPlacement(result.placement)} place` : "Completed"}
-                          {result?.score != null ? ` · Score: ${result.score.toFixed(1)}` : ""}
-                          {result?.allCatch ? " · All Catch ✨" : ""}
-                        </div>
+                  {completedPe.map(pe => (
+                    <div key={pe.id} className="card-sm" style={{ padding: "12px 16px" }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{pe.event_name}</div>
+                      <div style={{ fontSize: 13, color: "var(--slate)", marginTop: 4 }}>
+                        {pe.category === "Movement & Compulsories"
+                          ? (pe.cas_passed ? "✓ Passed" : "✗ Not Yet")
+                          : (pe.placement ? `${fmtPlacement(pe.placement)} place` : "Completed")}
+                        {pe.score != null ? ` · Score: ${pe.score}` : ""}
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
                 <button className="btn btn-ghost w-full" style={{ opacity: 0.6 }} disabled>Share Results (coming soon)</button>
               </div>
@@ -5634,34 +5652,34 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
               /* ── EVENT SECTIONS ── */
               <div>
                 {/* On Deck */}
-                {onDeckEvent && (
+                {onDeckPe && (
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>On Deck</div>
-                    {renderEventCard(onDeckEvent, "on-deck")}
+                    {renderPeCard(onDeckPe, "on-deck")}
                   </div>
                 )}
 
                 {/* Upcoming */}
-                {upcomingEvents.length > 0 && (
+                {upcomingPe.length > 0 && (
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Upcoming</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {upcomingEvents.map(e => renderEventCard(e, "later"))}
+                      {upcomingPe.map(pe => renderPeCard(pe, "later"))}
                     </div>
                   </div>
                 )}
 
                 {/* Completed */}
-                {completedEvents.length > 0 && (
+                {completedPe.length > 0 && (
                   <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Completed ({completedEvents.length})</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Completed ({completedPe.length})</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {completedEvents.map(e => renderEventCard(e, "done"))}
+                      {completedPe.map(pe => renderPeCard(pe, "done"))}
                     </div>
                   </div>
                 )}
 
-                {eventsToShow.length === 0 && (
+                {totalEvents === 0 && (
                   <div className="card mb-4" style={{ textAlign: "center", padding: "24px 16px" }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>🏆</div>
                     <div style={{ fontSize: 14, color: "var(--muted)" }}>No events planned yet</div>
