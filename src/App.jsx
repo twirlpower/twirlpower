@@ -9847,11 +9847,16 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
         if (data) setPlannedEvents(prev => prev.map(p => p.id === data.id ? data : p));
       } else {
         const maxOrder = plannedEvents.reduce((m, p) => Math.max(m, p.order_number || 0), 0);
-        const { data, error } = await supabase.from("competition_planned_events").insert({
-          ...row, competition_id: activeCompetitionId, twirler_id: activeTwirler.id,
-          order_number: maxOrder + 1, status: "pending",
-        }).select().single();
-        if (error) console.error("[handlePeSave] insert error:", error.message, error.code);
+        const payload = {
+          ...row,
+          competition_id: activeCompetitionId,
+          twirler_id: activeTwirler.id,
+          order_number: maxOrder + 1,
+          status: "pending",
+        };
+        console.log("[handlePeSave] insert payload:", JSON.stringify(payload));
+        const { data, error } = await supabase.from("competition_planned_events").insert(payload).select().single();
+        if (error) console.error("[handlePeSave] insert error:", error.message, error.code, error.details, error.hint);
         if (data) setPlannedEvents(prev => [...prev, data]);
       }
       setShowPeModal(false);
