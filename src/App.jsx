@@ -5596,9 +5596,11 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
               </div>
             </div>
           )}
-          <button className="btn btn-primary" onClick={() => openModal("addCompetition")}>
-            <Icon name="plus" size={15} /> Add Competition
-          </button>
+          {!edgeView && (
+            <button className="btn btn-primary" onClick={() => openModal("addCompetition")}>
+              <Icon name="plus" size={15} /> Add Competition
+            </button>
+          )}
         </div>
       </div>
 
