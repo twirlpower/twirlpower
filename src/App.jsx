@@ -5411,9 +5411,9 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
 
   const [classifOrgFilter, setClassifOrgFilter] = useState("all");
 
-  // TwirlTracker — detect today's competition
+  // TwirlTracker — detect today's competition (check both local comps and public comps)
   const today = new Date().toISOString().slice(0, 10);
-  const todayComp = twirlerComps.find(c => c.date === today);
+  const todayComp = twirlerComps.find(c => c.date === today) || (competitions || []).find(c => c.date === today);
 
   // Load planned events for today's competition
   const [ttPlannedEvents, setTtPlannedEvents] = useState([]);
