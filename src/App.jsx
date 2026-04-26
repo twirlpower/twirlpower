@@ -6386,7 +6386,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                           </span>
                           )}
                         </td>
-                        <td style={{ fontSize: 12, color: "var(--slate)" }}>{r.score ? r.score.toFixed(1) : "—"}</td>
+                        <td style={{ fontSize: 12, color: "var(--slate)" }}>{r.score ? Number(r.score).toFixed(1) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -6836,7 +6836,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
                                     {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
                                   </span>
                                 ) : null}
-                                {r.score != null && <span style={{ fontSize: 12, color: "var(--slate)" }}>Score: {r.score.toFixed(1)}</span>}
+                                {r.score != null && !isNaN(r.score) && <span style={{ fontSize: 12, color: "var(--slate)" }}>Score: {Number(r.score).toFixed(1)}</span>}
                                 {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9 }}>All Catch</span>}
                                 {flags.map((f, i) => <span key={i} className={`badge badge-${f.color === "warn" ? "warn" : "gray"}`} style={{ fontSize: 9 }}>{f.label}</span>)}
                               </div>
@@ -10940,7 +10940,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                           {r.placement && <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)", fontSize: 10 }}>
                             {r.placement === 1 ? "1st 🥇" : r.placement === 2 ? "2nd" : r.placement === 3 ? "3rd" : `${r.placement}th`}
                           </span>}
-                          {r.score != null && <span style={{ fontSize: 12, color: "var(--slate)" }}>Score: {r.score.toFixed(1)}</span>}
+                          {r.score != null && !isNaN(r.score) && <span style={{ fontSize: 12, color: "var(--slate)" }}>Score: {Number(r.score).toFixed(1)}</span>}
                           {r.allCatch && <span className="badge badge-green" style={{ fontSize: 9 }}>All Catch</span>}
                         </div>
                         {r.scorecardUrl && (
