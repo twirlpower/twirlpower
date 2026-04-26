@@ -9828,29 +9828,39 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
     setPeForm({ event_name: pe.event_name, event_time: pe.event_time || "", lane: pe.lane || "", set_number: pe.set_number || "", notes: pe.notes || "" });
     setShowPeModal(true);
   }
+  const peSubmitGuard = useRef(false);
   async function handlePeSave() {
-    if (!peForm.event_name.trim()) return;
+    if (!peForm.event_name.trim() || peSubmitGuard.current) return;
+    peSubmitGuard.current = true;
     setPeSubmitting(true);
-    const row = {
-      event_name: peForm.event_name.trim(),
-      event_time: peForm.event_time.trim() || null,
-      lane: peForm.lane.trim() || null,
-      set_number: peForm.set_number.trim() || null,
-      notes: peForm.notes.trim() || null,
-    };
-    if (editingPe) {
-      const { data } = await supabase.from("competition_planned_events").update(row).eq("id", editingPe.id).select().single();
-      if (data) setPlannedEvents(prev => prev.map(p => p.id === data.id ? data : p));
-    } else {
-      const maxOrder = plannedEvents.reduce((m, p) => Math.max(m, p.order_number || 0), 0);
-      const { data } = await supabase.from("competition_planned_events").insert({
-        ...row, competition_id: activeCompetitionId, twirler_id: activeTwirler.id,
-        order_number: maxOrder + 1, status: "pending",
-      }).select().single();
-      if (data) setPlannedEvents(prev => [...prev, data]);
+    try {
+      const row = {
+        event_name: peForm.event_name.trim(),
+        event_time: peForm.event_time.trim() || null,
+        lane: peForm.lane.trim() || null,
+        set_number: peForm.set_number.trim() || null,
+        notes: peForm.notes.trim() || null,
+      };
+      if (editingPe) {
+        const { data, error } = await supabase.from("competition_planned_events").update(row).eq("id", editingPe.id).select().single();
+        if (error) console.error("[handlePeSave] update error:", error.message);
+        if (data) setPlannedEvents(prev => prev.map(p => p.id === data.id ? data : p));
+      } else {
+        const maxOrder = plannedEvents.reduce((m, p) => Math.max(m, p.order_number || 0), 0);
+        const { data, error } = await supabase.from("competition_planned_events").insert({
+          ...row, competition_id: activeCompetitionId, twirler_id: activeTwirler.id,
+          order_number: maxOrder + 1, status: "pending",
+        }).select().single();
+        if (error) console.error("[handlePeSave] insert error:", error.message, error.code);
+        if (data) setPlannedEvents(prev => [...prev, data]);
+      }
+      setShowPeModal(false);
+    } catch (err) {
+      console.error("[handlePeSave] error:", err);
+    } finally {
+      setPeSubmitting(false);
+      peSubmitGuard.current = false;
     }
-    setPeSubmitting(false);
-    setShowPeModal(false);
   }
   async function deletePe(peId) {
     await supabase.from("competition_planned_events").delete().eq("id", peId);
