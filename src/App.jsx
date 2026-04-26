@@ -12519,9 +12519,9 @@ function EventResultRows({ eventRows, setEventRows, selectedOrg, activeTwirler }
             </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
-              <label className="toggle">
+              <label className="toggle" style={{ opacity: 0.7 }}>
                 <Toggle on={row.contested} onChange={v => updateRow(i, "contested", v)} />
-                <span style={{ fontSize: 13 }}>Contested division</span>
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>Contested <span style={{ fontSize: 10 }}>(uncheck if only competitor)</span></span>
               </label>
               {!isStrut(row.event) && (
                 <label className="toggle">
@@ -12819,11 +12819,17 @@ function AddResultsModal({ open, onClose, competition: competitionProp, activeTw
 
   const selectedOrg = ORGS[competition?.orgId];
   const isCasOrg2 = competition?.orgId === "USTA";
-  const validRows = eventRows.filter(r => r.event && (
-    (isCasOrg2 && CAS_EVENTS.has(r.event)) ? r.casPassed !== null : (r.placement !== "" || r.score !== "")
-  ));
+  const [saveError, setSaveError] = useState("");
 
   function save() {
+    setSaveError("");
+    const validRows = eventRows.filter(r => r.event && (
+      (isCasOrg2 && CAS_EVENTS.has(r.event)) ? r.casPassed !== null : (r.placement !== "" || r.score !== "")
+    ));
+    if (validRows.length === 0) {
+      setSaveError("Please enter at least a score or result");
+      return;
+    }
     // Revoke any blob URLs to prevent memory leaks on mobile
     eventRows.forEach(r => { if (r.scorecardPreview) try { URL.revokeObjectURL(r.scorecardPreview); } catch {} });
     onSave(competition.id, validRows.map(r => ({
@@ -12839,8 +12845,9 @@ function AddResultsModal({ open, onClose, competition: competitionProp, activeTw
   return (
     <Modal open={open} onClose={onClose} title="Add Results"
       footer={<>
+        {saveError && <span style={{ fontSize: 12, color: "var(--red)", marginRight: 8 }}>{saveError}</span>}
         <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={validRows.length === 0} onClick={save}>Save Results</button>
+        <button className="btn btn-primary" onClick={save}>Save Results</button>
       </>}>
       <div className="mb-3" style={{ padding: "10px 14px", background: "#f1f5f9", borderRadius: 8 }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>{competition.name}</span>
