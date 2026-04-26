@@ -9769,7 +9769,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const isPast = endDate < today;
   const isFuture = comp.date > today;
 
-  const defaultTab = isToday ? "my-competition" : isPast ? "results" : "overview";
+  const defaultTab = isToday ? "my-competition" : isPast ? "results" : (isFuture && isManualComp) ? "my-competition" : "overview";
   const [tab, setTab] = useState(defaultTab);
   const [copied, setCopied] = useState(false);
 
@@ -10022,19 +10022,18 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
         <div>
           {!activeTwirler ? (
             <div className="card"><div className="empty-state"><h3>No twirler selected</h3><p>Select a twirler to see their events.</p></div></div>
-          ) : !attending && !myResults.length ? (
-            <div className="card">
-              <div className="empty-state">
-                <div style={{ fontSize: 36, marginBottom: 12 }}>🏆</div>
-                <h3>Not attending this competition</h3>
-                <p>Add this competition to your list to start tracking events.</p>
-                <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => addAttendee(activeCompetitionId, activeTwirler.id)}>
-                  + Add to My Competitions
-                </button>
-              </div>
-            </div>
           ) : (
             <div>
+              {/* Attendance prompt (if not attending yet) */}
+              {!attending && !myResults.length && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                  background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, marginBottom: 16, fontSize: 13, color: "#1e40af" }}>
+                  <span style={{ flex: 1 }}>Add this competition to your list to track events and results.</span>
+                  <button className="btn btn-primary btn-sm" style={{ fontSize: 11, flexShrink: 0 }}
+                    onClick={() => addAttendee(activeCompetitionId, activeTwirler.id)}>+ Add to My Competitions</button>
+                </div>
+              )}
+
               {/* ── Event Planner (manual competitions) ── */}
               {isManualComp && (
                 <div style={{ marginBottom: 20 }}>
