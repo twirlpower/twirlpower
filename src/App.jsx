@@ -5427,23 +5427,29 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     ]);
     const pe = peRes.data || [];
     const res = resRes.data || [];
-    // Cross-reference: merge result data into planned events
-    // Match by set_number first, then by event_name. Each result consumed once.
+    console.log("[TwirlTracker] compId:", compId, "twirlerId:", twirlerId);
+    console.log("[TwirlTracker] planned events:", pe.length, pe.map(p => ({ name: p.event_name, set: p.set_number, status: p.status })));
+    console.log("[TwirlTracker] results:", res.length, res.map(r => ({ event: r.event, placement: r.placement, score: r.score, set: r.set_number })));
+    // Cross-reference: always check results table for matches
     const usedResultIds = new Set();
     const merged = pe.map(p => {
-      if (p.status === "completed" || p.status === "scored") return p;
-      // Priority 1: match by set_number (most specific)
+      const pName = (p.event_name || "").toLowerCase();
+      const pCat = (p.category || "").toLowerCase();
+      // Match: set_number first, then exact name, then category, then contains
       let match = p.set_number
-        ? res.find(r => !usedResultIds.has(r.id) && r.set_number === p.set_number && (r.event === p.event_name || r.event === p.category))
+        ? res.find(r => !usedResultIds.has(r.id) && String(r.set_number) === String(p.set_number))
         : null;
-      // Priority 2: match by event_name only
-      if (!match) match = res.find(r => !usedResultIds.has(r.id) && (r.event === p.event_name || r.event === p.category));
-      if (!match) return p;
+      if (!match) match = res.find(r => !usedResultIds.has(r.id) && (r.event || "").toLowerCase() === pName);
+      if (!match) match = res.find(r => !usedResultIds.has(r.id) && pCat && (r.event || "").toLowerCase() === pCat);
+      if (!match) match = res.find(r => !usedResultIds.has(r.id) && pName && (r.event || "").toLowerCase().includes(pCat));
+      if (!match) match = res.find(r => !usedResultIds.has(r.id) && pCat && pName.includes((r.event || "").toLowerCase()));
+      if (!match) return p.status === "completed" || p.status === "scored" ? p : { ...p };
       usedResultIds.add(match.id);
-      const placement = p.placement || match.placement || null;
-      const score = p.score ?? match.score ?? null;
-      const status = placement ? "completed" : score != null ? "scored" : p.status;
-      return { ...p, placement, score, status, _resultId: match.id };
+      const placement = match.placement || p.placement || null;
+      const score = match.score ?? p.score ?? null;
+      const casPassed = match.cas_passed ?? p.cas_passed ?? null;
+      const status = (casPassed != null) ? "completed" : placement ? "completed" : score != null ? "scored" : p.status;
+      return { ...p, placement, score, cas_passed: casPassed, status, _resultId: match.id };
     });
     setTtPlannedEvents(merged);
   }
@@ -5681,7 +5687,14 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
           <div>
             {/* Competition header */}
             <div className="card mb-3" style={{ background: "linear-gradient(135deg, var(--navy) 0%, var(--navy2) 100%)", border: "none" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>TwirlTracker</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--brand)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 4 }}>TwirlTracker</div>
+                <button onClick={() => loadTtData(todayComp.id, activeTwirler.id)}
+                  style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 6, padding: "4px 10px",
+                    color: "rgba(255,255,255,0.7)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                  ↻ Refresh
+                </button>
+              </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "white", marginBottom: 4 }}>{todayComp.name}</div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Today · {activeTwirler.firstName}</div>
               {totalEvents > 0 && (
