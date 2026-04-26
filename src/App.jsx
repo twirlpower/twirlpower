@@ -10151,7 +10151,12 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {plannedEvents.map((pe, idx) => {
+                    {[...plannedEvents].sort((a, b) => {
+                      const aSet = a.set_number ? parseInt(a.set_number) || 99999 : 99999;
+                      const bSet = b.set_number ? parseInt(b.set_number) || 99999 : 99999;
+                      if (aSet !== bSet) return aSet - bSet;
+                      return (a.order_number || 0) - (b.order_number || 0);
+                    }).map((pe, idx) => {
                       const hasResult = pe.status === "completed" || pe.placement != null;
                       const isOnDeck = !hasResult && idx === plannedEvents.findIndex(p => p.status !== "completed" && p.placement == null);
                       const statusLabel = hasResult ? "Completed" : isOnDeck && (isToday || isPast) ? "On Deck" : isPast ? "—" : "Later";
@@ -10188,11 +10193,14 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {pe.event_name}
                             </div>
-                            <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
-                              {pe.set_number && pe.lane && <span>Set {pe.set_number} · Lane {pe.lane}</span>}
-                              {pe.set_number && !pe.lane && <span>Set {pe.set_number}</span>}
-                              {!pe.set_number && pe.lane && <span>Lane {pe.lane}</span>}
-                              {pe.event_time && <span>🕐 {pe.event_time}</span>}
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                              {[
+                                pe.set_number && `Set ${pe.set_number}`,
+                                pe.lane && `Lane ${pe.lane}`,
+                                pe.skill_level,
+                                pe.event_time && `🕐 ${pe.event_time}`,
+                                statusLabel,
+                              ].filter(Boolean).join(" · ")}
                             </div>
                             {/* Result summary if completed */}
                             {hasResult && (
