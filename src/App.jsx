@@ -1113,12 +1113,23 @@ export default function App() {
           await supabase.from('family_invites')
             .update({ accepted_at: new Date().toISOString(), accepted_by_user_id: userId })
             .eq('token', inviteToken);
+
+          // Create co_guardians row for RLS access
+          const rel = invite.relationship || 'Parent';
+          const isCoGuardian = ['Parent', 'Guardian', 'Co-Guardian', 'Co-Parent'].includes(rel);
+          if (isCoGuardian) {
+            await supabase.from('co_guardians').upsert({
+              family_id: linkedFamily.id,
+              user_id: userId,
+              invited_by: linkedFamily.user_id,
+              status: 'active',
+            }, { onConflict: 'family_id,user_id', ignoreDuplicates: true });
+          }
+
           sessionStorage.removeItem('tp_invite_token');
           sessionStorage.removeItem('tp_invite_email');
           setPendingInviteToken(null);
 
-          const rel = invite.relationship || 'Parent';
-          const isCoGuardian = ['Parent', 'Guardian', 'Co-Guardian', 'Co-Parent'].includes(rel);
           setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
           setFamilyAccount({ ...linkedFamily, parentName: linkedFamily.parent_name,
             additionalGuardians: linkedFamily.additional_guardians || [] });
@@ -1221,6 +1232,16 @@ export default function App() {
               const rel = guardian?.relationship || "Parent";
               const isCoGuardian = ["Parent", "Guardian", "Co-Guardian", "Co-Parent"].includes(rel);
               setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
+
+              // Ensure co_guardians row exists for RLS
+              if (isCoGuardian) {
+                await supabase.from('co_guardians').upsert({
+                  family_id: linkedFamily.id,
+                  user_id: userId,
+                  invited_by: linkedFamily.user_id,
+                  status: 'active',
+                }, { onConflict: 'family_id,user_id', ignoreDuplicates: true });
+              }
 
               // Mark confirmed
               if (guardian && !guardian.confirmed) {
@@ -1434,6 +1455,16 @@ export default function App() {
             const rel = guardian?.relationship || "Parent"; // default to Parent if not found
             const isCoGuardian = ["Parent", "Guardian", "Co-Guardian", "Co-Parent"].includes(rel);
             setGuardianMode(isCoGuardian ? 'co-guardian' : 'viewer');
+
+            // Ensure co_guardians row exists for RLS
+            if (isCoGuardian) {
+              await supabase.from('co_guardians').upsert({
+                family_id: linkedFamily.id,
+                user_id: userId,
+                invited_by: linkedFamily.user_id,
+                status: 'active',
+              }, { onConflict: 'family_id,user_id', ignoreDuplicates: true });
+            }
 
             // Mark this guardian as confirmed in the family account
             if (guardian && !guardian.confirmed) {
