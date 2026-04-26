@@ -5396,6 +5396,9 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
 
   // Load planned events for today's competition
   const [ttPlannedEvents, setTtPlannedEvents] = useState([]);
+  const [ttPlacementPeId, setTtPlacementPeId] = useState(null);
+  const [ttPlacementVal, setTtPlacementVal] = useState("");
+  const [ttPlacementSaving, setTtPlacementSaving] = useState(false);
   useEffect(() => {
     if (todayComp && activeTwirler) {
       supabase.from("competition_planned_events").select("*")
@@ -5405,6 +5408,25 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
         .then(({ data }) => setTtPlannedEvents(data || []));
     }
   }, [todayComp?.id, activeTwirler?.id]);
+
+  async function refetchTtPlannedEvents() {
+    if (!todayComp || !activeTwirler) return;
+    const { data } = await supabase.from("competition_planned_events").select("*")
+      .eq("competition_id", todayComp.id).eq("twirler_id", activeTwirler.id).order("order_number");
+    setTtPlannedEvents(data || []);
+  }
+
+  async function ttSavePlacement() {
+    if (!ttPlacementPeId || !ttPlacementVal) return;
+    setTtPlacementSaving(true);
+    await supabase.from("competition_planned_events").update({
+      placement: parseInt(ttPlacementVal), status: "completed",
+    }).eq("id", ttPlacementPeId);
+    setTtPlacementPeId(null);
+    setTtPlacementVal("");
+    setTtPlacementSaving(false);
+    await refetchTtPlannedEvents();
+  }
 
   // Persist edge view preference per competition so nav doesn't reset it
   const edgeKey = todayComp ? `tp_edge_view_${todayComp.id}` : null;
@@ -5534,10 +5556,10 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
           return (a.order_number || 0) - (b.order_number || 0);
         });
         const totalEvents = sortedPe.length;
-        const completedPe = sortedPe.filter(pe => pe.status === "completed" || pe.placement != null || pe.cas_passed != null);
-        const incompletePe = sortedPe.filter(pe => pe.status !== "completed" && pe.placement == null && pe.cas_passed == null);
-        const onDeckPe = incompletePe[0] || null;
-        const upcomingPe = incompletePe.slice(1);
+        const completedPe = sortedPe.filter(pe => pe.status === "completed");
+        const scoredPe = sortedPe.filter(pe => pe.status === "scored");
+        const onDeckPe = sortedPe.find(pe => pe.status === "on_deck") || sortedPe.find(pe => pe.status === "pending") || null;
+        const upcomingPe = sortedPe.filter(pe => pe.status === "pending" && pe !== onDeckPe);
         const allDone = totalEvents > 0 && completedPe.length === totalEvents;
 
         function fmtPlacement(p) { return p === 1 ? "1st" : p === 2 ? "2nd" : p === 3 ? "3rd" : `${p}th`; }
@@ -5659,6 +5681,38 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                   </div>
                 )}
 
+                {/* Scored — Placement Pending */}
+                {scoredPe.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#b45309", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Scored — Placement Pending ({scoredPe.length})</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {scoredPe.map(pe => (
+                        <div key={pe.id} style={{
+                          display: "flex", alignItems: "center", gap: 14, padding: "14px 18px",
+                          background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, minHeight: 44,
+                        }}>
+                          <div style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                            background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 14, fontWeight: 700, color: "#b45309" }}>
+                            {pe.score != null ? pe.score : "—"}
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{pe.event_name}</div>
+                            <div style={{ fontSize: 11, color: "#b45309", marginTop: 2 }}>
+                              {[pe.set_number && `Set ${pe.set_number}`, pe.lane && `Lane ${pe.lane}`, pe.score != null && `Score: ${pe.score}`].filter(Boolean).join(" · ")}
+                            </div>
+                          </div>
+                          <button style={{ padding: "8px 14px", borderRadius: 8, background: "#b45309", color: "white",
+                            fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: "inherit", minHeight: 40 }}
+                            onClick={() => { setTtPlacementPeId(pe.id); setTtPlacementVal(""); }}>
+                            Add Placement
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Upcoming */}
                 {upcomingPe.length > 0 && (
                   <div style={{ marginBottom: 16 }}>
@@ -5685,6 +5739,40 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                     <div style={{ fontSize: 14, color: "var(--muted)" }}>No events planned yet</div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Placement quick modal */}
+            {ttPlacementPeId && (
+              <div className="modal-overlay" onClick={() => setTtPlacementPeId(null)}>
+                <div className="modal" style={{ maxWidth: 340, textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                  <div className="modal-body" style={{ padding: "24px 20px" }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>Add Placement</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>{ttPlannedEvents.find(p => p.id === ttPlacementPeId)?.event_name}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                      {[1, 2, 3, 4].map(n => (
+                        <button key={n} style={{
+                          padding: "14px 0", borderRadius: 10, fontSize: 18, fontWeight: 700, cursor: "pointer",
+                          fontFamily: "inherit", minHeight: 52,
+                          border: `2px solid ${String(ttPlacementVal) === String(n) ? "var(--brand)" : "var(--border)"}`,
+                          background: String(ttPlacementVal) === String(n) ? "var(--brand-light)" : "white",
+                          color: String(ttPlacementVal) === String(n) ? "var(--brand2)" : "var(--navy)",
+                        }} onClick={() => setTtPlacementVal(String(n))}>
+                          {n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : "4th"}
+                        </button>
+                      ))}
+                    </div>
+                    <input className="input" type="number" min="1" max="99" placeholder="Other placement…"
+                      value={parseInt(ttPlacementVal) > 4 ? ttPlacementVal : ""}
+                      onChange={e => setTtPlacementVal(e.target.value)}
+                      style={{ textAlign: "center", fontSize: 16, marginBottom: 16 }} />
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button className="btn btn-ghost" style={{ flex: 1, minHeight: 44 }} onClick={() => setTtPlacementPeId(null)}>Cancel</button>
+                      <button className="btn btn-primary" style={{ flex: 1, minHeight: 44 }} disabled={!ttPlacementVal || ttPlacementSaving}
+                        onClick={ttSavePlacement}>{ttPlacementSaving ? "Saving…" : "Save"}</button>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -9859,23 +9947,33 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const resultSubmitGuard = useRef(false);
   async function handleResultSave() {
     if (resultSubmitGuard.current) return;
+    const pe = plannedEvents.find(p => p.id === resultPeId);
+    const isCas = pe?.category === "Movement & Compulsories";
+    const placement = !isCas && resultForm.placement ? parseInt(resultForm.placement) : null;
+    const score = !isCas && resultForm.score ? parseFloat(resultForm.score) : null;
+    // Validation: need at least score or placement (or CAS result)
+    if (!isCas && !placement && score == null) return;
+    if (isCas && resultForm.cas_passed == null) return;
+
     resultSubmitGuard.current = true;
     setResultSubmitting(true);
     try {
-      const pe = plannedEvents.find(p => p.id === resultPeId);
-      const isCas = pe?.category === "Movement & Compulsories";
-      const placement = !isCas && resultForm.placement ? parseInt(resultForm.placement) : null;
-      const score = !isCas && resultForm.score ? parseFloat(resultForm.score) : null;
+      // Determine status: scored (score only) vs completed (has placement)
+      const status = isCas ? "completed" : (placement ? "completed" : "scored");
       const updateRow = {
-        placement, score, result_notes: resultForm.result_notes.trim() || null, status: "completed",
+        placement, score, result_notes: resultForm.result_notes.trim() || null, status,
       };
       if (isCas) updateRow.cas_passed = resultForm.cas_passed;
       const { data, error } = await supabase.from("competition_planned_events").update(updateRow).eq("id", resultPeId).select().single();
       if (error) console.error("[handleResultSave] error:", error.message);
       if (data) {
         setPlannedEvents(prev => prev.map(p => p.id === data.id ? data : p));
+        // Promote next pending event to on_deck
+        const nextPending = plannedEvents.find(p => p.id !== resultPeId && p.status === "pending");
+        if (nextPending) {
+          await supabase.from("competition_planned_events").update({ status: "on_deck" }).eq("id", nextPending.id);
+        }
         // Sync state win to results table if applicable
-        const pe = plannedEvents.find(p => p.id === resultPeId);
         if (pe && placement === 1 && pe.classification === "State") {
           await supabase.from("results").insert({
             twirler_id: activeTwirler.id,
@@ -9890,6 +9988,10 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
         }
       }
       setShowResultModal(false);
+      // Re-fetch to get updated statuses
+      const { data: refreshed } = await supabase.from("competition_planned_events").select("*")
+        .eq("competition_id", activeCompetitionId).eq("twirler_id", activeTwirler.id).order("order_number");
+      if (refreshed) setPlannedEvents(refreshed);
     } catch (err) {
       console.error("[handleResultSave] error:", err);
     } finally {
@@ -10169,18 +10271,21 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {[...plannedEvents].sort((a, b) => {
-                      const aSet = a.set_number ? parseInt(a.set_number) || 99999 : 99999;
-                      const bSet = b.set_number ? parseInt(b.set_number) || 99999 : 99999;
-                      if (aSet !== bSet) return aSet - bSet;
-                      return (a.order_number || 0) - (b.order_number || 0);
-                    }).map((pe, idx) => {
-                      const hasResult = pe.status === "completed" || pe.placement != null;
-                      const isOnDeck = !hasResult && idx === plannedEvents.findIndex(p => p.status !== "completed" && p.placement == null);
-                      const statusLabel = hasResult ? "Completed" : isOnDeck && (isToday || isPast) ? "On Deck" : isPast ? "—" : "Later";
-                      const statusColor = hasResult ? "#16a34a" : isOnDeck && isToday ? "var(--brand2)" : "var(--muted)";
-                      const statusBg = hasResult ? "#dcfce7" : isOnDeck && isToday ? "var(--brand-light)" : "var(--bg)";
-                      const borderColor = hasResult ? "#86efac" : isOnDeck && isToday ? "var(--brand)" : "var(--border)";
+                    {(() => {
+                      const sortedPeList = [...plannedEvents].sort((a, b) => {
+                        const aSet = a.set_number ? parseInt(a.set_number) || 99999 : 99999;
+                        const bSet = b.set_number ? parseInt(b.set_number) || 99999 : 99999;
+                        if (aSet !== bSet) return aSet - bSet;
+                        return (a.order_number || 0) - (b.order_number || 0);
+                      });
+                      return sortedPeList.map((pe, idx) => {
+                      const hasResult = pe.status === "completed";
+                      const isScored = pe.status === "scored";
+                      const isOnDeck = pe.status === "on_deck" || (!hasResult && !isScored && idx === sortedPeList.findIndex(p => p.status === "pending"));
+                      const statusLabel = hasResult ? "Completed" : isScored ? "Scored" : isOnDeck && (isToday || isPast) ? "On Deck" : isPast ? "—" : "Later";
+                      const statusColor = hasResult ? "#16a34a" : isScored ? "#b45309" : isOnDeck && isToday ? "var(--brand2)" : "var(--muted)";
+                      const statusBg = hasResult ? "#dcfce7" : isScored ? "#fef3c7" : isOnDeck && isToday ? "var(--brand-light)" : "var(--bg)";
+                      const borderColor = hasResult ? "#86efac" : isScored ? "#fde68a" : isOnDeck && isToday ? "var(--brand)" : "var(--border)";
 
                       return (
                         <div key={pe.id} style={{
@@ -10245,7 +10350,8 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                           </div>
                         </div>
                       );
-                    })}
+                    });
+                    })()}
                   </div>
                 )}
 
