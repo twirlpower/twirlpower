@@ -131,6 +131,12 @@ Key learnings from first live TwirlTracker test:
   - Manual + Add Twirler (name + optional club) and + Add Scratch
   - Within-event twirler reorder via drag handle; × to remove a twirler/scratch
   - New `competition_event_twirlers` table with the standard host/admin RLS chain
+- ✅ Duet & group entry support on lineup
+  - Added entry_type / partner_name / group_name columns
+  - + Add Twirler form has a Solo/Duet/Group toggle, default selected from event category name (heuristic: "duet" → duet; "group/team/corps/parade/march" → group)
+  - Duet displays as "Twirler 1 / Partner" on one row (one set slot)
+  - Group displays as the team name on one row (one set slot)
+  - Twirler-count badge on collapsed chip counts entries (not heads)
 - ⬜ Auto-sort per lane (Open → State, Novice → Advanced, younger → older)
 - ⬜ Late entry support ("+Add Late Entry" button, Late badge)
 - ⬜ Drag breaks to reorder between categories
