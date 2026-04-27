@@ -1,200 +1,345 @@
 # TwirlPower — Competition Directory & Director Roadmap
-
-*Updated: April 23, 2026*
+Updated: April 27, 2026
 
 ---
 
 ## Vision
 
-Build the definitive competition directory for competitive baton twirling. Start by aggregating competitions from all sources (director-created + scraped from org websites), then shift toward getting directors to host directly on TwirlPower by offering tools that make running competitions easier.
+Build the definitive Competition Operating System for baton twirling. Two parallel tracks:
+1. **Family/Coach app** (app.twirlpower.com) — competition tracking, results, TwirlTracker, club management
+2. **Director app** (manage.twirlpower.com) — full competition management, scheduling, registration, results, live scoring
+
+Long-term goal: Replace third-party tabulation systems entirely. Every competition runs on TwirlPower.
 
 ---
 
-## Phase 1: Directory Foundation
+## What's Been Built (April 2026)
 
-### Competition Sources
+### Family/Coach App (app.twirlpower.com)
+- ✅ Family accounts, twirler profiles, guardian management
+- ✅ Coach accounts, verification, athlete linking
+- ✅ Club management (create, claim, join, approve members)
+- ✅ Competition directory (public_competitions, 207 imported)
+- ✅ Competition claiming flow (director claims scraped competition)
+- ✅ Admin panel (competitions, directors, clubs, accounts tabs)
+- ✅ Results tracking (score, placement, CAS/Movement events, scorecards)
+- ✅ Scorecard photo upload + viewing (Supabase Storage)
+- ✅ TwirlTracker (renamed from Competitor's Edge) — competition day control center
+- ✅ Event Planner — pre-plan events before competition day with set #, lane, time
+- ✅ Multi-role accounts (family + host + admin in one login)
+- ✅ Coach favorites, coach invite to competitions
+- ✅ Competition history, results history
+- ✅ Directory site (Next.js) — live
 
-**A. Director-Created Competitions**
-- ✅ Directors sign up, get verified, create competitions in-app
-- ✅ Competitions sync to directory (public_competitions table)
-- ✅ Admin approval flow for new directors
-- ✅ Director can edit/delete/duplicate competitions
-- ✅ Director public profile page (name, avatar, org badges, bio, contact, competitions list)
-- ✅ Director profile clickable from competition cards
-- ✅ Competition schema expanded (end_date, city, event_type, contact, sanction_number, category, source_series)
-- ✅ State abbreviation mapping and normalization
-- ✅ Event type dropdown (State, Regional, National, Open, Invitational, Miss Majorette, Camp, Other)
-- ⬜ Directory site (Next.js) reads from Supabase and displays competitions publicly
-- ⬜ External visitors can view competition details without an account
-- ⬜ CTA to create account and register for competitions
+### Director App (manage.twirlpower.com) — Phase 2A Complete
+- ✅ Director dashboard (Upcoming/Draft/Past competitions)
+- ✅ Create/Edit competition (4-step form: Basic Info, Registration, Settings, Events)
+- ✅ Competition status lifecycle: draft → published → registration → locked → live → completed
+- ✅ Reverse status transitions with confirmation
+- ✅ Status audit log
+- ✅ Gyms tab (add/name/reorder gyms, practice gym toggle)
+- ✅ Schedule tab (renamed from Event Design) — visual lane board
+  - Gym toggle, synchronized horizontal scrolling
+  - Drag event categories from palette into gym
+  - Lane columns auto-created per event
+  - Block lane toggle, practice lane toggle
+  - Practice gym linking (mirrors competition gym structure)
+  - Color coding, event order numbers
+  - Inline edit (gear icon on event chips) — opens edit modal pre-filled
+- ✅ Build Events tab — director's event catalog
+  - Events grouped by category (collapsible sections)
+  - Add/Edit modal with auto-title preview (Division + Classification + Category + Age range)
+  - Optional override for custom title
+  - Qualifier toggle, description, notes, entry fee fields
+  - Backed by new `competition_built_events` table
+- ✅ Master events table seeded (USTA, NBTA, TU, DMA)
+- ✅ Master event categories with org default order (Settings Step 4 sorts by `master_events.order_number` then name)
+- ✅ Competition settings: execution mode, avg set time, reset buffer, music plays, on-deck triggers, results release mode
+- ✅ Placeholder tabs: Entries, Judges, Results
 
-**B. Scraped / Imported Competitions**
-- ✅ CSV import of 207 competitions from all 4 orgs (NBTA, DMA, TU, USTA) via SQL upsert
-- ✅ `event_slug` deduplication on import (ON CONFLICT DO UPDATE)
-- ⬜ Build scraper for org websites: USTA, NBTA, TU, DMA
-- ⬜ Scraper runs on schedule (Vercel cron, weekly)
-- ⬜ Scraped competitions go to admin queue (NOT auto-published)
-- ⬜ Admin review screen: approve, reject, or mark as duplicate
-- ⬜ Deduplication: match by name + date + state before adding to queue
+### Tab Structure (April 27, 2026)
+**Overview | Gyms | Build Events | Schedule | Entries | Judges | Results**
+- "Event Design" was renamed to "Schedule" (lane board kept intact)
+- "Build Events" is a new tab for creating individual events from category templates
+- Old auto-schedule "Schedule" tab was removed; will be rebuilt to consume Built Events
 
-**C. Claim a Competition**
-- ✅ Full claim lifecycle: URL capture (?claim=COMP_ID) → claim submission → admin approval → director linked
-- ✅ ClaimCompetitionCard component with message + doc upload
-- ✅ Admin "Competition Claims" sub-tab with approve/deny
-- ✅ Claim status indicators on competition cards
-- ✅ Email notifications: claim_request, claim_approved
-- ✅ Admin unclaim feature: remove director from competition
-- ✅ RLS policies for admin competition updates/deletes
-- ✅ Claim history audit trail (searchable, paginated, 20/page)
-
-### Competition Detail Page
-- ✅ CompetitionDetailPage component with tabbed layout
-- ✅ Date-adaptive default tab (During → My Events, Past → Results, Future → Overview)
-- ✅ Overview tab: venue with maps link, contact, sanction number, director (clickable), description, attendees
-- ✅ My Events tab: reuses Competitor's Edge event card pattern
-- ✅ Results tab: logged results with scorecard links
-- ✅ Action buttons: Add to My Competitions, Get Directions, Share
-- ✅ Deep link from directory (?comp=COMP_ID)
-- ✅ Coach view: Overview-only (no My Events/Results tabs)
-- ✅ Coach invite twirlers section on competition detail
-
-### Directory Site (Next.js)
-- ⬜ Upcoming competitions page (filterable by state, org, date)
-- ⬜ Competition detail pages with SEO metadata
-- ⬜ Coach/studio finder
-- ⬜ Club directory
-- ⬜ CTAs throughout → app.twirlpower.com signup
-- ⬜ ISR revalidation every hour from Supabase
-
-### WordPress Integration
-- ⬜ Upcoming competitions widget (embedded JS, pulls from Supabase)
-- ⬜ Stats bar widget (families, twirlers, competitions tracked)
-- ⬜ Club finder teaser widget
-- ⬜ Links to directory site for full listings
-
----
-
-## Completed: Coach Features (April 22-23, 2026)
-
-- ✅ Coach verification system (file upload, admin approval, verified badge)
-- ✅ Coach invite link (?coach=COACH_ID) — auto-links new users, bulk email invite
-- ✅ Coach post-signup invite screen with shareable link
-- ✅ Coach competitions page: Competition History, Upcoming, Favorites tabs
-- ✅ Coach favorites (star button on upcoming cards, localStorage persistence, favorites tab)
-- ✅ Coach invite twirlers to public competitions (CoachInviteToCompetition component)
-- ✅ Coach competition detail: Overview-only tab with invite section
-- ✅ Coach history: clickable cards link to competition detail when in public directory
-- ✅ Coach history tabs: "Twirler History" + "Created by Me"
-- ✅ Fixed coach white screen crashes (missing props)
-- ✅ Coach competition-detail and director-profile routes added to coach render path
-
-## Completed: Admin Panel Restructure (April 23, 2026)
-
-- ✅ Consolidated tabs: Dashboard, Competitions, Directors, Clubs, Accounts
-- ✅ Dashboard (formerly Data Overview) is default first tab
-- ✅ Clickable stat cards → jump to correct tab and sub-tab
-- ✅ Renamed Hosts → Directors throughout
-- ✅ Competitions: sub-tabs Pending Claims | All Competitions (state filter, sort, pagination 20/page) | Claim History
-- ✅ Directors: sub-tabs Pending | All Directors (with comp count)
-- ✅ Clubs: sub-tabs Pending Claims | All Clubs | Claim History
-- ✅ Accounts: sub-tabs Families | Twirlers | Coaches (with delete, verify/revoke buttons)
-- ✅ Bug reports: resolve with timestamp + resolved_by, show/hide resolved list
-- ✅ Added Clubs stat card, renamed HOSTS → DIRECTORS
-
-## Completed: Family & Competition Fixes (April 23, 2026)
-
-- ✅ Family-created competitions always unsanctioned (removed toggle from modal)
-- ✅ "User-reported" badge for family-created competitions
-- ✅ Coach upcoming: "View Details →" instead of "Add to my competitions"
-- ✅ Mobile results cards: scorecard button, smart Get Directions
-- ✅ Dashboard: "Recent Competitions" list (up to 5 past, clickable)
-- ✅ Notification split: bell = family notifications, sidebar badge = admin tasks
+### Database (Supabase)
+- ✅ All Phase 2 tables created and RLS-secured
+- ✅ competition_gyms, competition_instance_lanes
+- ✅ competition_event_instances, competition_events
+- ✅ competition_event_categories, master_event_categories
+- ✅ competition_schedule_items, competition_schedule_violations
+- ✅ competition_entries, competition_planned_events
+- ✅ competition_judge_assignments
+- ✅ competition_status_log
+- ✅ aggregate_awards stub
+- ✅ payments, payment_items, refunds, credits (schema only)
 
 ---
 
-## Phase 2: Director Tools & Self-Service
+## Real Competition Insights (April 26, 2026 — CO State USTA)
 
-### Competition Management Tools
-- ⬜ Competition templates (master event → annual editions)
-- ⬜ Event schedule builder (age divisions, event order, time slots)
-- ⬜ Registration management (open/close registration, waitlists)
-- ⬜ Entry fee collection (Stripe integration)
-- ⬜ Competitor check-in / attendance tracking
-- ⬜ Results entry portal for directors
-- ⬜ Live results publishing
+Key learnings from first live TwirlTracker test:
+
+- **Scores come before placements** — state events release scores immediately but hold placements until awards. Need "Scored — Placement Pending" status.
+- **Late twirlers happen** — directors fit in late entries on competition day. Need visible "+ Add Late Entry" on Run Competition page.
+- **Results release mode** — scores can go out immediately, placements held until director releases. New competition setting: Standard | Scores First | Director Controlled.
+- **TwirlTracker worked well** — event planner with set numbers was useful. Sort by set number, show Set # and Lane on cards.
+- **CAS/Movement events** — different result format (Passed/Not Yet + level). Need separate result entry flow for these.
+- **Music plays twice for practice** — practice blocks are timed warm-ups, not individual sets.
+
+---
+
+## Active Sprint — Phase 2B: Events Within Lanes + Schedule Builder
+
+### Schedule + Build Events Tabs (Apr 27 — done)
+- ✅ Events within lane columns (specific events: "Open Novice Solo 9-11")
+- ✅ Add Event to Lane modal (classification, skill level, age range, auto-name preview)
+- ✅ Inline edit (gear icon) on Schedule lane chips — opens edit modal pre-filled
+- ✅ Build Events tab — director's catalog of events independent of lane placement
+- ✅ Build Events Add/Edit modal (category, division, classification, age, custom title, description, notes, entry fee, qualifier toggle)
+- ✅ Settings Step 4 sorts master_events by `order_number` then alphabetically
+- ⬜ Drag built events from sidebar into lane cells on Schedule tab (future work)
+- ⬜ Auto-sort per lane (Open → State, Novice → Advanced, younger → older)
+- ⬜ Late entry support ("+Add Late Entry" button, Late badge)
+- ⬜ Event count per lane shown in header
+- ⬜ Results release mode in competition settings
+
+### TwirlTracker Fixes (family app)
+- ⬜ Placement fully optional — never blocks saving
+- ⬜ "Scored — Placement Pending" status and section
+- ⬜ "Add Placement" quick action (1st/2nd/3rd/4th/Other)
+- ⬜ Real-time UI update after result saved (no reload)
+- ⬜ ON DECK + NEXT UP two-card layout (remove duplicate hero text)
+- ⬜ Place pending amber indicator on completed cards
+- ⬜ CAS/Movement white screen crash fix (score.toFixed bug)
+- ⬜ Results event dropdown → pull from planned events list
+- ⬜ Results level dropdown → sync with planned event skill level
+- ⬜ Default sort by org when no set numbers entered
+- ⬜ Scorecard upload white screen on mobile fix
+- ⬜ Favicon restored on both apps
+
+---
+
+## Phase 2C — Schedule Builder
+
+### Schedule Tab (director app)
+- ⬜ Day tabs for multi-day competitions
+- ⬜ Fixed synchronized lane header row
+- ⬜ Auto Schedule Competition button
+- ⬜ Category headers auto-inserted in default order
+- ⬜ Practice blocks (full-width, no set number, amber styling)
+- ⬜ Set numbers auto-generated sequentially
+- ⬜ Scratch sets shown as empty (not hidden)
+- ⬜ Drag twirlers into lane slots
+- ⬜ Auto-sort: Open → State, Novice → Advanced, younger → older
+- ⬜ Block lane toggle per event
+- ⬜ Lock event (prevents further changes)
+- ⬜ Mobile: swipe between lanes, tap to assign twirler
+
+### Autoschedule V1
+- ⬜ Distribute twirlers evenly across non-blocked lanes
+- ⬜ Respect minimum gap between same twirler's events (default 15 min)
+- ⬜ Flag violations as structured schedule_violations
+- ⬜ Ask: overwrite existing or fill gaps only
+- ⬜ Practice slots auto-scheduled X min before competition slot
+
+---
+
+## Phase 2D — Registration & Payments
+
+- ⬜ Family registration flow (browse events, add to cart, checkout)
+- ⬜ Stripe integration (entry fees, refunds, credits)
+- ⬜ Registration open/close automation
+- ⬜ Non-member guardian email flow
+- ⬜ Director registration management (view signups, override fees, late additions)
+- ⬜ Co-registration (multiple twirlers, single checkout)
+- ⬜ Refund processing through director app
+- ⬜ Payment reports (revenue by event, by day)
+
+---
+
+## Phase 2E — Entries & Judges Tabs
+
+### Entries Tab
+- ⬜ View all registrations per competition
+- ⬜ Manual entry (name, club, age, guardian email, events)
+- ⬜ Entry fee override per athlete (comp/scholarship)
+- ⬜ Late addition on competition day
+- ⬜ Export entries (CSV)
+
+### Judges Tab
+- ⬜ Add judges (name, email — no account required yet)
+- ⬜ Assign judge to lane (default: whole day)
+- ⬜ Override per event category (rotation, breaks, fairness)
+- ⬜ Multiple judges per lane (olympic scoring option)
+
+---
+
+## Phase 3 — Competition Day (Run Competition Page)
+
+- ⬜ /competition/:id/run — dedicated live page
+- ⬜ Tablet-optimized UI (large tap targets, minimal chrome)
+- ⬜ Current set across all lanes
+- ⬜ Per-lane: current athlete, on-deck, queue
+- ⬜ USTA mode: music indicator, all lanes advance together
+- ⬜ NBTA/TU/DMA mode: each lane advances independently
+- ⬜ No-show marking (judge taps, skips slot)
+- ⬜ Late entry addition on competition day
+- ⬜ Emergency pause
+- ⬜ Director override for any status
+- ⬜ Results entry per performance (score, placement, notes)
+- ⬜ Results release controls (Standard/Scores First/Director Controlled)
+- ⬜ "Release Placements" button when placements held
+
+### Smart Warm-Up (family app)
+- ⬜ Real-time set tracking
+- ⬜ USTA: on-deck notification X sets before event (default 2)
+- ⬜ Async orgs: on-deck notification X min before (default 15)
+- ⬜ Progressive: "15 min away" → "5 min away" → "On deck"
+- ⬜ Practice block notification when practice starts
+
+---
+
+## Phase 3B — Results & Scoring
+
+- ⬜ Results tab in director app
+- ⬜ Score entry per entry per judge
+- ⬜ Multi-judge averaging (standard + olympic option)
+- ⬜ Director review before finalizing
+- ⬜ First place blocking (Protected First Place)
+- ⬜ Tie handling (identical scores = tie, director resolves)
+- ⬜ Score audit trail (all changes logged)
+- ⬜ Results posted notifications (email + in-app)
+- ⬜ Consolidated results email (members + non-members)
+- ⬜ Printable scorecard output per twirler
+- ⬜ Data export: CSV/JSON
+
+### Scoring Templates
+- ⬜ Standard Solo (score, placement, no_drop, notes)
+- ⬜ Strut/Marching (subscores: knee height, toe point, posture, etc.)
+- ⬜ Movement & Compulsories CAS (matrix: movements × levels × Low/Med/High)
+- ⬜ Show/Dance Routine
+- ⬜ Corps (5 caption scores)
+- ⬜ Custom (director-defined)
+
+---
+
+## Phase 4 — Advanced Features
+
+### Competition Templates
+- ⬜ Save competition structure as template
+- ⬜ Org default templates (USTA, NBTA, TU, DMA)
+- ⬜ Share templates with other directors
+- ⬜ Start new competition from template
+
+### Director Reports
+- ⬜ Total registrations (by event, age/division, day)
+- ⬜ Revenue breakdown (by event, by day)
+- ⬜ Scheduling conflicts and tight transitions
+- ⬜ No-show tracking
+- ⬜ Lifetime family value (post first event)
+- ⬜ Qualifier results tracking → advancement eligibility
+
+### Aggregate Awards
+- ⬜ High Point awards (aggregate placements across events)
+- ⬜ Pageant titles
+- ⬜ Grand Champion tracking
+- ⬜ Custom award types
 
 ### Judge Accounts
 - ⬜ Judge signup and verification
-- ⬜ Score entry interface (mobile-optimized)
+- ⬜ Direct login to score entry interface
 - ⬜ Real-time score aggregation
-- ⬜ Score display for families and coaches
+- ⬜ Score display for families as posted
 
-### Enhanced Directory
-- ⬜ Auto-deduplication (match by name similarity + date + location)
+---
+
+## Phase 5 — Ecosystem & Growth
+
+### Sponsorship Program
+- ⬜ Local business sponsors offset director platform fees
+- ⬜ Sponsor placement in app for all attendees at competition
+- ⬜ Featured Competition placement in directory for larger events
+- ⬜ Sponsorship outreach tools for directors
+- ⬜ Revenue model TBD for larger regional/national events
+
+### Marketing Platform
+- ⬜ Directors push competitions to targeted families/coaches in area
+- ⬜ Email campaigns for upcoming competitions
+- ⬜ Push notifications for schedule published, results posted
+
+### Hardware Tier (Premium)
+- ⬜ Pre-configured judge tablets shipped to venue
+- ⬜ Portable WiFi hotspot (eliminates school WiFi dependency)
+- ⬜ TwirlPower branding visible at venue
+- ⬜ Enterprise add-on pricing
+
+### Music Integration (Future Premium)
+- ⬜ Director uploads music files per set to TwirlPower
+- ⬜ Music stored locally on competition control device (no buffering)
+- ⬜ Auto-plays when set is opened in Run Competition page
+- ⬜ Hardware considerations: dedicated tablet/device as music controller
+- ⬜ Family app: on-deck notification synced to music start
+- ⬜ Both ends need to be seamless: director presses play, music starts, families notified
+
+### Directory & Scraping
+- ⬜ Scraper for org websites (USTA, NBTA, TU, DMA) — Vercel cron, weekly
+- ⬜ Admin review queue for scraped competitions
+- ⬜ Auto-deduplication (name + date + location matching)
 - ⬜ Competition ratings/reviews from families
-- ⬜ Historical competition data (past years' results, attendance)
+- ⬜ Historical competition data (past years' results)
+- ⬜ Director profiles (bio, past competitions, ratings)
+- ⬜ WordPress widgets (upcoming competitions, stats bar)
 
-### Monetization
-- ⬜ Stripe integration for competition registration fees
-- ⬜ Platform fee on registrations
-- ⬜ Premium director features (custom branding, advanced analytics)
-- ⬜ Free tier for basic competition listing
-
----
-
-## Phase 3: Schedule System & Competition-Day UX
-
-- ⬜ `competition_schedule` table
-- ⬜ Directors can add/edit schedule entries
-- ⬜ Families see "Your events" with times highlighted
-- ⬜ Competition-Day adaptive mode (auto-switch tabs based on date)
-- ⬜ Refactor Competitor's Edge into reusable component
-
-## Phase 4: Public Results & Ratings
-
-- ⬜ Directors/admins can publish results for a competition
-- ⬜ Public results viewable without account
-- ⬜ Competition ratings/reviews post-event
-- ⬜ Historical competition data
-
-## Phase 5: Ecosystem & Growth
-
-- ⬜ Multi-role accounts (family + coach + director in one login)
-- ⬜ Push notifications for competition updates
-- ⬜ API for org websites to pull TwirlPower data
+### Platform
+- ⬜ NBTA Collegiate / College Majorette org support
+- ⬜ DMA full rulebook integration
+- ⬜ Org-specific tiebreaker automation
+- ⬜ Push notifications (schedule published, results posted)
 - ⬜ Mobile app (React Native or Capacitor)
+- ⬜ API for org websites to pull TwirlPower data
 - ⬜ Partnerships with USTA, NBTA, TU, DMA for official data feeds
-- ⬜ Live score publishing (judge accounts + real-time score entry)
-
----
-
-## Known Bugs / Outstanding Issues
-
-- ⬜ Club member approval flow: pending members not showing for coach/club owner to approve
-- ⬜ Club member pending notification not appearing in sidebar
-- ⬜ Coach invite to competition: verify `invites` table schema has correct columns
-- ⬜ Marketing/directory site: competition cards link to app, unclaimed comps show "Claim" button
+- ⬜ Live scoreboard (TV/tablet display at venue)
+- ⬜ Tabulation data export (custom, on request)
+- ⬜ Offline-first scoring (currently: aggressive autosave + retry)
 
 ---
 
 ## Pre-Launch Checklist
 
-- ⬜ Upgrade to Supabase Pro ($25/mo)
-- ⬜ Set up weekly manual database export
+Complete before inviting real users beyond beta testers:
+
+- ⬜ Remove director pages from main app (redirect host role → manage.twirlpower.com)
+- ⬜ Upgrade to Supabase Pro ($25/mo) — daily backups, higher connection limits
+- ⬜ Weekly manual database export as backup
 - ⬜ Verify RLS policies on all tables
-- ⬜ Test auth flows end-to-end
+- ⬜ Test auth flows end-to-end (signup, login, password reset, co-guardian invite)
 - ⬜ Verify email delivery (Resend logs)
 - ⬜ Review Vercel usage limits
 - ⬜ Set up Supabase usage alerts
+- ⬜ "Allow Protected First Place" rename in director app settings
+- ⬜ Results event dropdown → pull from planned events (not hardcoded list)
 
 ---
 
-## Performance & Scale Prep
+## Director Pricing Tiers
 
-- ⬜ Paginate `loadAllData` — lazy-load competition history
-- ⬜ Upgrade to Supabase Pro tier before public launch
-- ⬜ Add database indexes based on slow query logs
-- ⬜ Optimize RLS policies
-- ⬜ Lazy-load director tools with pagination
-- ⬜ Supabase Realtime subscriptions for live features
-- ⬜ Real-time "users online" count in admin dashboard (Supabase Presence — requires Pro plan)
+| Tier | Mode | Revenue Model |
+|---|---|---|
+| Free — Directory Listing | 1 | Free forever |
+| Starter — Planning Tools | 2 | Monthly or annual subscription |
+| Pro — Full Management | 3 | Subscription + per-entry fee ($1–2/entry) |
+| Enterprise — Organization Plan | 3/4 | Negotiated contract, dedicated support |
+
+---
+
+## Open Questions (USTA Contact)
+
+1. Event block vs lane-first planning — how do directors actually think?
+2. USTA protection rule — does USTA use it?
+3. NBTA protection rule — does NBTA use it?
+4. USTA sanction compliance — specific output format requirements?
+5. Division order within lane — is Open → State → Novice → Advanced the USTA standard?
+6. High Point awards — auto-calculate or provide data only?
+7. NBTA lane execution — confirmed asynchronous?
