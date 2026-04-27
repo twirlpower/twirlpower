@@ -52,6 +52,7 @@ Long-term goal: Replace third-party tabulation systems entirely. Every competiti
   - Optional override for custom title
   - Qualifier toggle, description, notes, entry fee fields
   - Backed by new `competition_built_events` table
+  - Drag-from-sidebar wiring on Schedule tab: chips link via `competition_lane_events.built_event_id`
 - ✅ Master events table seeded (USTA, NBTA, TU, DMA)
 - ✅ Master event categories with org default order (Settings Step 4 sorts by `master_events.order_number` then name)
 - ✅ Competition settings: execution mode, avg set time, reset buffer, music plays, on-deck triggers, results release mode
@@ -99,7 +100,12 @@ Key learnings from first live TwirlTracker test:
 - ✅ Build Events tab — director's catalog of events independent of lane placement
 - ✅ Build Events Add/Edit modal (category, division, classification, age, custom title, description, notes, entry fee, qualifier toggle)
 - ✅ Settings Step 4 sorts master_events by `order_number` then alphabetically
-- ⬜ Drag built events from sidebar into lane cells on Schedule tab (future work)
+- ✅ Drag built events from sidebar into lane cells on Schedule tab
+  - Sidebar shows built events grouped by category, focused category at top
+  - Click a category header on the board to focus it in the sidebar
+  - Cross-category drops rejected with toast ("This event belongs to X")
+  - Placed events appear dimmed with checkmark in the sidebar
+  - New `built_event_id` FK column on `competition_lane_events` (nullable; manual + Add Event still works)
 - ⬜ Auto-sort per lane (Open → State, Novice → Advanced, younger → older)
 - ⬜ Late entry support ("+Add Late Entry" button, Late badge)
 - ⬜ Event count per lane shown in header
