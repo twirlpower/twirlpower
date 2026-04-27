@@ -1,5 +1,5 @@
 # TwirlPower — Competition Directory & Director Roadmap
-Updated: April 27, 2026
+Updated: April 28, 2026
 
 ---
 
@@ -93,9 +93,8 @@ Key learnings from first live TwirlTracker test:
 
 ## Active Sprint — Phase 2B: Events Within Lanes + Schedule Builder
 
-### Schedule + Build Events Tabs (Apr 27 — done)
+### Schedule + Build Events Tabs (Apr 27–28 — done)
 - ✅ Events within lane columns (specific events: "Open Novice Solo 9-11")
-- ✅ Add Event to Lane modal (classification, skill level, age range, auto-name preview)
 - ✅ Inline edit (gear icon) on Schedule lane chips — opens edit modal pre-filled
 - ✅ Build Events tab — director's catalog of events independent of lane placement
 - ✅ Build Events Add/Edit modal (category, division, classification, age, custom title, description, notes, entry fee, qualifier toggle)
@@ -103,12 +102,26 @@ Key learnings from first live TwirlTracker test:
 - ✅ Drag built events from sidebar into lane cells on Schedule tab
   - Sidebar shows built events grouped by category, focused category at top
   - Click a category header on the board to focus it in the sidebar
-  - Cross-category drops rejected with toast ("This event belongs to X")
+  - Cross-category drops rejected with toast
   - Placed events appear dimmed with checkmark in the sidebar
-  - New `built_event_id` FK column on `competition_lane_events` (nullable; manual + Add Event still works)
+  - `built_event_id` FK on `competition_lane_events`
+  - Drop already-placed event into a different lane → "Move it here?" prompt
+- ✅ Schedule board grid layout (Apr 28)
+  - SET column on the left; sequential set numbers across the entire schedule
+  - Per-(lane × set-row) cells; one event per cell
+  - Within-column drag handle (⋮⋮) to reorder events in the same lane × category
+  - × button on chips to remove from lane (event returns to sidebar as unplaced)
+  - Manual "+ Add Event" removed from lane cells (drag from sidebar only)
+- ✅ Breaks — full-width amber rows, insertable between any two categories
+  - "+ Break" affordance appears between sections in editing mode
+  - Editable label + duration; per-gym; new `competition_schedule_breaks` table
+- ✅ Practice Records subheading per category
+  - Italic muted row under category header; default ON
+  - Click to rename; × to hide; "+ Practice" to re-show
+  - New `practice_label` / `show_practice` columns on `competition_events`
 - ⬜ Auto-sort per lane (Open → State, Novice → Advanced, younger → older)
 - ⬜ Late entry support ("+Add Late Entry" button, Late badge)
-- ⬜ Event count per lane shown in header
+- ⬜ Drag breaks to reorder between categories
 - ⬜ Results release mode in competition settings
 
 ### TwirlTracker Fixes (family app)
