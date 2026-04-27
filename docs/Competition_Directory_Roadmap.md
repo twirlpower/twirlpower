@@ -1,5 +1,5 @@
 # TwirlPower — Competition Directory & Director Roadmap
-Updated: April 28, 2026
+Updated: April 29, 2026
 
 ---
 
@@ -116,9 +116,12 @@ Key learnings from first live TwirlTracker test:
   - "+ Break" affordance appears between sections in editing mode
   - Editable label + duration; per-gym; new `competition_schedule_breaks` table
 - ✅ Practice Records subheading per category
-  - Italic muted row under category header; default ON
-  - Click to rename; × to hide; "+ Practice" to re-show
+  - Italic muted row under category header (centered across all lanes); default ON
+  - Click to rename; × to hide; unified Practice toggle in the category header to show/hide
   - New `practice_label` / `show_practice` columns on `competition_events`
+- ✅ Drag placed events between lanes (Apr 29) — chip drag from board, not just sidebar
+- ✅ Cross-category drops are warned, not blocked — confirm prompt allows scattering events outside their home section
+- ✅ Empty cells show "Drop event here" hint while a drag is in progress (sidebar OR board)
 - ⬜ Auto-sort per lane (Open → State, Novice → Advanced, younger → older)
 - ⬜ Late entry support ("+Add Late Entry" button, Late badge)
 - ⬜ Drag breaks to reorder between categories
