@@ -1,5 +1,5 @@
 # TwirlPower — Competition Directory & Director Roadmap
-Updated: April 30, 2026
+Updated: April 30, 2026 (twirler lineup)
 
 ---
 
@@ -124,6 +124,13 @@ Key learnings from first live TwirlTracker test:
 - ✅ Empty cells show "Drop event here" hint while a drag is in progress (sidebar OR board)
 - ✅ Cross-category board chip move no longer duplicates the chip (Apr 30) — laneEvsForCat now matches by event_type only
 - ✅ Lock toggle (Editing/Locked) scope extended to Build Events tab — same toggle disables Add/Edit/Delete and shows a "Schedule is locked" banner
+- ✅ Twirler lineup inside placed events (Apr 30)
+  - Each event chip is collapsible/expandable; collapsed view shows event name + twirler-count badge
+  - Expanded view shows event header + ordered twirler rows with drag-handles
+  - Set numbers now count TWIRLER ROWS (not events), sequential across the entire schedule
+  - Manual + Add Twirler (name + optional club) and + Add Scratch
+  - Within-event twirler reorder via drag handle; × to remove a twirler/scratch
+  - New `competition_event_twirlers` table with the standard host/admin RLS chain
 - ⬜ Auto-sort per lane (Open → State, Novice → Advanced, younger → older)
 - ⬜ Late entry support ("+Add Late Entry" button, Late badge)
 - ⬜ Drag breaks to reorder between categories
