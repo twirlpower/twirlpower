@@ -1,5 +1,5 @@
 # TwirlPower — Competition Directory & Director Roadmap
-Updated: April 29, 2026
+Updated: April 30, 2026
 
 ---
 
@@ -122,6 +122,8 @@ Key learnings from first live TwirlTracker test:
 - ✅ Drag placed events between lanes (Apr 29) — chip drag from board, not just sidebar
 - ✅ Cross-category drops are warned, not blocked — confirm prompt allows scattering events outside their home section
 - ✅ Empty cells show "Drop event here" hint while a drag is in progress (sidebar OR board)
+- ✅ Cross-category board chip move no longer duplicates the chip (Apr 30) — laneEvsForCat now matches by event_type only
+- ✅ Lock toggle (Editing/Locked) scope extended to Build Events tab — same toggle disables Add/Edit/Delete and shows a "Schedule is locked" banner
 - ⬜ Auto-sort per lane (Open → State, Novice → Advanced, younger → older)
 - ⬜ Late entry support ("+Add Late Entry" button, Late badge)
 - ⬜ Drag breaks to reorder between categories
