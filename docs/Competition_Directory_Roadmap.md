@@ -1,5 +1,5 @@
 # TwirlPower — Competition Directory & Director Roadmap
-Updated: April 30, 2026 (twirler lineup)
+Updated: April 29, 2026 (results + scoring MVP)
 
 ---
 
@@ -166,7 +166,7 @@ Key learnings from first live TwirlTracker test:
 - ⬜ Auto-sort per lane (Open → State, Novice → Advanced, younger → older)
 - ⬜ Late entry support ("+Add Late Entry" button, Late badge)
 - ⬜ Drag breaks to reorder between categories
-- ⬜ Results release mode in competition settings
+- ✅ Results release mode in competition settings (`standard` | `director_controlled`)
 
 ### TwirlTracker Fixes (family app)
 - ⬜ Placement fully optional — never blocks saving
@@ -271,9 +271,9 @@ on `public_competitions`). No app logic uses these yet.
 - ⬜ Late entry addition on competition day
 - ⬜ Emergency pause
 - ⬜ Director override for any status
-- ⬜ Results entry per performance (score, placement, notes)
-- ⬜ Results release controls (Standard/Scores First/Director Controlled)
-- ⬜ "Release Placements" button when placements held
+- ✅ Results entry per performance (score, placement, notes) — shipped via Results tab MVP
+- ✅ Results release controls (Standard/Director Controlled) — shipped
+- ✅ "Release Placements" button when placements held — per-event + Release All
 
 ### Smart Warm-Up (family app)
 - ⬜ Real-time set tracking
@@ -286,21 +286,35 @@ on `public_competitions`). No app logic uses these yet.
 
 ## Phase 3B — Results & Scoring
 
-- ⬜ Results tab in director app
-- ⬜ Score entry per entry per judge
-- ⬜ Multi-judge averaging (standard + olympic option)
-- ⬜ Director review before finalizing
+### Results MVP (April 29, 2026) — ✅ Shipped
+- ✅ Results tab in director app — events grouped by category, filter by category, search by twirler/event
+- ✅ Per-event score entry view (one card per twirler with Score/All-Catch or Pass/Fail toggle, comments, signature)
+- ✅ Two generic score types: `scored` (numeric) and `pass_fail` — selectable per built event
+- ✅ Score Type dropdown in Build Events add/edit modal
+- ✅ Director-entered scores from paper scorecards (judge accounts will plug in later)
+- ✅ Auto-detect contested vs uncontested (1 vs 2+ twirlers)
+- ✅ Judge signature: stamps assigned judge name + timestamp; falls back to manual name if no judge assigned
+- ✅ Placement calculation with tie handling (`allow_ties` skips next placement: 1, 1, 3 / `director_resolves` opens tie modal)
+- ✅ Score release controls (Standard auto-release on calculation / Director-Controlled manual)
+- ✅ Placement release always manual — per-event button + Release All Placements with confirmation
+- ✅ Director placement override per result with required reason, full audit trail
+- ✅ `competition_scores`, `competition_results`, `competition_score_audit` tables shipped with host/admin RLS
+- ✅ Family-app Results tab now reads released `competition_results` (Official Results section)
+- ✅ Competition settings: `results_release_mode` and `tie_handling`
+
+### Phase 3B — Still Open
+- ⬜ Multi-judge averaging (standard + olympic option) — MVP is one-judge-per-event
+- ⬜ Director review queue before finalizing
 - ⬜ First place blocking (Protected First Place)
-- ⬜ Tie handling (identical scores = tie, director resolves)
-- ⬜ Score audit trail (all changes logged)
 - ⬜ Results posted notifications (email + in-app)
 - ⬜ Consolidated results email (members + non-members)
 - ⬜ Printable scorecard output per twirler
 - ⬜ Data export: CSV/JSON
+- ⬜ Voice note recording on judge feedback (UI stub in place)
 
 ### Scoring Templates
-- ⬜ Standard Solo (score, placement, no_drop, notes)
-- ⬜ Strut/Marching (subscores: knee height, toe point, posture, etc.)
+- ⬜ Standard Solo (score, placement, no_drop, notes) — generic Scored type covers MVP
+- ⬜ Strut/Marching (subscores: knee height, toe point, posture, etc.) — `score_details` jsonb ready to host these
 - ⬜ Movement & Compulsories CAS (matrix: movements × levels × Low/Med/High)
 - ⬜ Show/Dance Routine
 - ⬜ Corps (5 caption scores)

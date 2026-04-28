@@ -11187,6 +11187,31 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   // myRegistrations array App already loads on auth).
   const myEntriesHere = (myRegistrations || []).filter(e => e.competition_id === activeCompetitionId);
 
+  // Director-managed results: pulls competition_results visible to this
+  // family via the family-read RLS policy (released score or placement only).
+  const [directorResults, setDirectorResults] = useState([]);
+  const [directorResultsLaneEvents, setDirectorResultsLaneEvents] = useState([]);
+  const [directorResultsTwirlers, setDirectorResultsTwirlers] = useState([]);
+  const [directorResultsScores, setDirectorResultsScores] = useState([]);
+
+  useEffect(() => {
+    if (!activeCompetitionId) return;
+    let alive = true;
+    Promise.all([
+      supabase.from("competition_results").select("*").eq("competition_id", activeCompetitionId),
+      supabase.from("competition_lane_events").select("*").eq("competition_id", activeCompetitionId),
+      supabase.from("competition_event_twirlers").select("*").eq("competition_id", activeCompetitionId),
+      supabase.from("competition_scores").select("comments,signed_by,signed_at,lane_event_id,twirler_id").eq("competition_id", activeCompetitionId),
+    ]).then(([r, le, et, sc]) => {
+      if (!alive) return;
+      setDirectorResults(r.data || []);
+      setDirectorResultsLaneEvents(le.data || []);
+      setDirectorResultsTwirlers(et.data || []);
+      setDirectorResultsScores(sc.data || []);
+    });
+    return () => { alive = false; };
+  }, [activeCompetitionId]);
+
   // Director-managed competitions own their event list, schedule, and
   // registration. Families don't manually add events or "attend"
   // anything — those flows hide. Detected when host_id is set OR built
@@ -12098,6 +12123,85 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
       {/* ── RESULTS TAB ── */}
       {tab === "results" && (
         <div>
+          {/* Director-managed results (visible only when scores or placements have been released) */}
+          {isDirectorManaged && (() => {
+            const placementLabelLocal = (p) => {
+              if (p == null) return null;
+              if (p === 1) return "🥇 1st";
+              if (p === 2) return "🥈 2nd";
+              if (p === 3) return "🥉 3rd";
+              const suf = p % 100 >= 11 && p % 100 <= 13 ? "th" : ["th","st","nd","rd","th","th","th","th","th","th"][p % 10];
+              return `${p}${suf}`;
+            };
+            const lineupNameLocal = (t) => {
+              if (!t) return "";
+              if (t.entry_type === "duet") return `${t.twirler_name}${t.partner_name ? " / " + t.partner_name : ""}`;
+              if (t.entry_type === "group") return t.group_name || t.twirler_name;
+              return t.twirler_name;
+            };
+            // Group released results by lane event, keep only ones visible.
+            const visible = directorResults.filter(r => r.score_released || r.placement_released);
+            if (visible.length === 0) return null;
+            const byEvent = new Map();
+            visible.forEach(r => {
+              const arr = byEvent.get(r.lane_event_id) || [];
+              arr.push(r);
+              byEvent.set(r.lane_event_id, arr);
+            });
+            return (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
+                  Official Results
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[...byEvent.entries()].map(([leId, rs]) => {
+                    const le = directorResultsLaneEvents.find(x => x.id === leId);
+                    if (!le) return null;
+                    return (
+                      <div key={leId} className="card-sm" style={{ padding: "10px 14px" }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 6 }}>{le.name || le.event_type}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {rs.map(r => {
+                            const tw = directorResultsTwirlers.find(t => t.id === r.twirler_id);
+                            const sc = directorResultsScores.find(s => s.lane_event_id === r.lane_event_id && s.twirler_id === r.twirler_id);
+                            return (
+                              <div key={r.id} style={{ fontSize: 13, color: "var(--slate)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                                <span style={{ fontWeight: 600, color: "var(--navy)" }}>{lineupNameLocal(tw)}</span>
+                                {r.score_released && r.final_score != null && (
+                                  <span>Score: <strong>{Number(r.final_score).toFixed(2)}</strong></span>
+                                )}
+                                {r.placement_released && placementLabelLocal(r.placement) && (
+                                  <span className="badge" style={{ background: r.placement === 1 ? "#fef9c3" : "#f1f5f9", color: r.placement === 1 ? "#854d0e" : "var(--slate)", fontSize: 11 }}>
+                                    {placementLabelLocal(r.placement)}
+                                  </span>
+                                )}
+                                {r.placement_released && r.is_tie && <span className="badge badge-warn" style={{ fontSize: 9 }}>TIE</span>}
+                                {r.placement_released && r.pass_fail_result === "passed" && <span className="badge badge-green" style={{ fontSize: 10 }}>Passed</span>}
+                                {r.placement_released && r.pass_fail_result === "failed" && <span className="badge badge-red" style={{ fontSize: 10 }}>Failed</span>}
+                                {sc?.comments && (
+                                  <div style={{ width: "100%", fontSize: 12, fontStyle: "italic", color: "var(--slate)", marginTop: 2 }}>
+                                    "{sc.comments}"{sc.signed_by ? <> — {sc.signed_by}</> : null}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Director-managed comp with results pending hint */}
+          {isDirectorManaged && directorResults.length === 0 && myEntriesHere.length > 0 && (
+            <div className="card-sm" style={{ padding: "10px 14px", marginBottom: 20, color: "var(--slate)", fontSize: 13 }}>
+              📋 Results pending — your scores will appear here once released by the host.
+            </div>
+          )}
+
           {myResults.length > 0 ? (
             <div>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
