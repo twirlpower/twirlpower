@@ -138,6 +138,16 @@ Key learnings from first live TwirlTracker test:
   - Group displays as the team name on one row (one set slot)
   - Twirler-count badge on collapsed chip counts entries (not heads)
 - ✅ Schedule export — Print/PDF (browser print dialog → Save as PDF) + CSV (UTF-8 BOM, equal-width lane columns in PDF)
+- ✅ Schedule lineup ↔ Entries wired together (Apr 28)
+  - New `competition_event_twirlers.entry_id` FK to `competition_entries`
+  - "+ From Entries" button inside expanded events on the Schedule board
+  - Picker modal lists everyone registered for the event's built event,
+    pre-checks/disables anyone already placed in this lane, with
+    "Add Selected" + "Add All Unscheduled" actions
+  - Group entries written with their team name; duets carry the partner
+    through to the placed twirler row
+  - Orange "N unscheduled" indicator on the event header surfaces
+    registered twirlers that aren't on the lineup yet
 - ✅ Public/Private visibility toggle on competitions (Apr 28)
   - New `is_public` column on `public_competitions`; backfilled true for already-approved comps
   - Toggle on Overview tab; ON sets `is_public + approved`, OFF clears `is_public`
