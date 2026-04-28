@@ -251,9 +251,10 @@ on `public_competitions`). No app logic uses these yet.
 - ⬜ Export entries (CSV)
 
 ### Judges Tab
-- ⬜ Add judges (name, email — no account required yet)
-- ⬜ Assign judge to lane (default: whole day)
-- ⬜ Override per event category (rotation, breaks, fairness)
+- ✅ Add judges (first/last name + optional email/phone/notes) per competition (Apr 29)
+- ✅ Assign judge to lane (default: whole day) — dropdown in the Schedule sticky header (Apr 29)
+- ✅ Override per event (judge dropdown in the gear-icon edit modal; small initials badge on chip when override differs from lane default) (Apr 29)
+- ✅ Judges included in Print/PDF and CSV exports (lane header line + per-event override note)
 - ⬜ Multiple judges per lane (olympic scoring option)
 
 ---
