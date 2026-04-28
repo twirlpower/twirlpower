@@ -4830,7 +4830,7 @@ function CoachCompetitionsPage({ coachCompetitions, competitions, results, twirl
         <CoachHistoryPage coachCompetitions={coachCompetitions} competitions={competitions} results={results} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} />
       )}
       {tab === 'upcoming' && (
-        <UpcomingCompetitionsPage publicCompetitions={publicCompetitions || []} familyAccount={familyAccount} addAttendee={addAttendee} attendees={attendees || []} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} registerHost={registerHost} addCompetition={() => {}} />
+        <UpcomingCompetitionsPage publicCompetitions={publicCompetitions || []} familyAccount={familyAccount} addAttendee={addAttendee} attendees={attendees || []} twirlers={twirlers} activeTwirler={activeTwirler} setPage={setPage} registerHost={registerHost} addCompetition={() => {}} openRegistration={openRegistration} />
       )}
     </div>
   );
@@ -12154,7 +12154,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
 
 // ─── UPCOMING COMPETITIONS PAGE ──────────────────────────────────────────────
 
-function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage, registerHost, setActiveCompetitionId }) {
+function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, activeTwirler, familyAccount, addAttendee, removeAttendee, competitionHosts, setPage, registerHost, setActiveCompetitionId, openRegistration }) {
   const [directorModal, setDirectorModal] = useState(null); // null | 'confirm' | 'form' | 'done'
   const [filterState, setFilterState] = useState(familyAccount?.state || "");
   const [filterOrg, setFilterOrg] = useState("");
@@ -12281,8 +12281,26 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
                   </div>
                 </div>
                 <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-                  {activeTwirler ? (
-                    attending ? (
+                  {(() => {
+                    // Director-managed + public comp → families register through
+                    // the form rather than manually attending. We don't know
+                    // here whether registration is currently open without an
+                    // extra query, so we show the Register CTA whenever it's
+                    // theoretically possible; the registration page itself
+                    // handles the upcoming/closed gates.
+                    const isDirectorManaged = !!(comp.hostId && comp.is_public);
+                    if (isDirectorManaged && openRegistration) {
+                      return (
+                        <button className="btn btn-primary btn-sm"
+                          onClick={e => { e.stopPropagation(); openRegistration(comp.id); }}>
+                          Register
+                        </button>
+                      );
+                    }
+                    if (!activeTwirler) {
+                      return <span style={{ fontSize: 12, color: "var(--muted)" }}>No twirler selected</span>;
+                    }
+                    return attending ? (
                       <div className="flex items-center gap-3">
                         <span className="badge badge-green">✓ Added to my competitions</span>
                         <button className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}
@@ -12295,10 +12313,8 @@ function UpcomingCompetitionsPage({ publicCompetitions, attendees, twirlers, act
                         onClick={() => addAttendee(comp.id, activeTwirler.id)}>
                         + Add to my competitions
                       </button>
-                    )
-                  ) : (
-                    <span style={{ fontSize: 12, color: "var(--muted)" }}>No twirler selected</span>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             );
