@@ -137,6 +137,14 @@ Key learnings from first live TwirlTracker test:
   - Duet displays as "Twirler 1 / Partner" on one row (one set slot)
   - Group displays as the team name on one row (one set slot)
   - Twirler-count badge on collapsed chip counts entries (not heads)
+- ✅ Schedule export — Print/PDF (browser print dialog → Save as PDF) + CSV (UTF-8 BOM, equal-width lane columns in PDF)
+- ✅ Entries tab + registration model (foundation for in-app + public-form + embed registration)
+  - New `competition_entries` and `competition_entry_events` tables
+  - Filterable table: search by name/club/email, status filter, status badges
+  - Add/Edit modal: twirler info, parent contact, event picker (with partner/group inputs for duet/group categories), status, director notes
+  - Registration source recorded per entry; "director" for in-tab adds. In-app / public-form / embed paths will write to the same tables.
+  - Tab label shows live count: "Entries (N)"
+  - Locked-schedule banner reminds the director that new entries won't appear on the board until they unlock and add them
 - ⬜ Auto-sort per lane (Open → State, Novice → Advanced, younger → older)
 - ⬜ Late entry support ("+Add Late Entry" button, Late badge)
 - ⬜ Drag breaks to reorder between categories
