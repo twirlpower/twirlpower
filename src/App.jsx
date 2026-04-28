@@ -2979,14 +2979,27 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
     return () => { alive = false; };
   }, [compId]);
 
-  // Pre-fill contact info from family account once available
+  // Pre-fill contact info from whichever source has the name first.
+  // Sources, in priority order:
+  //   1. authUser.user_metadata.{first_name,last_name} (set during signup)
+  //   2. familyAccount.parentName (split on the first whitespace)
+  //   3. blank
+  // Email + phone fall back through familyAccount → authUser.
   useEffect(() => {
-    if (!familyAccount) return;
+    if (!authUser && !familyAccount) return;
+    const meta = authUser?.user_metadata || {};
+    let metaFirst = (meta.first_name || "").trim();
+    let metaLast = (meta.last_name || "").trim();
+    if (!metaFirst && !metaLast && familyAccount?.parentName) {
+      const parts = familyAccount.parentName.trim().split(/\s+/);
+      metaFirst = parts.shift() || "";
+      metaLast = parts.length ? parts.join(" ") : "";
+    }
     setContactInfo(prev => ({
-      first_name: prev.first_name || familyAccount.first_name || "",
-      last_name: prev.last_name || familyAccount.last_name || "",
-      email: prev.email || familyAccount.email || authUser?.email || "",
-      phone: prev.phone || familyAccount.phone || "",
+      first_name: prev.first_name || metaFirst,
+      last_name: prev.last_name || metaLast,
+      email: prev.email || familyAccount?.email || authUser?.email || "",
+      phone: prev.phone || familyAccount?.phone || meta.phone || "",
     }));
   }, [familyAccount, authUser]);
 
@@ -11132,13 +11145,19 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const isFuture = comp.date > today;
 
   const hasRegistrationForDefault = (myRegistrations || []).some(e => e.competition_id === activeCompetitionId);
-  // Date-aware default; prefer My Registration over My Events when the
-  // family has actually registered for this competition.
+  // Date-aware default. Prefer My Registration when the family has
+  // registered. For director-managed comps without a registration yet,
+  // land on Overview rather than the (hidden) My Events tab.
+  const isDirectorManagedForDefault = !!(comp.host_id);
   const defaultTab = isPast
     ? "results"
-    : (isToday || isFuture)
-      ? (hasRegistrationForDefault ? "my-registration" : "my-competition")
-      : "overview";
+    : hasRegistrationForDefault
+      ? "my-registration"
+      : isDirectorManagedForDefault
+        ? "overview"
+        : (isToday || isFuture)
+          ? "my-competition"
+          : "overview";
   const [tab, setTab] = useState(defaultTab);
   const [copied, setCopied] = useState(false);
 
@@ -11167,6 +11186,13 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   // Entries this family has for this competition (filtered from the
   // myRegistrations array App already loads on auth).
   const myEntriesHere = (myRegistrations || []).filter(e => e.competition_id === activeCompetitionId);
+
+  // Director-managed competitions own their event list, schedule, and
+  // registration. Families don't manually add events or "attend"
+  // anything — those flows hide. Detected when host_id is set OR built
+  // events are loaded. (host_id alone catches comps the director set up
+  // before publishing built events.)
+  const isDirectorManaged = !!(comp.host_id || compBuiltEvents.length > 0);
 
   // Registration state for the Register button.
   // Returns 'no-events' | 'private' | 'upcoming' | 'open' | 'closed'.
@@ -11359,12 +11385,16 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   // Show "My Registration" tab only if this family has at least one
   // competition_entries row for this comp.
   const hasRegistration = myEntriesHere.length > 0;
+  // For director-managed competitions, hide the manual "My Events" tab —
+  // events come from registration, not from manual tracking.
   const tabs = [
     { id: "overview", label: "Overview" },
     ...(hasRegistration
       ? [{ id: "my-registration", label: `My Registration${myEntriesHere.length > 1 ? ` (${myEntriesHere.length})` : ""}` }]
       : []),
-    { id: "my-competition", label: `My Events${myResults.length ? ` (${myResults.length})` : ""}` },
+    ...(!isDirectorManaged
+      ? [{ id: "my-competition", label: `My Events${myResults.length ? ` (${myResults.length})` : ""}` }]
+      : []),
     { id: "results", label: "Results" },
   ];
 
@@ -11448,7 +11478,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
           }
           return null; // 'private' / 'no-events' → don't surface a button
         })()}
-        {activeTwirler && (
+        {!isDirectorManaged && activeTwirler && (
           attending ? (
             <button className="btn btn-secondary btn-sm" onClick={() => removeAttendee(activeCompetitionId, activeTwirler.id)}>✓ Attending · Remove</button>
           ) : (
@@ -11682,7 +11712,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
       )}
 
       {/* ── MY COMPETITION TAB ── */}
-      {tab === "my-competition" && (
+      {tab === "my-competition" && !isDirectorManaged && (
         <div>
           {!activeTwirler ? (
             <div className="card"><div className="empty-state"><h3>No twirler selected</h3><p>Select a twirler to see their events.</p></div></div>
