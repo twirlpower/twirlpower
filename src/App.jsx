@@ -1000,6 +1000,9 @@ export default function App() {
   const [pendingClubClaims, setPendingClubClaims] = useState(0);
   const [publicCompetitions, setPublicCompetitions] = useState([]);
   const [attendees, setAttendees] = useState([]);
+  // Entries the family has registered through the public registration form.
+  // Each row carries its competition + the list of events registered for.
+  const [myRegistrations, setMyRegistrations] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(false);
 
@@ -1337,6 +1340,7 @@ export default function App() {
           .from('twirlers').select('*').eq('family_id', fa.id);
         const mappedTwirlers = (tw || []).map(t => ({
           ...t, firstName: t.first_name,
+          lastName: t.last_name || "",
           classificationState: t.classification_state || {},
           classificationHistory: t.classification_history || [],
           regularEvents: t.regular_events || [],
@@ -1435,6 +1439,16 @@ export default function App() {
           ...a, twirlerId: a.twirler_id, competitionId: a.competition_id,
           addedAt: a.added_at,
         })));
+
+        // Load family registrations (entries created via the public
+        // registration form). Joins each entry to its public_competition
+        // and its competition_entry_events for the event count.
+        const { data: regs } = await supabase
+          .from('competition_entries')
+          .select('*, public_competitions(*), competition_entry_events(id, event_name)')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+        setMyRegistrations(regs || []);
       }
 
       // Load public competitions (visible to all). Both flags required:
@@ -1848,6 +1862,7 @@ export default function App() {
     const { data: inserted, error } = await supabase.from('twirlers').insert({
       family_id: fa.id,
       first_name: data.firstName,
+      last_name: data.lastName || null,
       dob: data.dob || null,
       club: data.club || null,
       organizations: data.organizations || [],
@@ -1856,7 +1871,7 @@ export default function App() {
       classification_history: [],
     }).select().single();
     if (error) { console.error('addTwirler:', error); return; }
-    const t = { ...inserted, firstName: inserted.first_name, classificationState: {}, classificationHistory: [], regularEvents: inserted.regular_events || [], organizations: inserted.organizations || [] };
+    const t = { ...inserted, firstName: inserted.first_name, lastName: inserted.last_name || "", classificationState: {}, classificationHistory: [], regularEvents: inserted.regular_events || [], organizations: inserted.organizations || [] };
     setTwirlers(prev => [...prev, t]);
     setActiveTwirlerId(t.id);
 
@@ -2780,7 +2795,7 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage, myRegistrations };
 
   return (
     <>
@@ -2912,7 +2927,7 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
 
   // Inline add-twirler form
   const [addingTwirler, setAddingTwirler] = useState(false);
-  const [newTwirler, setNewTwirler] = useState({ firstName: "", dob: "", club: "" });
+  const [newTwirler, setNewTwirler] = useState({ firstName: "", lastName: "", dob: "", club: "" });
   const [addingTwirlerBusy, setAddingTwirlerBusy] = useState(false);
 
   // Load competition + host + categories + built events
@@ -3015,11 +3030,12 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
     setAddingTwirlerBusy(true);
     await addTwirler({
       firstName: newTwirler.firstName.trim(),
+      lastName: newTwirler.lastName.trim() || null,
       dob: newTwirler.dob || null,
       club: newTwirler.club.trim() || null,
       organizations: [], regularEvents: [],
     });
-    setNewTwirler({ firstName: "", dob: "", club: "" });
+    setNewTwirler({ firstName: "", lastName: "", dob: "", club: "" });
     setAddingTwirler(false);
     setAddingTwirlerBusy(false);
   }
@@ -3080,15 +3096,12 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
     for (const tid of selectedTwirlerIds) {
       const tw = twirlerById(tid);
       if (!tw) continue;
-      // Twirler "name" is stored as first_name on the family-app twirlers
-      // table; family last name comes from the contact (parent) profile.
-      // Best-effort split: if the twirler has a "first_name" field with
-      // both names ("Jane Smith"), split on the first space; otherwise
-      // use the contact last name as a fallback.
-      const fullFirst = tw.firstName || tw.first_name || "";
-      const parts = fullFirst.trim().split(/\s+/);
-      const tw_first = parts.shift() || fullFirst;
-      const tw_last = parts.length ? parts.join(" ") : (contactInfo.last_name || "");
+      // Prefer twirler.last_name (added 2026-04-29). Fall back to contact's
+      // last name only when the twirler row was created before the column
+      // existed and hasn't been updated yet.
+      const tw_first = (tw.firstName || tw.first_name || "").trim();
+      const tw_last_explicit = (tw.lastName || tw.last_name || "").trim();
+      const tw_last = tw_last_explicit || (contactInfo.last_name || "").trim();
 
       // Compute age if dob known
       let age = null;
@@ -3402,7 +3415,9 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
                 <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: `1px solid ${checked ? "var(--brand)" : "var(--border)"}`, borderRadius: 10, background: checked ? "var(--brand-light)" : "white", cursor: "pointer" }}>
                   <input type="checkbox" checked={checked} onChange={() => toggleTwirler(t.id)} style={{ accentColor: "var(--brand)" }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{t.firstName || t.first_name}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>
+                      {[t.firstName || t.first_name, t.lastName || t.last_name].filter(Boolean).join(" ")}
+                    </div>
                     <div style={{ fontSize: 12, color: "var(--slate)" }}>
                       {t.club || "—"}{t.dob ? ` · DOB ${t.dob}` : ""}
                     </div>
@@ -3420,15 +3435,22 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
                     onChange={e => setNewTwirler(p => ({ ...p, firstName: e.target.value }))} required />
                 </div>
                 <div>
+                  <label className="label">Last name</label>
+                  <input className="input" value={newTwirler.lastName}
+                    onChange={e => setNewTwirler(p => ({ ...p, lastName: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid-2" style={{ marginBottom: 8 }}>
+                <div>
                   <label className="label">Date of birth</label>
                   <input className="input" type="date" value={newTwirler.dob}
                     onChange={e => setNewTwirler(p => ({ ...p, dob: e.target.value }))} />
                 </div>
-              </div>
-              <div style={{ marginBottom: 8 }}>
-                <label className="label">Club / studio</label>
-                <input className="input" value={newTwirler.club}
-                  onChange={e => setNewTwirler(p => ({ ...p, club: e.target.value }))} />
+                <div>
+                  <label className="label">Club / studio</label>
+                  <input className="input" value={newTwirler.club}
+                    onChange={e => setNewTwirler(p => ({ ...p, club: e.target.value }))} />
+                </div>
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAddingTwirler(false)}>Cancel</button>
@@ -3460,7 +3482,7 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
             return (
               <div key={tid} className="card" style={{ padding: "16px 20px" }}>
                 <h2 className="serif" style={{ fontSize: 16, marginBottom: 4 }}>
-                  Events for {t.firstName || t.first_name}
+                  Events for {[t.firstName || t.first_name, t.lastName || t.last_name].filter(Boolean).join(" ")}
                 </h2>
                 {builtEvents.length === 0 ? (
                   <p style={{ fontSize: 13, color: "var(--slate)" }}>This competition hasn't published its events yet.</p>
@@ -3535,7 +3557,9 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
               const evs = eventsForTwirler(tid);
               return (
                 <div key={tid} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{t?.firstName || t?.first_name}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>
+                    {[t?.firstName || t?.first_name, t?.lastName || t?.last_name].filter(Boolean).join(" ")}
+                  </div>
                   <ul style={{ margin: "4px 0 0 18px", fontSize: 13, color: "var(--slate)" }}>
                     {evs.map(bid => {
                       const built = builtEvents.find(b => b.id === bid);
@@ -4568,6 +4592,81 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
           </div>
         ))}
       </div>
+
+      {/* My Registrations — entries created via the public registration form.
+          Hidden entirely when empty. Groups entries by competition (a family
+          with multiple twirlers in one comp will see one row per comp with
+          all twirlers listed). */}
+      {(myRegistrations || []).length > 0 && (() => {
+        const grouped = new Map(); // competition_id → { comp, entries: [], totalEvents }
+        for (const entry of myRegistrations) {
+          if (!entry.competition_id) continue;
+          const key = entry.competition_id;
+          if (!grouped.has(key)) {
+            grouped.set(key, { comp: entry.public_competitions || null, entries: [], totalEvents: 0 });
+          }
+          const slot = grouped.get(key);
+          slot.entries.push(entry);
+          slot.totalEvents += (entry.competition_entry_events || []).length;
+        }
+        const rows = Array.from(grouped.values())
+          .filter(r => r.comp) // skip rows where the joined comp didn't load
+          .sort((a, b) => new Date(b.entries[0]?.created_at || 0) - new Date(a.entries[0]?.created_at || 0));
+        if (rows.length === 0) return null;
+        const statusBadge = (s) => {
+          const map = {
+            confirmed: { label: "Confirmed", bg: "#dcfce7", color: "#15803d" },
+            pending: { label: "Pending", bg: "#fef3c7", color: "#b45309" },
+            scratched: { label: "Scratched", bg: "#fee2e2", color: "#b91c1c" },
+            waitlisted: { label: "Waitlisted", bg: "#f1f5f9", color: "#475569" },
+          };
+          const b = map[s] || map.pending;
+          return <span className="badge" style={{ background: b.bg, color: b.color }}>{b.label}</span>;
+        };
+        return (
+          <div className="card mb-4">
+            <div className="section-header">
+              <span className="section-title">My Registrations</span>
+              <span style={{ fontSize: 12, color: "var(--slate)" }}>{rows.length}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {rows.map((r, i) => {
+                const c = r.comp;
+                const twNames = r.entries.map(e =>
+                  [e.twirler_first_name, e.twirler_last_name].filter(Boolean).join(" ")
+                ).filter(Boolean).join(", ");
+                // Aggregate status: if any are pending/waitlisted/scratched, surface that;
+                // otherwise show confirmed.
+                const statuses = r.entries.map(e => e.status);
+                const summaryStatus = statuses.includes("scratched")
+                  ? "scratched"
+                  : statuses.includes("waitlisted")
+                    ? "waitlisted"
+                    : statuses.every(s => s === "confirmed") ? "confirmed" : "pending";
+                return (
+                  <div key={c.id} style={{ padding: "12px 0",
+                    borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none",
+                    cursor: "pointer" }}
+                    onClick={() => { setActiveCompetitionId(c.id); setPage("competition-detail"); }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 2 }}>{c.name}</div>
+                        <div style={{ fontSize: 12, color: "var(--slate)" }}>
+                          {fmtDate(c.date)}{c.state ? ` · ${c.state}` : ""}{c.city ? ` · ${c.city}` : ""}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+                          {twNames}{r.totalEvents > 0 ? ` · ${r.totalEvents} event${r.totalEvents === 1 ? "" : "s"}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ flexShrink: 0 }}>{statusBadge(summaryStatus)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Upcoming competitions */}
       <div className="card mb-4">
@@ -6218,7 +6317,7 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
 
 // ─── HOME PAGE ───────────────────────────────────────────────────────────────
 
-function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, setResults, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode }) {
+function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openModal, competitions, results, setResults, invites, coachCompetitions, coaches, respondToInvite, twirlers, familyAccount, setPage, setActiveTwirlerId, pendingCoachLinks, respondToCoachLink, guardianMode, myRegistrations, setActiveCompetitionId }) {
   if (!activeTwirler) return <div className="empty-state"><h3>No twirler selected</h3></div>;
 
   const [classifOrgFilter, setClassifOrgFilter] = useState("all");
@@ -13101,7 +13200,7 @@ function GroupedEventPicker({ orgIds, selected, onToggle }) {
 // ─── ADD TWIRLER MODAL ───────────────────────────────────────────────────────
 
 function AddTwirlerModal({ open, onClose, onSave, onOpenHistorical }) {
-  const [form, setForm] = useState({ firstName: "", dob: "", club: "", organizations: [], regularEvents: [] });
+  const [form, setForm] = useState({ firstName: "", lastName: "", dob: "", club: "", organizations: [], regularEvents: [] });
   const [attempted, setAttempted] = useState(false);
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const toggleOrg = (orgId) => setForm(p => ({ ...p, organizations: p.organizations.includes(orgId) ? p.organizations.filter(o => o !== orgId) : [...p.organizations, orgId] }));
@@ -13115,7 +13214,7 @@ function AddTwirlerModal({ open, onClose, onSave, onOpenHistorical }) {
   function handleSave(withHistory) {
     if (!isValid) { setAttempted(true); return; }
     const newTwirler = onSave(form);
-    setForm({ firstName: "", dob: "", club: "", organizations: [], regularEvents: [] });
+    setForm({ firstName: "", lastName: "", dob: "", club: "", organizations: [], regularEvents: [] });
     setAttempted(false);
     onClose();
     if (withHistory && newTwirler) {
@@ -13154,10 +13253,13 @@ function AddTwirlerModal({ open, onClose, onSave, onOpenHistorical }) {
         </div>
       )}
       <div className="form-row">
-        <div className="form-group"><label className="label">First name only {reqStar}</label><input className="input" value={form.firstName} onChange={e => f("firstName", e.target.value)} placeholder="e.g. Emma" style={fieldErr(!form.firstName)} /></div>
-        <div className="form-group"><label className="label">Date of birth {reqStar}</label><input className="input" type="date" value={form.dob} onChange={e => f("dob", e.target.value)} style={fieldErr(!form.dob)} /></div>
+        <div className="form-group"><label className="label">First name {reqStar}</label><input className="input" value={form.firstName} onChange={e => f("firstName", e.target.value)} placeholder="e.g. Emma" style={fieldErr(!form.firstName)} /></div>
+        <div className="form-group"><label className="label">Last name</label><input className="input" value={form.lastName} onChange={e => f("lastName", e.target.value)} placeholder="Optional" /></div>
       </div>
-      <div className="form-group"><label className="label">Club</label><input className="input" value={form.club} onChange={e => f("club", e.target.value)} placeholder="Club name" /></div>
+      <div className="form-row">
+        <div className="form-group"><label className="label">Date of birth {reqStar}</label><input className="input" type="date" value={form.dob} onChange={e => f("dob", e.target.value)} style={fieldErr(!form.dob)} /></div>
+        <div className="form-group"><label className="label">Club</label><input className="input" value={form.club} onChange={e => f("club", e.target.value)} placeholder="Club name" /></div>
+      </div>
       <div className="form-group">
         <label className="label">Organizations {reqStar}</label>
         <div className="chip-group" style={attempted && form.organizations.length === 0 ? { padding: 4, borderRadius: 8, border: "1px solid var(--red)", background: "rgba(239,68,68,0.04)" } : {}}>
