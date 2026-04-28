@@ -138,6 +138,14 @@ Key learnings from first live TwirlTracker test:
   - Group displays as the team name on one row (one set slot)
   - Twirler-count badge on collapsed chip counts entries (not heads)
 - ✅ Schedule export — Print/PDF (browser print dialog → Save as PDF) + CSV (UTF-8 BOM, equal-width lane columns in PDF)
+- ✅ Public/Private visibility toggle on competitions (Apr 28)
+  - New `is_public` column on `public_competitions`; backfilled true for already-approved comps
+  - Toggle on Overview tab; ON sets `is_public + approved`, OFF clears `is_public`
+  - Confirm prompt before publishing a still-draft competition
+  - "View Public Listing →" link visible on the Overview when public
+  - Family app's public-comp queries now also filter `is_public = true`
+  - Director Create/Edit wizard now captures `description` (Step 1) and `registration_url` (Step 2, only when registration_mode = External URL)
+  - Family app comp-detail Overview shows the description and a Register button when the host set a registration URL
 - ✅ Entries tab + registration model (foundation for in-app + public-form + embed registration)
   - New `competition_entries` and `competition_entry_events` tables
   - Filterable table: search by name/club/email, status filter, status badges

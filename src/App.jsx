@@ -1179,9 +1179,13 @@ export default function App() {
           await loadCoachData(ca.id);
         }
 
-        // Load public competitions for upcoming tab
+        // Load public competitions for upcoming tab. is_public is the
+        // director-facing visibility toggle; approved is the legacy admin
+        // gate. Both must be true for a competition to surface here.
         const { data: pubComps } = await supabase
-          .from('public_competitions').select('*').eq('approved', true).order('date', { ascending: true });
+          .from('public_competitions').select('*')
+          .eq('approved', true).eq('is_public', true)
+          .order('date', { ascending: true });
         setPublicCompetitions((pubComps || []).map(c => ({ ...c, orgId: c.org_id, hostId: c.host_id })));
 
         setDataLoading(false);
@@ -1410,9 +1414,13 @@ export default function App() {
         })));
       }
 
-      // Load public competitions (visible to all)
+      // Load public competitions (visible to all). Both flags required:
+      // is_public is the director's visibility toggle, approved is the
+      // legacy admin gate.
       const { data: pubComps } = await supabase
-        .from('public_competitions').select('*').eq('approved', true).order('date', { ascending: true });
+        .from('public_competitions').select('*')
+        .eq('approved', true).eq('is_public', true)
+        .order('date', { ascending: true });
       setPublicCompetitions((pubComps || []).map(c => ({
         ...c, orgId: c.org_id, hostId: c.host_id,
       })));
@@ -10532,10 +10540,20 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
             </div>
           )}
 
-          {comp.info && (
+          {(comp.description || comp.info) && (
             <div className="card-sm mb-3">
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Details</div>
-              <div style={{ fontSize: 14, color: "var(--navy)", lineHeight: 1.7 }}>{comp.info}</div>
+              <div style={{ fontSize: 14, color: "var(--navy)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{comp.description || comp.info}</div>
+            </div>
+          )}
+
+          {comp.registration_url && (
+            <div className="card-sm mb-3" style={{ borderColor: "var(--brand)", background: "#f0fdfa" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--brand2)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Registration</div>
+              <a href={comp.registration_url} target="_blank" rel="noreferrer noopener"
+                className="btn btn-primary btn-sm" style={{ marginTop: 4 }}>
+                Register on the host's site →
+              </a>
             </div>
           )}
 
