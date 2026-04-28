@@ -211,6 +211,12 @@ Key learnings from first live TwirlTracker test:
 
 ## Phase 2D — Registration & Payments
 
+- ✅ Public registration form (Apr 29) — `?register=COMP_ID[&embed=1]` on
+  app.twirlpower.com, multi-step (twirlers → events × twirler → review),
+  auth gate inline, embed mode strips app chrome and adds Powered-by footer.
+  Director Overview shows a copy-able iframe snippet for public competitions.
+  RLS migration `2026-04-29_registration_rls.sql` lets families insert/read
+  their own entries and read public-competition built events + categories.
 - ⬜ Family registration flow (browse events, add to cart, checkout)
 - ⬜ Stripe integration (entry fees, refunds, credits)
 - ⬜ Registration open/close automation

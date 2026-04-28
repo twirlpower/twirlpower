@@ -897,6 +897,19 @@ export default function App() {
       sessionStorage.setItem('tp_view_competition_id', compId);
       window.history.replaceState({}, '', window.location.pathname);
     }
+    // Capture registration page intent (?register=COMP_ID[&embed=1]).
+    // Stashed in sessionStorage so it survives auth redirects.
+    const registerCompId = params.get('register');
+    if (registerCompId) {
+      sessionStorage.setItem('tp_register_for_comp', registerCompId);
+      const embed = params.get('embed');
+      if (embed === '1' || embed === 'true') {
+        sessionStorage.setItem('tp_register_embed', '1');
+      } else {
+        sessionStorage.removeItem('tp_register_embed');
+      }
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     const roleParam = params.get('role');
     if (roleParam === 'host') {
       sessionStorage.setItem('tp_signup_role', 'host');
@@ -964,6 +977,16 @@ export default function App() {
 
   const [familyAccount, setFamilyAccount] = useState(null);
   const [twirlers, setTwirlers] = useState([]);
+  // Public registration form: lifted in via ?register=COMP_ID[&embed=1].
+  // Lazy-initialized from sessionStorage so a fresh load picks it up.
+  const [registerForCompId, setRegisterForCompId] = useState(() => sessionStorage.getItem('tp_register_for_comp') || null);
+  const [isRegisterEmbed, setIsRegisterEmbed] = useState(() => sessionStorage.getItem('tp_register_embed') === '1');
+  function clearRegisterIntent() {
+    setRegisterForCompId(null);
+    setIsRegisterEmbed(false);
+    sessionStorage.removeItem('tp_register_for_comp');
+    sessionStorage.removeItem('tp_register_embed');
+  }
   const [competitions, setCompetitions] = useState([]);
   const [results, setResults] = useState([]);
   const [coaches, setCoaches] = useState([]);
@@ -2492,6 +2515,27 @@ export default function App() {
     );
   }
 
+  // ── Public registration page (?register=COMP_ID[&embed=1]) ──
+  // Renders standalone regardless of auth state — handles its own auth
+  // gate inline. Skips the rest of the app shell so embed iframes show
+  // only the form.
+  if (registerForCompId) {
+    return (
+      <>
+        <style>{css}</style>
+        <RegistrationPage
+          compId={registerForCompId}
+          isEmbed={isRegisterEmbed}
+          authUser={authUser}
+          familyAccount={familyAccount}
+          twirlers={twirlers}
+          addTwirler={addTwirler}
+          onClose={clearRegisterIntent}
+        />
+      </>
+    );
+  }
+
   // ── Not authenticated → show Auth screen ──
   if (!authUser) {
     return (
@@ -2826,6 +2870,735 @@ export default function App() {
 }
 
 // ─── SETUP SCREEN ───────────────────────────────────────────────────────────
+
+// ─── PUBLIC REGISTRATION PAGE ───────────────────────────────────────────────
+// Triggered by ?register=COMP_ID[&embed=1]. Public URL; auth gate is inline.
+// Renders a multi-step form: select twirlers → events per twirler → review.
+// On submit, inserts competition_entries + competition_entry_events for
+// each twirler.
+
+function defaultEntryTypeForCategoryName(catName) {
+  const n = (catName || "").toLowerCase();
+  if (n.includes("duet")) return "duet";
+  if (/group|team|corps|parade|march/.test(n)) return "group";
+  return "solo";
+}
+
+function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, addTwirler, onClose }) {
+  const [comp, setComp] = useState(null);
+  const [host, setHost] = useState(null);
+  const [builtEvents, setBuiltEvents] = useState([]);
+  const [compEvents, setCompEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  // Auth gate state (inline login/signup if not authed)
+  const [authMode, setAuthMode] = useState("login"); // login | signup
+  const [authForm, setAuthForm] = useState({ email: "", password: "", first_name: "", last_name: "", phone: "" });
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMsg, setAuthMsg] = useState("");
+
+  // Form state
+  const [step, setStep] = useState(1);
+  const [selectedTwirlerIds, setSelectedTwirlerIds] = useState([]);
+  // selectedEvents[twirlerId][builtEventId] = { selected, partner_name, group_name }
+  const [selectedEvents, setSelectedEvents] = useState({});
+  const [contactInfo, setContactInfo] = useState({
+    first_name: "", last_name: "", email: authUser?.email || "", phone: "",
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [confirmation, setConfirmation] = useState(null); // { entryCount, twirlerCount }
+
+  // Inline add-twirler form
+  const [addingTwirler, setAddingTwirler] = useState(false);
+  const [newTwirler, setNewTwirler] = useState({ firstName: "", dob: "", club: "" });
+  const [addingTwirlerBusy, setAddingTwirlerBusy] = useState(false);
+
+  // Load competition + host + categories + built events
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      setLoading(true);
+      setLoadError("");
+      const { data: c, error: cErr } = await supabase
+        .from("public_competitions").select("*").eq("id", compId).maybeSingle();
+      if (!alive) return;
+      if (cErr) { setLoadError(cErr.message); setLoading(false); return; }
+      if (!c) { setLoadError("Competition not found."); setLoading(false); return; }
+      setComp(c);
+
+      if (c.host_id) {
+        const { data: h } = await supabase
+          .from("competition_hosts").select("*").eq("id", c.host_id).maybeSingle();
+        if (alive && h) setHost(h);
+      }
+
+      const [{ data: ce }, { data: be }] = await Promise.all([
+        supabase.from("competition_events").select("*").eq("competition_id", compId).order("order_number"),
+        supabase.from("competition_built_events").select("*").eq("competition_id", compId).order("order_number"),
+      ]);
+      if (!alive) return;
+      setCompEvents(ce || []);
+      setBuiltEvents(be || []);
+      setLoading(false);
+    }
+    load();
+    return () => { alive = false; };
+  }, [compId]);
+
+  // Pre-fill contact info from family account once available
+  useEffect(() => {
+    if (!familyAccount) return;
+    setContactInfo(prev => ({
+      first_name: prev.first_name || familyAccount.first_name || "",
+      last_name: prev.last_name || familyAccount.last_name || "",
+      email: prev.email || familyAccount.email || authUser?.email || "",
+      phone: prev.phone || familyAccount.phone || "",
+    }));
+  }, [familyAccount, authUser]);
+
+  // Compute registration state
+  function regState() {
+    if (!comp) return "loading";
+    if (!comp.is_public) return "private";
+    const now = new Date();
+    const opens = comp.registration_opens_at ? new Date(comp.registration_opens_at) : null;
+    const closes = comp.registration_closes_at ? new Date(comp.registration_closes_at) : null;
+    if (opens && now < opens) return "upcoming";
+    if (closes && now > closes) return "closed";
+    if (comp.status === "completed" || comp.status === "live") return "closed";
+    if (comp.status === "draft" || comp.status === "published") return "upcoming";
+    return "open";
+  }
+
+  // ── Auth handlers ─────────────────────────────────────────────────────────
+  async function handleSignIn(e) {
+    e.preventDefault();
+    setAuthBusy(true); setAuthMsg("");
+    const { error } = await supabase.auth.signInWithPassword({
+      email: authForm.email.trim(), password: authForm.password,
+    });
+    setAuthBusy(false);
+    if (error) setAuthMsg(error.message);
+    // Auth state listener in App will update authUser; this component re-renders.
+  }
+
+  async function handleSignUp(e) {
+    e.preventDefault();
+    if (!authForm.first_name.trim() || !authForm.last_name.trim()) {
+      setAuthMsg("Please enter your first and last name."); return;
+    }
+    setAuthBusy(true); setAuthMsg("");
+    const { data, error } = await supabase.auth.signUp({
+      email: authForm.email.trim(),
+      password: authForm.password,
+      options: {
+        data: {
+          first_name: authForm.first_name.trim(),
+          last_name: authForm.last_name.trim(),
+          phone: authForm.phone.trim() || null,
+        },
+      },
+    });
+    setAuthBusy(false);
+    if (error) { setAuthMsg(error.message); return; }
+    if (!data?.session) {
+      setAuthMsg("Check your email to confirm your account, then sign in.");
+    }
+  }
+
+  // ── Add twirler inline ────────────────────────────────────────────────────
+  async function handleAddTwirler(e) {
+    e.preventDefault();
+    if (!newTwirler.firstName.trim()) return;
+    setAddingTwirlerBusy(true);
+    await addTwirler({
+      firstName: newTwirler.firstName.trim(),
+      dob: newTwirler.dob || null,
+      club: newTwirler.club.trim() || null,
+      organizations: [], regularEvents: [],
+    });
+    setNewTwirler({ firstName: "", dob: "", club: "" });
+    setAddingTwirler(false);
+    setAddingTwirlerBusy(false);
+  }
+
+  // ── Form helpers ──────────────────────────────────────────────────────────
+  const toggleTwirler = (id) => setSelectedTwirlerIds(prev =>
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+  );
+
+  const setEventSel = (twirlerId, builtId, patch) => setSelectedEvents(prev => ({
+    ...prev,
+    [twirlerId]: {
+      ...(prev[twirlerId] || {}),
+      [builtId]: { ...(prev[twirlerId]?.[builtId] || { selected: false, partner_name: "", group_name: "" }), ...patch },
+    },
+  }));
+
+  function eventsForTwirler(twirlerId) {
+    return Object.entries(selectedEvents[twirlerId] || {})
+      .filter(([, v]) => v.selected)
+      .map(([id]) => id);
+  }
+
+  // Validation: every selected event must have required partner/group name
+  function validateForm() {
+    if (selectedTwirlerIds.length === 0) return "Select at least one twirler.";
+    for (const tid of selectedTwirlerIds) {
+      const sel = selectedEvents[tid] || {};
+      let hasOne = false;
+      for (const [bid, v] of Object.entries(sel)) {
+        if (!v.selected) continue;
+        hasOne = true;
+        const built = builtEvents.find(b => b.id === bid);
+        const cat = compEvents.find(c => c.id === built?.category_id);
+        const t = defaultEntryTypeForCategoryName(cat?.name);
+        if (t === "duet" && !v.partner_name?.trim()) return `Partner name required for one of ${twirlerById(tid)?.firstName}'s duet events.`;
+        if (t === "group" && !v.group_name?.trim()) return `Group/team name required for one of ${twirlerById(tid)?.firstName}'s group events.`;
+      }
+      if (!hasOne) return `Pick at least one event for ${twirlerById(tid)?.firstName}.`;
+    }
+    if (!contactInfo.first_name.trim() || !contactInfo.last_name.trim() || !contactInfo.email.trim()) {
+      return "Please complete your contact information.";
+    }
+    return "";
+  }
+
+  function twirlerById(id) { return twirlers.find(t => t.id === id); }
+
+  // ── Submit ────────────────────────────────────────────────────────────────
+  async function handleSubmit() {
+    const err = validateForm();
+    if (err) { setSubmitError(err); return; }
+    setSubmitting(true); setSubmitError("");
+
+    let createdEntries = 0;
+    let createdEvents = 0;
+
+    for (const tid of selectedTwirlerIds) {
+      const tw = twirlerById(tid);
+      if (!tw) continue;
+      // Twirler "name" is stored as first_name on the family-app twirlers
+      // table; family last name comes from the contact (parent) profile.
+      // Best-effort split: if the twirler has a "first_name" field with
+      // both names ("Jane Smith"), split on the first space; otherwise
+      // use the contact last name as a fallback.
+      const fullFirst = tw.firstName || tw.first_name || "";
+      const parts = fullFirst.trim().split(/\s+/);
+      const tw_first = parts.shift() || fullFirst;
+      const tw_last = parts.length ? parts.join(" ") : (contactInfo.last_name || "");
+
+      // Compute age if dob known
+      let age = null;
+      if (tw.dob) {
+        const d = new Date(tw.dob);
+        if (!isNaN(d.getTime())) {
+          const now = new Date();
+          age = now.getFullYear() - d.getFullYear();
+          const m = now.getMonth() - d.getMonth();
+          if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
+        }
+      }
+
+      const entryPayload = {
+        competition_id: compId,
+        twirler_first_name: tw_first,
+        twirler_last_name: tw_last,
+        twirler_dob: tw.dob || null,
+        twirler_age: age,
+        twirler_club: tw.club || null,
+        twirler_city: null,
+        twirler_state: null,
+        contact_first_name: contactInfo.first_name.trim(),
+        contact_last_name: contactInfo.last_name.trim(),
+        contact_email: contactInfo.email.trim(),
+        contact_phone: contactInfo.phone.trim() || null,
+        user_id: authUser.id,
+        twirler_id: tw.id,
+        family_account_id: familyAccount?.id || null,
+        status: "confirmed",
+        payment_status: "unpaid",
+        registration_source: isEmbed ? "embed" : "public_form",
+      };
+
+      const { data: newEntry, error: entryErr } = await supabase
+        .from("competition_entries").insert(entryPayload).select().single();
+      if (entryErr) {
+        setSubmitting(false);
+        setSubmitError(`Could not save registration for ${tw_first}: ${entryErr.message}`);
+        return;
+      }
+      createdEntries += 1;
+
+      const eventRows = Object.entries(selectedEvents[tid] || {})
+        .filter(([, v]) => v.selected)
+        .map(([builtId, v]) => {
+          const built = builtEvents.find(b => b.id === builtId);
+          const cat = compEvents.find(c => c.id === built?.category_id);
+          const t = defaultEntryTypeForCategoryName(cat?.name);
+          return {
+            entry_id: newEntry.id,
+            competition_id: compId,
+            built_event_id: builtId,
+            event_name: built?.name || "Event",
+            category_name: cat?.name || null,
+            entry_type: t,
+            partner_name: t === "duet" ? (v.partner_name?.trim() || null) : null,
+            group_name: t === "group" ? (v.group_name?.trim() || null) : null,
+            status: "registered",
+          };
+        });
+      if (eventRows.length > 0) {
+        const { error: evErr } = await supabase
+          .from("competition_entry_events").insert(eventRows);
+        if (evErr) {
+          setSubmitting(false);
+          setSubmitError(`Saved ${tw_first}'s registration but events failed: ${evErr.message}`);
+          return;
+        }
+        createdEvents += eventRows.length;
+      }
+    }
+
+    setSubmitting(false);
+    setConfirmation({ entryCount: createdEntries, eventCount: createdEvents });
+  }
+
+  // ── Render branches ───────────────────────────────────────────────────────
+
+  // Wrapper that handles embed-vs-standalone shell
+  function Shell({ children }) {
+    return (
+      <div className="reg-page" style={{
+        minHeight: "100vh", background: isEmbed ? "white" : "var(--bg)",
+        padding: isEmbed ? 16 : "24px 16px",
+      }}>
+        <div style={{ maxWidth: 720, margin: "0 auto" }}>
+          {children}
+        </div>
+        {isEmbed && (
+          <div style={{ textAlign: "center", marginTop: 24, fontSize: 11, color: "var(--muted)" }}>
+            Powered by <a href="https://twirlpower.com" target="_blank" rel="noreferrer noopener" style={{ color: "var(--brand)", fontWeight: 600 }}>TwirlPower</a>
+          </div>
+        )}
+        {!isEmbed && (
+          <div style={{ textAlign: "center", marginTop: 24 }}>
+            <button onClick={onClose} className="btn btn-ghost btn-sm">← Back to TwirlPower</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Shell>
+        <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
+          <span className="baton-spinner"><BatonIcon size={36} /></span>
+          <div style={{ marginTop: 12, color: "var(--slate)", fontSize: 14 }}>Loading competition…</div>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (loadError || !comp) {
+    return (
+      <Shell>
+        <div className="card" style={{ textAlign: "center", padding: "32px 24px" }}>
+          <h2 className="serif" style={{ fontSize: 22, marginBottom: 8 }}>Competition not found</h2>
+          <p style={{ fontSize: 14, color: "var(--slate)" }}>{loadError || "We couldn't load this competition."}</p>
+        </div>
+      </Shell>
+    );
+  }
+
+  const status = regState();
+
+  // Header always visible
+  const header = (
+    <div className="card" style={{ marginBottom: 16, padding: "20px 24px" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: "var(--brand2)", marginBottom: 6 }}>
+        {comp.org_id || "Competition"}
+      </div>
+      <h1 className="serif" style={{ fontSize: 24, color: "var(--navy)", marginBottom: 6 }}>{comp.name}</h1>
+      <div style={{ fontSize: 14, color: "var(--slate)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {comp.date && <span>📅 {fmtDate(comp.date)}{comp.end_date && comp.end_date !== comp.date ? ` – ${fmtDate(comp.end_date)}` : ""}</span>}
+        {(comp.city || comp.state) && <span>📍 {[comp.city, comp.state].filter(Boolean).join(", ")}</span>}
+        {comp.venue && <span>🏟 {comp.venue}</span>}
+        {host?.name && <span>👤 {host.name}</span>}
+      </div>
+    </div>
+  );
+
+  // Confirmation
+  if (confirmation) {
+    return (
+      <Shell>
+        {header}
+        <div className="card" style={{ textAlign: "center", padding: "40px 24px" }}>
+          <span className="baton-spinner"><BatonIcon size={48} /></span>
+          <h2 className="serif" style={{ fontSize: 24, color: "var(--navy)", margin: "16px 0 6px" }}>You're registered!</h2>
+          <p style={{ fontSize: 14, color: "var(--slate)" }}>
+            {confirmation.entryCount} twirler{confirmation.entryCount === 1 ? "" : "s"} registered
+            {" · "}{confirmation.eventCount} event{confirmation.eventCount === 1 ? "" : "s"} total
+          </p>
+          <p style={{ fontSize: 13, color: "var(--slate)", marginTop: 16 }}>
+            We sent a confirmation to <strong>{contactInfo.email}</strong>.
+          </p>
+          {!isEmbed && (
+            <button className="btn btn-primary" style={{ marginTop: 20 }} onClick={onClose}>
+              View My Registrations →
+            </button>
+          )}
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 8, marginLeft: 8 }}
+            onClick={() => {
+              setConfirmation(null);
+              setStep(1);
+              setSelectedTwirlerIds([]);
+              setSelectedEvents({});
+            }}>
+            Register more twirlers
+          </button>
+        </div>
+      </Shell>
+    );
+  }
+
+  // Status gates
+  if (status === "private") {
+    return <Shell>{header}<div className="card" style={{ textAlign: "center", padding: "32px 24px" }}>This competition is not currently accepting registrations.</div></Shell>;
+  }
+  if (status === "upcoming") {
+    const opens = comp.registration_opens_at ? new Date(comp.registration_opens_at) : null;
+    return (
+      <Shell>{header}
+        <div className="card" style={{ textAlign: "center", padding: "32px 24px" }}>
+          <h2 className="serif" style={{ fontSize: 18, marginBottom: 6 }}>Registration not open yet</h2>
+          {opens && <p style={{ fontSize: 14, color: "var(--slate)" }}>Registration opens {opens.toLocaleString()}</p>}
+          {!opens && <p style={{ fontSize: 14, color: "var(--slate)" }}>Check back soon — the host hasn't announced an opening date yet.</p>}
+        </div>
+      </Shell>
+    );
+  }
+  if (status === "closed") {
+    return (
+      <Shell>{header}
+        <div className="card" style={{ textAlign: "center", padding: "32px 24px" }}>
+          <h2 className="serif" style={{ fontSize: 18, marginBottom: 6 }}>Registration closed</h2>
+          {comp.registration_closes_at && <p style={{ fontSize: 14, color: "var(--slate)" }}>Closed on {new Date(comp.registration_closes_at).toLocaleDateString()}</p>}
+          {host?.email && (
+            <p style={{ fontSize: 13, color: "var(--slate)", marginTop: 12 }}>
+              Contact the director for late registration:{" "}
+              <a href={`mailto:${host.email}`} style={{ color: "var(--brand)" }}>{host.email}</a>
+            </p>
+          )}
+        </div>
+      </Shell>
+    );
+  }
+
+  // Auth gate
+  if (!authUser) {
+    return (
+      <Shell>{header}
+        <div className="card" style={{ padding: "24px 28px" }}>
+          <h2 className="serif" style={{ fontSize: 20, marginBottom: 6 }}>
+            {authMode === "login" ? "Sign in to register" : "Create your account"}
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16 }}>
+            Your TwirlPower account lets you track registrations, view schedules, receive scores, and manage all your competitions in one place.
+          </p>
+          {authMsg && <div className="alert alert-warn" style={{ marginBottom: 12 }}>{authMsg}</div>}
+          <form onSubmit={authMode === "login" ? handleSignIn : handleSignUp} className="flex flex-col gap-3">
+            {authMode === "signup" && (
+              <div className="grid-2">
+                <div>
+                  <label className="label">First name</label>
+                  <input className="input" required value={authForm.first_name}
+                    onChange={e => setAuthForm(f => ({ ...f, first_name: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="label">Last name</label>
+                  <input className="input" required value={authForm.last_name}
+                    onChange={e => setAuthForm(f => ({ ...f, last_name: e.target.value }))} />
+                </div>
+              </div>
+            )}
+            <div>
+              <label className="label">Email</label>
+              <input className="input" type="email" required value={authForm.email}
+                onChange={e => setAuthForm(f => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Password</label>
+              <input className="input" type="password" required minLength={6} value={authForm.password}
+                onChange={e => setAuthForm(f => ({ ...f, password: e.target.value }))} />
+            </div>
+            {authMode === "signup" && (
+              <div>
+                <label className="label">Phone (optional)</label>
+                <input className="input" type="tel" value={authForm.phone}
+                  onChange={e => setAuthForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+            )}
+            <button className="btn btn-primary" disabled={authBusy}>
+              {authBusy ? "Working…" : authMode === "login" ? "Sign in" : "Create account"}
+            </button>
+          </form>
+          <div style={{ textAlign: "center", marginTop: 14, fontSize: 13, color: "var(--slate)" }}>
+            {authMode === "login" ? "New here?" : "Already have an account?"}{" "}
+            <button className="btn btn-ghost btn-sm" type="button"
+              onClick={() => { setAuthMode(authMode === "login" ? "signup" : "login"); setAuthMsg(""); }}>
+              {authMode === "login" ? "Create an account" : "Sign in"}
+            </button>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
+  // ── Multi-step form ──────────────────────────────────────────────────────
+  const totalEventsSelected = selectedTwirlerIds.reduce((sum, tid) => sum + eventsForTwirler(tid).length, 0);
+  const sortedCats = [...compEvents].sort((a, b) => (a.order_number || 0) - (b.order_number || 0));
+
+  return (
+    <Shell>
+      {header}
+
+      {/* Step indicator */}
+      <div className="card" style={{ padding: "10px 16px", marginBottom: 16, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        {[1, 2, 3].map(n => (
+          <div key={n} style={{ display: "flex", alignItems: "center", gap: 6, opacity: step === n ? 1 : 0.5 }}>
+            <span style={{ width: 22, height: 22, borderRadius: "50%", background: step >= n ? "var(--brand)" : "var(--border)", color: step >= n ? "white" : "var(--slate)", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              {n}
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>
+              {n === 1 ? "Twirlers" : n === 2 ? "Events" : "Review"}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {submitError && <div className="alert alert-warn" style={{ marginBottom: 12 }}>{submitError}</div>}
+
+      {/* STEP 1: Twirlers */}
+      {step === 1 && (
+        <div className="card" style={{ padding: "20px 24px" }}>
+          <h2 className="serif" style={{ fontSize: 18, marginBottom: 4 }}>Who's competing?</h2>
+          <p style={{ fontSize: 13, color: "var(--slate)", marginBottom: 16 }}>
+            Select the twirlers from your account who will register.
+          </p>
+          {twirlers.length === 0 && !addingTwirler && (
+            <div style={{ background: "#f8fafc", border: "1px solid var(--border)", borderRadius: 10, padding: 16, textAlign: "center", color: "var(--slate)", fontSize: 14, marginBottom: 12 }}>
+              You don't have any twirlers on your account yet.
+            </div>
+          )}
+          <div className="flex flex-col gap-2" style={{ marginBottom: 12 }}>
+            {twirlers.map(t => {
+              const checked = selectedTwirlerIds.includes(t.id);
+              return (
+                <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: `1px solid ${checked ? "var(--brand)" : "var(--border)"}`, borderRadius: 10, background: checked ? "var(--brand-light)" : "white", cursor: "pointer" }}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleTwirler(t.id)} style={{ accentColor: "var(--brand)" }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{t.firstName || t.first_name}</div>
+                    <div style={{ fontSize: 12, color: "var(--slate)" }}>
+                      {t.club || "—"}{t.dob ? ` · DOB ${t.dob}` : ""}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          {addingTwirler ? (
+            <form onSubmit={handleAddTwirler} className="card-sm" style={{ background: "#f8fafc", padding: 14 }}>
+              <div className="grid-2" style={{ marginBottom: 8 }}>
+                <div>
+                  <label className="label">First name *</label>
+                  <input className="input" autoFocus value={newTwirler.firstName}
+                    onChange={e => setNewTwirler(p => ({ ...p, firstName: e.target.value }))} required />
+                </div>
+                <div>
+                  <label className="label">Date of birth</label>
+                  <input className="input" type="date" value={newTwirler.dob}
+                    onChange={e => setNewTwirler(p => ({ ...p, dob: e.target.value }))} />
+                </div>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <label className="label">Club / studio</label>
+                <input className="input" value={newTwirler.club}
+                  onChange={e => setNewTwirler(p => ({ ...p, club: e.target.value }))} />
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAddingTwirler(false)}>Cancel</button>
+                <button className="btn btn-primary btn-sm" disabled={addingTwirlerBusy || !newTwirler.firstName.trim()}>
+                  {addingTwirlerBusy ? "Saving…" : "Add Twirler"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button className="btn btn-secondary btn-sm" onClick={() => setAddingTwirler(true)}>
+              + Add New Twirler
+            </button>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+            <button className="btn btn-primary" onClick={() => setStep(2)} disabled={selectedTwirlerIds.length === 0}>
+              Next: Events ({selectedTwirlerIds.length}) →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: Events per twirler */}
+      {step === 2 && (
+        <div className="flex flex-col gap-3">
+          {selectedTwirlerIds.map(tid => {
+            const t = twirlerById(tid);
+            if (!t) return null;
+            const sel = selectedEvents[tid] || {};
+            return (
+              <div key={tid} className="card" style={{ padding: "16px 20px" }}>
+                <h2 className="serif" style={{ fontSize: 16, marginBottom: 4 }}>
+                  Events for {t.firstName || t.first_name}
+                </h2>
+                {builtEvents.length === 0 ? (
+                  <p style={{ fontSize: 13, color: "var(--slate)" }}>This competition hasn't published its events yet.</p>
+                ) : (
+                  sortedCats.map(cat => {
+                    const catBuilts = builtEvents.filter(b => b.category_id === cat.id);
+                    if (catBuilts.length === 0) return null;
+                    const catEntryType = defaultEntryTypeForCategoryName(cat.name);
+                    return (
+                      <div key={cat.id} style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: "var(--brand2)", marginBottom: 6 }}>{cat.name}</div>
+                        <div className="flex flex-col gap-1">
+                          {catBuilts.map(b => {
+                            const v = sel[b.id] || { selected: false, partner_name: "", group_name: "" };
+                            return (
+                              <div key={b.id} style={{ border: `1px solid ${v.selected ? "var(--brand)" : "var(--border)"}`, borderRadius: 8, padding: "8px 12px", background: v.selected ? "var(--brand-light)" : "white" }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                                  <input type="checkbox" checked={v.selected}
+                                    onChange={e => setEventSel(tid, b.id, { selected: e.target.checked })}
+                                    style={{ accentColor: "var(--brand)" }} />
+                                  <div style={{ flex: 1, fontSize: 13 }}>
+                                    <div style={{ fontWeight: 500, color: "var(--navy)" }}>
+                                      {b.is_qualifier && <span style={{ color: "var(--gold)", marginRight: 4 }}>★</span>}
+                                      {b.name}
+                                    </div>
+                                    {(b.division || b.classification || b.age_from) && (
+                                      <div style={{ fontSize: 11, color: "var(--slate)", marginTop: 2, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                        {b.division && <span>{b.division}</span>}
+                                        {b.classification && <span>· {b.classification}</span>}
+                                        {(b.age_from || b.age_to) && <span>· {b.age_from && b.age_to ? `${b.age_from}-${b.age_to}` : b.age_from ? `${b.age_from}+` : `≤${b.age_to}`}</span>}
+                                      </div>
+                                    )}
+                                  </div>
+                                </label>
+                                {v.selected && catEntryType === "duet" && (
+                                  <input className="input" style={{ marginTop: 6, fontSize: 12 }}
+                                    placeholder="Partner name *" value={v.partner_name}
+                                    onChange={e => setEventSel(tid, b.id, { partner_name: e.target.value })} />
+                                )}
+                                {v.selected && catEntryType === "group" && (
+                                  <input className="input" style={{ marginTop: 6, fontSize: 12 }}
+                                    placeholder="Group / Team name *" value={v.group_name}
+                                    onChange={e => setEventSel(tid, b.id, { group_name: e.target.value })} />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            );
+          })}
+          <div className="card" style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px" }}>
+            <button className="btn btn-ghost" onClick={() => setStep(1)}>← Back</button>
+            <button className="btn btn-primary" onClick={() => setStep(3)} disabled={totalEventsSelected === 0}>
+              Next: Review ({totalEventsSelected} event{totalEventsSelected === 1 ? "" : "s"}) →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: Review */}
+      {step === 3 && (
+        <div className="flex flex-col gap-3">
+          <div className="card" style={{ padding: "16px 20px" }}>
+            <h2 className="serif" style={{ fontSize: 16, marginBottom: 8 }}>Review</h2>
+            {selectedTwirlerIds.map(tid => {
+              const t = twirlerById(tid);
+              const evs = eventsForTwirler(tid);
+              return (
+                <div key={tid} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{t?.firstName || t?.first_name}</div>
+                  <ul style={{ margin: "4px 0 0 18px", fontSize: 13, color: "var(--slate)" }}>
+                    {evs.map(bid => {
+                      const built = builtEvents.find(b => b.id === bid);
+                      const v = selectedEvents[tid][bid];
+                      return (
+                        <li key={bid}>
+                          {built?.name}
+                          {v.partner_name && ` (with ${v.partner_name})`}
+                          {v.group_name && ` (${v.group_name})`}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })}
+            <div style={{ fontSize: 13, color: "var(--slate)" }}>
+              <strong>Total:</strong> {totalEventsSelected} event{totalEventsSelected === 1 ? "" : "s"} across {selectedTwirlerIds.length} twirler{selectedTwirlerIds.length === 1 ? "" : "s"}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--slate)" }}>
+              <span className="badge badge-gray">Free / Pay at door</span>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: "16px 20px" }}>
+            <h3 className="serif" style={{ fontSize: 14, marginBottom: 10 }}>Contact info</h3>
+            <div className="grid-2" style={{ marginBottom: 10 }}>
+              <div>
+                <label className="label">First name *</label>
+                <input className="input" value={contactInfo.first_name}
+                  onChange={e => setContactInfo(p => ({ ...p, first_name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">Last name *</label>
+                <input className="input" value={contactInfo.last_name}
+                  onChange={e => setContactInfo(p => ({ ...p, last_name: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid-2">
+              <div>
+                <label className="label">Email *</label>
+                <input className="input" type="email" value={contactInfo.email}
+                  onChange={e => setContactInfo(p => ({ ...p, email: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">Phone</label>
+                <input className="input" type="tel" value={contactInfo.phone}
+                  onChange={e => setContactInfo(p => ({ ...p, phone: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ display: "flex", justifyContent: "space-between", padding: "12px 16px" }}>
+            <button className="btn btn-ghost" onClick={() => setStep(2)} disabled={submitting}>← Back</button>
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? "Submitting…" : "Submit Registration"}
+            </button>
+          </div>
+        </div>
+      )}
+    </Shell>
+  );
+}
 
 // ─── AUTH SCREEN ─────────────────────────────────────────────────────────────
 
