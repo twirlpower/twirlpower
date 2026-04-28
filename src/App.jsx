@@ -995,6 +995,15 @@ export default function App() {
     sessionStorage.removeItem('tp_register_for_comp');
     sessionStorage.removeItem('tp_register_embed');
   }
+  // Used by child components (e.g. CompetitionDetailPage Register button) to
+  // route into the registration page without forcing a URL navigation. We
+  // also stash in sessionStorage so a refresh keeps the intent.
+  function openRegistration(compId) {
+    if (!compId) return;
+    sessionStorage.setItem('tp_register_for_comp', compId);
+    setRegisterForCompId(compId);
+    setIsRegisterEmbed(false);
+  }
   const [competitions, setCompetitions] = useState([]);
   const [results, setResults] = useState([]);
   const [coaches, setCoaches] = useState([]);
@@ -2803,7 +2812,7 @@ export default function App() {
     );
   }
 
-  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage, myRegistrations };
+  const pageProps = { activeTwirler, twirlers, competitions, results, twirlerResults, twirlerComps, progress, coaches, coachCompetitions, invites, pendingInvites, coachLinks, pendingCoachLinks, allNotifications, respondToCoachLink, familyAccount, openModal, closeModal, modals, addCompetition, addResults, addResultsToComp, deleteResult, deleteCompetition, overrideClassification, applyHistoricalData, updateTwirler, deleteTwirler, updateResult, updateCompetition, setTwirlers, setCompetitions, setResults, setCoaches, addCoach, linkCoach, unlinkCoach, coachCreateCompetition, respondToInvite, setActiveTwirlerId, competitionHosts, publicCompetitions, attendees, registerHost, approveHost, createPublicCompetition, deletePublicCompetition, updatePublicCompetition, addAttendee, removeAttendee, setFamilyAccount, guardianMode, setActiveCompetitionId, setPage, myRegistrations, openRegistration };
 
   return (
     <>
@@ -11112,7 +11121,7 @@ function OrgDetailPage({ orgId, onBack, activeTwirler, twirlerResults }) {
 
 // ─── COMPETITION DETAIL PAGE ─────────────────────────────────────────────────
 
-function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions }) {
+function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, competitionHosts, attendees, activeTwirler, twirlers, addAttendee, removeAttendee, setPage, progress, openModal, twirlerResults, twirlerComps, results, competitions, myRegistrations, openRegistration }) {
   const comp = publicCompetitions.find(c => c.id === activeCompetitionId) || twirlerComps.find(c => c.id === activeCompetitionId);
   if (!comp) return <div className="empty-state"><h3>Competition not found</h3><button className="btn btn-secondary btn-sm" onClick={() => setPage("competitions")}>← Back</button></div>;
 
@@ -11122,9 +11131,58 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const isPast = endDate < today;
   const isFuture = comp.date > today;
 
-  const defaultTab = isToday ? "my-competition" : isPast ? "results" : isFuture ? "my-competition" : "overview";
+  const hasRegistrationForDefault = (myRegistrations || []).some(e => e.competition_id === activeCompetitionId);
+  // Date-aware default; prefer My Registration over My Events when the
+  // family has actually registered for this competition.
+  const defaultTab = isPast
+    ? "results"
+    : (isToday || isFuture)
+      ? (hasRegistrationForDefault ? "my-registration" : "my-competition")
+      : "overview";
   const [tab, setTab] = useState(defaultTab);
   const [copied, setCopied] = useState(false);
+
+  // ── Director-side registration data: built events (preview on Overview) +
+  //     this family's entries for this competition (drives the My Registration
+  //     tab). Loaded from the public registration tables; gated by the
+  //     family-side RLS shipped in 2026-04-29_registration_rls.sql.
+  const [compBuiltEvents, setCompBuiltEvents] = useState([]);
+  const [compEventCats, setCompEventCats] = useState([]);
+  const [overviewEventsCollapsed, setOverviewEventsCollapsed] = useState(new Set());
+
+  useEffect(() => {
+    if (!activeCompetitionId || !comp?.is_public) return;
+    let alive = true;
+    Promise.all([
+      supabase.from("competition_events").select("*").eq("competition_id", activeCompetitionId).order("order_number"),
+      supabase.from("competition_built_events").select("*").eq("competition_id", activeCompetitionId).order("order_number"),
+    ]).then(([{ data: cats }, { data: builts }]) => {
+      if (!alive) return;
+      setCompEventCats(cats || []);
+      setCompBuiltEvents(builts || []);
+    });
+    return () => { alive = false; };
+  }, [activeCompetitionId, comp?.is_public]);
+
+  // Entries this family has for this competition (filtered from the
+  // myRegistrations array App already loads on auth).
+  const myEntriesHere = (myRegistrations || []).filter(e => e.competition_id === activeCompetitionId);
+
+  // Registration state for the Register button.
+  // Returns 'no-events' | 'private' | 'upcoming' | 'open' | 'closed'.
+  function regState() {
+    if (!comp) return "private";
+    if (!comp.is_public) return "private";
+    if (compBuiltEvents.length === 0) return "no-events";
+    const now = new Date();
+    const opens = comp.registration_opens_at ? new Date(comp.registration_opens_at) : null;
+    const closes = comp.registration_closes_at ? new Date(comp.registration_closes_at) : null;
+    if (opens && now < opens) return "upcoming";
+    if (closes && now > closes) return "closed";
+    if (comp.status === "completed" || comp.status === "live") return "closed";
+    if (comp.status === "draft" || comp.status === "published") return "upcoming";
+    return "open";
+  }
 
   // Event Planner — families can always plan their own events for any competition
   const isManualComp = true;
@@ -11298,8 +11356,14 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
   const doneEvents = eventsToShow.filter(e => myResults.some(r => r.event === e));
   const pendingEvents = eventsToShow.filter(e => !myResults.some(r => r.event === e));
 
+  // Show "My Registration" tab only if this family has at least one
+  // competition_entries row for this comp.
+  const hasRegistration = myEntriesHere.length > 0;
   const tabs = [
     { id: "overview", label: "Overview" },
+    ...(hasRegistration
+      ? [{ id: "my-registration", label: `My Registration${myEntriesHere.length > 1 ? ` (${myEntriesHere.length})` : ""}` }]
+      : []),
     { id: "my-competition", label: `My Events${myResults.length ? ` (${myResults.length})` : ""}` },
     { id: "results", label: "Results" },
   ];
@@ -11353,11 +11417,42 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
 
       {/* Action buttons */}
       <div className="flex gap-2 flex-wrap mb-4">
+        {(() => {
+          const state = regState();
+          if (state === "open") {
+            return (
+              <button className="btn btn-primary btn-sm"
+                onClick={() => openRegistration && openRegistration(activeCompetitionId)}
+                title="Register for this competition">
+                Register{myEntriesHere.length > 0 ? " More" : ""}
+              </button>
+            );
+          }
+          if (state === "upcoming") {
+            const opens = comp.registration_opens_at ? new Date(comp.registration_opens_at) : null;
+            return (
+              <button className="btn btn-secondary btn-sm" disabled
+                style={{ opacity: 0.6, cursor: "not-allowed" }}
+                title={opens ? `Opens ${opens.toLocaleString()}` : "Registration not open yet"}>
+                {opens ? `Registration Opens ${opens.toLocaleDateString()}` : "Registration not open yet"}
+              </button>
+            );
+          }
+          if (state === "closed") {
+            return (
+              <button className="btn btn-secondary btn-sm" disabled
+                style={{ opacity: 0.6, cursor: "not-allowed" }}>
+                Registration Closed
+              </button>
+            );
+          }
+          return null; // 'private' / 'no-events' → don't surface a button
+        })()}
         {activeTwirler && (
           attending ? (
             <button className="btn btn-secondary btn-sm" onClick={() => removeAttendee(activeCompetitionId, activeTwirler.id)}>✓ Attending · Remove</button>
           ) : (
-            <button className="btn btn-primary btn-sm" onClick={() => addAttendee(activeCompetitionId, activeTwirler.id)}>+ Add to My Competitions</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => addAttendee(activeCompetitionId, activeTwirler.id)}>+ Add to My Competitions</button>
           )
         )}
         {isToday && activeTwirler && attending && (
@@ -11386,6 +11481,71 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
           </button>
         ))}
       </div>
+
+      {/* ── MY REGISTRATION TAB ── */}
+      {tab === "my-registration" && (
+        <div className="flex flex-col gap-3">
+          {myEntriesHere.length === 0 ? (
+            <div className="card-sm" style={{ padding: 14, color: "var(--slate)", fontSize: 13 }}>
+              You haven't registered for this competition yet.
+            </div>
+          ) : (
+            myEntriesHere.map(entry => {
+              const evs = entry.competition_entry_events || [];
+              const statusMap = {
+                confirmed: { label: "Confirmed", bg: "#dcfce7", color: "#15803d" },
+                pending: { label: "Pending", bg: "#fef3c7", color: "#b45309" },
+                scratched: { label: "Scratched", bg: "#fee2e2", color: "#b91c1c" },
+                waitlisted: { label: "Waitlisted", bg: "#f1f5f9", color: "#475569" },
+              };
+              const sb = statusMap[entry.status] || statusMap.pending;
+              const fullName = [entry.twirler_first_name, entry.twirler_last_name].filter(Boolean).join(" ");
+              return (
+                <div key={entry.id} className="card-sm" style={{ padding: "14px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--navy)" }}>{fullName}</div>
+                      {entry.twirler_age != null && (
+                        <div style={{ fontSize: 12, color: "var(--slate)" }}>
+                          Age {entry.twirler_age}{entry.twirler_club ? ` · ${entry.twirler_club}` : ""}
+                        </div>
+                      )}
+                    </div>
+                    <span className="badge" style={{ background: sb.bg, color: sb.color }}>{sb.label}</span>
+                  </div>
+                  {evs.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>No events selected.</div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>
+                        Registered events ({evs.length})
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--navy)", lineHeight: 1.6 }}>
+                        {evs.map(ee => (
+                          <li key={ee.id}>{ee.event_name}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button className="btn btn-secondary btn-sm" disabled
+                      title="Edit registration coming soon"
+                      style={{ opacity: 0.6, cursor: "not-allowed" }}>
+                      Edit Registration
+                    </button>
+                    {regState() === "open" && (
+                      <button className="btn btn-ghost btn-sm"
+                        onClick={() => openRegistration && openRegistration(activeCompetitionId)}>
+                        + Register Another Twirler
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
 
       {/* ── OVERVIEW TAB ── */}
       {tab === "overview" && (
@@ -11434,6 +11594,61 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                 className="btn btn-primary btn-sm" style={{ marginTop: 4 }}>
                 Register on the host's site →
               </a>
+            </div>
+          )}
+
+          {/* Events available at this competition (built events from director) */}
+          {compBuiltEvents.length > 0 && (
+            <div className="card-sm mb-3">
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                Events at this Competition ({compBuiltEvents.length})
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[...compEventCats].sort((a, b) => (a.order_number || 0) - (b.order_number || 0)).map(cat => {
+                  const builts = compBuiltEvents
+                    .filter(b => b.category_id === cat.id)
+                    .sort((a, b) => (a.order_number || 0) - (b.order_number || 0));
+                  if (builts.length === 0) return null;
+                  const collapsed = overviewEventsCollapsed.has(cat.id);
+                  return (
+                    <div key={cat.id} style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                      <button
+                        onClick={() => setOverviewEventsCollapsed(prev => {
+                          const next = new Set(prev);
+                          if (next.has(cat.id)) next.delete(cat.id); else next.add(cat.id);
+                          return next;
+                        })}
+                        style={{ width: "100%", textAlign: "left", padding: "8px 12px", background: "#f0fdfa", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--brand2)", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span>{collapsed ? "▸" : "▾"} {cat.name}</span>
+                        <span style={{ fontSize: 11, color: "var(--slate)", fontWeight: 500 }}>{builts.length}</span>
+                      </button>
+                      {!collapsed && (
+                        <div style={{ background: "white" }}>
+                          {builts.map(b => (
+                            <div key={b.id} style={{ padding: "8px 12px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--navy)" }}>
+                                  {b.is_qualifier && <span style={{ color: "var(--gold)", marginRight: 4 }}>★</span>}
+                                  {b.name}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                {b.division && <span className="badge" style={{ background: "#ede9fe", color: "#6d28d9", fontSize: 10 }}>{b.division}</span>}
+                                {b.classification && <span className="badge" style={{ background: "#f0fdfa", color: "var(--brand2)", fontSize: 10 }}>{b.classification}</span>}
+                                {(b.age_from || b.age_to) && (
+                                  <span className="badge" style={{ background: "#f1f5f9", color: "#475569", fontSize: 10 }}>
+                                    {b.age_from && b.age_to ? `${b.age_from}-${b.age_to}` : b.age_from ? `${b.age_from}+` : `≤${b.age_to}`}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
