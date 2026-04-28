@@ -220,6 +220,19 @@ Key learnings from first live TwirlTracker test:
 - ⬜ Refund processing through director app
 - ⬜ Payment reports (revenue by event, by day)
 
+### Entry Auto-Connect + Invites
+Schema is in place as of Apr 28 (`migrations/2026-04-28_entry_stub_fields.sql` —
+adds `invite_sent`, `invite_sent_at`, `invite_token`, `auto_linked`,
+`auto_linked_at` on `competition_entries` and `auto_connect_entries`
+on `public_competitions`). No app logic uses these yet.
+
+- ⬜ On manual entry, check if `contact_email` matches existing auth.users → auto-link `user_id` (set `auto_linked`/`auto_linked_at`)
+- ⬜ On manual entry with no matching account, send email invite to join TwirlPower (set `invite_sent`/`invite_sent_at`)
+- ⬜ Invite token in signup URL auto-links entry on account creation
+- ⬜ Competition-level toggle (`public_competitions.auto_connect_entries`) to enable/disable auto-connect and invite emails
+- ⬜ Competition appears in family app "My Competitions" when entry is linked
+- ⬜ Same logic reused by public registration form and embed
+
 ---
 
 ## Phase 2E — Entries & Judges Tabs
