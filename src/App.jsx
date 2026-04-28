@@ -644,7 +644,7 @@ function printClassificationRecord(twirler, progress, results, competitions) {
   </tr>`;
  }
 
- const html = `<!DOCTYPE html><html><head><title>Classification Record — ${twirler.firstName}</title><style>body{font-family:Georgia,serif;color:#0f172a;max-width:900px;margin:0 auto;padding:32px}h1{font-size:24px;margin-bottom:4px}.sub{color:#64748b;font-size:13px;margin-bottom:24px}.section{margin-bottom:24px}h2{font-size:13px;font-weight:700;text-transform:uppercase;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px;margin-bottom:8px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#f1f5f9;text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;color:#64748b}td{padding:6px 8px;border-bottom:1px solid #f1f5f9}tr:last-child td{border-bottom:none}.footer{margin-top:28px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}</style></head><body><h1>Classification Record — ${twirler.firstName}</h1><div class="sub">Generated ${today} · TwirlPower${twirler.dob ? ` · Age ${age}` : ""}${twirler.club ? ` · ${twirler.club}` : ""}</div><div class="section"><h2>Current Classification Levels</h2><table><thead><tr><th>Org</th><th>Event</th><th>Level</th><th>Age Division</th><th>Wins</th><th>Next Level</th></tr></thead><tbody>${rows || "<tr><td colspan=6>No data</td></tr>"}</tbody></table></div>${winRows ? `<div class="section"><h2>Recent First-Place Wins</h2><table><thead><tr><th>Date</th><th>Competition</th><th>Org</th><th>Event</th><th>Level</th><th>Sanctioned</th></tr></thead><tbody>${winRows}</tbody></table></div>` : ""}<div class="footer">Self-reported record maintained by the family using TwirlPower. Governed by each org's official rulebook. Print date: ${today}.</div></body></html>`;
+ const html = `<!DOCTYPE html><html><head><title>Classification Record — ${twName(twirler)}</title><style>body{font-family:Georgia,serif;color:#0f172a;max-width:900px;margin:0 auto;padding:32px}h1{font-size:24px;margin-bottom:4px}.sub{color:#64748b;font-size:13px;margin-bottom:24px}.section{margin-bottom:24px}h2{font-size:13px;font-weight:700;text-transform:uppercase;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px;margin-bottom:8px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#f1f5f9;text-align:left;padding:6px 8px;font-size:10px;text-transform:uppercase;color:#64748b}td{padding:6px 8px;border-bottom:1px solid #f1f5f9}tr:last-child td{border-bottom:none}.footer{margin-top:28px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px}</style></head><body><h1>Classification Record — ${twName(twirler)}</h1><div class="sub">Generated ${today} · TwirlPower${twirler.dob ? ` · Age ${age}` : ""}${twirler.club ? ` · ${twirler.club}` : ""}</div><div class="section"><h2>Current Classification Levels</h2><table><thead><tr><th>Org</th><th>Event</th><th>Level</th><th>Age Division</th><th>Wins</th><th>Next Level</th></tr></thead><tbody>${rows || "<tr><td colspan=6>No data</td></tr>"}</tbody></table></div>${winRows ? `<div class="section"><h2>Recent First-Place Wins</h2><table><thead><tr><th>Date</th><th>Competition</th><th>Org</th><th>Event</th><th>Level</th><th>Sanctioned</th></tr></thead><tbody>${winRows}</tbody></table></div>` : ""}<div class="footer">Self-reported record maintained by the family using TwirlPower. Governed by each org's official rulebook. Print date: ${today}.</div></body></html>`;
 
  const win = window.open("", "_blank");
  if (win) {
@@ -655,6 +655,14 @@ function printClassificationRecord(twirler, progress, results, competitions) {
  }
 }
 function initials(name) { return (name || "?").split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2); }
+// Display helper: "First Last" when both set, else just first. Accepts the
+// family-app shape (firstName/lastName) or raw DB shape (first_name/last_name).
+function twName(t) {
+  if (!t) return "";
+  const first = (t.firstName || t.first_name || "").trim();
+  const last = (t.lastName || t.last_name || "").trim();
+  return last ? `${first} ${last}` : first;
+}
 function levelColor(level) {
  const map = { Novice: "#4ade80", Beginner: "#60a5fa", Intermediate: "#f59e0b", Advanced: "#f87171", "—": "#94a3b8" };
  return map[level] || "#94a3b8";
@@ -1826,7 +1834,7 @@ export default function App() {
           anyNew = true;
           // Send email to family
           sendEmail('advancement_alert', familyAccount.email, {
-            athleteName: activeTwirler.firstName,
+            athleteName: twName(activeTwirler),
             orgId,
             orgName: org.name,
             event,
@@ -1839,7 +1847,7 @@ export default function App() {
           (coachLinks || []).filter(l => l.twirlerId === activeTwirler.id && l.status === 'accepted').forEach(l => {
             if (l.coachEmail) {
               sendEmail('advancement_alert_coach', l.coachEmail, {
-                athleteName: activeTwirler.firstName,
+                athleteName: twName(activeTwirler),
                 familyName: familyAccount.parentName,
                 orgId,
                 orgName: org.name,
@@ -2463,7 +2471,7 @@ export default function App() {
       const twirler = twirlers.find(t => t.id === link.twirlerId);
       await sendEmail('coach_link_accepted', link.coachEmail, {
         familyName: familyAccount?.parentName || 'A family',
-        athleteName: twirler?.firstName || 'the athlete',
+        athleteName: twName(twirler) || 'the athlete',
         accepted: accept,
       });
     }
@@ -3071,10 +3079,10 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
         const built = builtEvents.find(b => b.id === bid);
         const cat = compEvents.find(c => c.id === built?.category_id);
         const t = defaultEntryTypeForCategoryName(cat?.name);
-        if (t === "duet" && !v.partner_name?.trim()) return `Partner name required for one of ${twirlerById(tid)?.firstName}'s duet events.`;
-        if (t === "group" && !v.group_name?.trim()) return `Group/team name required for one of ${twirlerById(tid)?.firstName}'s group events.`;
+        if (t === "duet" && !v.partner_name?.trim()) return `Partner name required for one of ${twName(twirlerById(tid))}'s duet events.`;
+        if (t === "group" && !v.group_name?.trim()) return `Group/team name required for one of ${twName(twirlerById(tid))}'s group events.`;
       }
-      if (!hasOne) return `Pick at least one event for ${twirlerById(tid)?.firstName}.`;
+      if (!hasOne) return `Pick at least one event for ${twName(twirlerById(tid))}.`;
     }
     if (!contactInfo.first_name.trim() || !contactInfo.last_name.trim() || !contactInfo.email.trim()) {
       return "Please complete your contact information.";
@@ -3416,7 +3424,7 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
                   <input type="checkbox" checked={checked} onChange={() => toggleTwirler(t.id)} style={{ accentColor: "var(--brand)" }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>
-                      {[t.firstName || t.first_name, t.lastName || t.last_name].filter(Boolean).join(" ")}
+                      {twName(t)}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--slate)" }}>
                       {t.club || "—"}{t.dob ? ` · DOB ${t.dob}` : ""}
@@ -3482,7 +3490,7 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
             return (
               <div key={tid} className="card" style={{ padding: "16px 20px" }}>
                 <h2 className="serif" style={{ fontSize: 16, marginBottom: 4 }}>
-                  Events for {[t.firstName || t.first_name, t.lastName || t.last_name].filter(Boolean).join(" ")}
+                  Events for {twName(t)}
                 </h2>
                 {builtEvents.length === 0 ? (
                   <p style={{ fontSize: 13, color: "var(--slate)" }}>This competition hasn't published its events yet.</p>
@@ -3558,7 +3566,7 @@ function RegistrationPage({ compId, isEmbed, authUser, familyAccount, twirlers, 
               return (
                 <div key={tid} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--border)" }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>
-                    {[t?.firstName || t?.first_name, t?.lastName || t?.last_name].filter(Boolean).join(" ")}
+                    {twName(t)}
                   </div>
                   <ul style={{ margin: "4px 0 0 18px", fontSize: 13, color: "var(--slate)" }}>
                     {evs.map(bid => {
@@ -4166,7 +4174,7 @@ function CoachApp({ authUser, coachAccount, setCoachAccount, twirlers, setTwirle
             <div key={t.id}
               className={`sidebar-twirler ${activeTwirlerId === t.id ? "active" : ""}`}
               onClick={() => { setActiveTwirlerId(t.id); setSidebarOpen(false); }}>
-              <div className="name">{t.firstName}</div>
+              <div className="name">{twName(t)}</div>
               <div className="sub">
                 {t.club || t.familyName || ""}
                 {t.organizations?.length > 0 && <span style={{ marginLeft: 4 }}>{t.organizations.join(", ")}</span>}
@@ -4331,7 +4339,7 @@ function ClubRosterPage({ twirlers, progress, coachAccount, coachClubs, setPage,
   const [copied, setCopied] = useState(false);
 
   const filtered = twirlers
-    .filter(t => !search || t.firstName?.toLowerCase().includes(search.toLowerCase()) || t.familyName?.toLowerCase().includes(search.toLowerCase()))
+    .filter(t => !search || twName(t).toLowerCase().includes(search.toLowerCase()) || t.familyName?.toLowerCase().includes(search.toLowerCase()))
     .filter(t => !filterOrg || (t.organizations || []).includes(filterOrg))
     .filter(t => !filterClub || t.club === filterClub);
 
@@ -4347,7 +4355,7 @@ function ClubRosterPage({ twirlers, progress, coachAccount, coachClubs, setPage,
             const prog = progress?.[t.id]?.[orgId]?.[event];
             if (!prog) return null;
             return [
-              t.firstName,
+              twName(t),
               t.familyName || "",
               orgId,
               event,
@@ -4471,11 +4479,11 @@ function ClubRosterPage({ twirlers, progress, coachAccount, coachClubs, setPage,
                 onClick={() => { setActiveTwirlerId(t.id); setPage("progress"); }}>
                 <div className="flex items-start gap-4">
                   <div className="avatar avatar-lg" style={{ background: isAdvancing ? "#dcfce7" : "var(--brand)", color: isAdvancing ? "#166534" : "white" }}>
-                    {initials(t.firstName)}
+                    {initials(twName(t))}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)" }}>{t.firstName}</div>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: "var(--navy)" }}>{twName(t)}</div>
                       {t.familyName && <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.familyName}</div>}
                       {t.club && (
                         <span className="badge" style={{ fontSize: 10,
@@ -4746,10 +4754,10 @@ function CoachHomePage({ coachAccount, twirlers, coachCompetitions, progress, ac
                   onMouseEnter={e => e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)"}
                   onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
                   <div className="avatar" style={{ background: advancing ? "#16a34a" : "var(--brand)", color: "white", fontSize: 13 }}>
-                    {initials(t.firstName)}
+                    {initials(twName(t))}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{t.firstName}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>{twName(t)}</div>
                     <div style={{ fontSize: 12, color: "var(--slate)" }}>
                       {t.organizations?.join(", ")}
                       {lastComp && <span style={{ color: "var(--muted)", marginLeft: 8 }}>Last: {fmtDate(lastComp.date)}</span>}
@@ -4835,7 +4843,7 @@ function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, 
       <div className="filter-bar mb-4" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <select className="select" value={filterTwirler} onChange={e => setFilterTwirler(e.target.value)}>
           <option value="">All twirlers</option>
-          {twirlers.map(t => <option key={t.id} value={t.id}>{t.firstName}</option>)}
+          {twirlers.map(t => <option key={t.id} value={t.id}>{twName(t)}</option>)}
         </select>
         <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', borderRadius: 8, padding: 3 }}>
           {[{ id: 'family', label: 'Twirler History' }, { id: 'coach', label: 'My Competitions' }].map(t => (
@@ -4867,7 +4875,7 @@ function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, 
                   </div>
                 </div>
                 {!filterTwirler && twirler && (
-                  <span className="badge badge-brand" style={{ fontSize: 11 }}>{twirler.firstName}</span>
+                  <span className="badge badge-brand" style={{ fontSize: 11 }}>{twName(twirler)}</span>
                 )}
               </div>
               {compResults.length > 0 && (
@@ -4915,7 +4923,7 @@ function CoachHistoryPage({ coachCompetitions, competitions, results, twirlers, 
                     return (
                       <div key={i.id} style={{ padding: "4px 10px", borderRadius: 20, background: "var(--bg)",
                         border: `1px solid ${color}`, fontSize: 12 }}>
-                        {t?.firstName || "Unknown"}
+                        {twName(t) || "Unknown"}
                         <span style={{ marginLeft: 6, color, fontWeight: 600, fontSize: 10 }}>
                           {i.status === 'accepted' ? '✓' : i.status === 'declined' ? '✗' : '⏳'}
                         </span>
@@ -5071,10 +5079,10 @@ function CoachProfilePage({ coachAccount, setCoachAccount, supabase, twirlers, i
           <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0",
             borderBottom: "1px solid var(--border)" }}>
             <div className="avatar" style={{ width: 32, height: 32, fontSize: 12, background: "var(--brand)", color: "white" }}>
-              {initials(t.firstName)}
+              {initials(twName(t))}
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--navy)" }}>{t.firstName}</div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--navy)" }}>{twName(t)}</div>
               <div style={{ fontSize: 12, color: "var(--muted)" }}>{t.familyName || ""}</div>
             </div>
             <span className="badge badge-green" style={{ fontSize: 10 }}>Linked</span>
@@ -5200,10 +5208,10 @@ function CreateCompetitionPage({ coachAccount, twirlers, supabase, setPage, coac
                     )}
                   </div>
                   <div className="avatar" style={{ width: 28, height: 28, fontSize: 11, background: "var(--brand)", color: "white" }}>
-                    {initials(t.firstName)}
+                    {initials(twName(t))}
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>{t.firstName}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>{twName(t)}</div>
                     <div style={{ fontSize: 11, color: "var(--muted)" }}>{t.familyName || ""}</div>
                   </div>
                 </div>
@@ -6207,7 +6215,7 @@ function Sidebar({ page, setPage, twirlers, activeTwirlerId, setActiveTwirlerId,
         {twirlers.map(t => (
           <div key={t.id} className={`sidebar-twirler ${t.id === activeTwirlerId ? "active" : ""}`} onClick={() => { setActiveTwirlerId(t.id); setPage("home"); }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div className="name">{t.firstName}</div>
+              <div className="name">{twName(t)}</div>
               {t.id === activeTwirlerId && (
                 <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", cursor: "pointer" }}
                   onClick={e => { e.stopPropagation(); setPage("profile"); }}>
@@ -6546,7 +6554,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
     <div>
       <div className="page-header flex items-center justify-between">
         <div>
-          <h1 className="page-title"><span style={{ color: "var(--brand)" }}>{activeTwirler.firstName}</span>'s {edgeView ? "TwirlTracker" : "Dashboard"}</h1>
+          <h1 className="page-title"><span style={{ color: "var(--brand)" }}>{twName(activeTwirler)}</span>'s {edgeView ? "TwirlTracker" : "Dashboard"}</h1>
           <p className="page-sub">Age {getAge(activeTwirler.dob)} · {activeTwirler.organizations?.join(", ")} · {activeTwirler.club || "No club listed"}</p>
         </div>
         <div className="flex items-center gap-3">
@@ -6669,7 +6677,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                 </button>
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "white", marginBottom: 4 }}>{todayComp.name}</div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Today · {activeTwirler.firstName}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Today · {twName(activeTwirler)}</div>
               {totalEvents > 0 && (
                 <div style={{ marginTop: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -7052,7 +7060,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
         <div key={i} className="alert alert-success mb-3">
           <Icon name="trophy" size={16} color="var(--green)" />
           <div>
-            <strong>{a.orgId} {a.event}:</strong> {activeTwirler.firstName} has reached {a.prog.winsNeeded} wins at {a.prog.currentLevel}!
+            <strong>{a.orgId} {a.event}:</strong> {twName(activeTwirler)} has reached {a.prog.winsNeeded} wins at {a.prog.currentLevel}!
             &nbsp;<span style={{ color: "var(--slate)", fontSize: 13 }}>Eligible to advance to {a.prog.nextLevel}.</span>
             &nbsp;<button className="btn btn-sm btn-secondary" style={{ marginTop: 4 }} onClick={() => openModal("override", { twirlerId: activeTwirler.id, orgId: a.orgId, event: a.event, currentLevel: a.prog.currentLevel, nextLevel: a.prog.nextLevel })}>Advance Now</button>
           </div>
@@ -7076,7 +7084,7 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 2 }}>
-                Coach link request for {twirlers.find(t => t.id === link.twirlerId)?.firstName}
+                Coach link request for {twName(twirlers.find(t => t.id === link.twirlerId))}
               </div>
               <div style={{ fontSize: 14, color: "var(--navy)", marginBottom: 2 }}>
                 {link.coachName || "A coach"}{link.coachStudio ? ` · ${link.coachStudio}` : ""}
@@ -7341,13 +7349,13 @@ function HomePage({ activeTwirler, twirlerResults, twirlerComps, progress, openM
                     background: isActive ? "var(--brand)" : "var(--navy3)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     color: "white", fontWeight: 700, fontSize: 14 }}>
-                    {initials(twirler.firstName)}
+                    {initials(twName(twirler))}
                   </div>
 
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, color: "var(--navy)" }}>
-                      {twirler.firstName}
+                      {twName(twirler)}
                       {isActive && <span style={{ fontSize: 11, color: "var(--brand)", marginLeft: 8, fontWeight: 400 }}>viewing</span>}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--slate)", marginTop: 1 }}>
@@ -7849,7 +7857,7 @@ function HistoryPage({ activeTwirler, twirlerResults, twirlerComps, results, ope
       <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title">Competition History</h1>
-          <p className="page-sub">{activeTwirler.firstName} · {twirlerComps.length} competitions · {twirlerResults.filter(r => r.placement === 1).length} wins</p>
+          <p className="page-sub">{twName(activeTwirler)} · {twirlerComps.length} competitions · {twirlerResults.filter(r => r.placement === 1).length} wins</p>
         </div>
         <div className="flex gap-2">
           <button className="btn btn-secondary" onClick={() => exportCSV(activeTwirler, twirlerComps, twirlerResults)}>
@@ -8001,7 +8009,7 @@ function exportCSV(twirler, comps, results) {
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `${twirler.firstName}_TwirlPower_history.csv`; a.click();
+  a.href = url; a.download = `${(twName(twirler) || "twirler").replace(/\s+/g, "_")}_TwirlPower_history.csv`; a.click();
 }
 
 // ─── PROGRESS PAGE ───────────────────────────────────────────────────────────
@@ -8018,7 +8026,7 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
       <div className="page-header flex items-center justify-between">
         <div>
           <h1 className="page-title">Progress Tracker</h1>
-          <p className="page-sub">{activeTwirler.firstName} · Classification progress by organization and event</p>
+          <p className="page-sub">{twName(activeTwirler)} · Classification progress by organization and event</p>
         </div>
         <button className="btn btn-secondary btn-sm"
           onClick={() => printClassificationRecord(activeTwirler, progress, results, competitions)}>
@@ -8037,7 +8045,7 @@ function ProgressPage({ activeTwirler, progress, openModal, updateTwirler, resul
           {Object.keys(progress?.[displayOrg] || {}).length === 0 ? (
             <div className="empty-state" style={{ padding: "32px 0" }}>
               <h3>No events tracked for {displayOrg} yet</h3>
-              <p>Add regular events to {activeTwirler.firstName}'s profile or log a competition to see progress here.</p>
+              <p>Add regular events to {twName(activeTwirler)}'s profile or log a competition to see progress here.</p>
               <button className="btn btn-primary btn-sm" style={{ marginTop: 12 }} onClick={() => openModal("editTwirler")}>Edit Profile</button>
             </div>
           ) : Object.keys(progress?.[displayOrg] || {}).map(event => {
@@ -8238,7 +8246,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
         inviterName: familyAccount.parentName || 'Your family',
         guardianName: guardianForm.name,
         relationship: guardianForm.relationship,
-        athleteNames: twirlers.map(t => t.firstName).join(', '),
+        athleteNames: twirlers.map(twName).join(', '),
         inviteUrl,
       });
     }
@@ -8267,7 +8275,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
       {activeTwirler && (
         <div className="card mb-4">
           <div className="section-header">
-            <span className="section-title">Twirler Profile — {activeTwirler.firstName}</span>
+            <span className="section-title">Twirler Profile — {twName(activeTwirler)}</span>
             {!editTwirler
               ? <button className="btn btn-ghost btn-sm" onClick={() => setEditTwirler(true)}><Icon name="edit" size={13} /> Edit</button>
               : <div className="flex gap-2">
@@ -8293,7 +8301,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                   if (coachAcc?.email) {
                     await sendEmail("club_join_request", coachAcc.email, {
                       coachName: coachAcc.name,
-                      twirlerName: activeTwirler.firstName,
+                      twirlerName: twName(activeTwirler),
                       clubName: tForm.club,
                     });
                   }
@@ -8419,7 +8427,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                           {l.coachStudio && <div style={{ fontSize: 11, color: "var(--muted)" }}>{l.coachStudio}</div>}
                         </div>
                         <button className="btn btn-danger btn-sm"
-                          onClick={() => { if (window.confirm(`Remove ${l.coachName} as a coach for ${activeTwirler?.firstName}?`)) respondToCoachLink(l.id, false); }}
+                          onClick={() => { if (window.confirm(`Remove ${l.coachName} as a coach for ${twName(activeTwirler)}?`)) respondToCoachLink(l.id, false); }}
                           style={{ fontSize: 11, padding: "3px 8px" }}>
                           Remove
                         </button>
@@ -8549,7 +8557,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
                         inviterName: familyAccount?.parentName || "Your family",
                         guardianName: g.name,
                         relationship: g.relationship,
-                        athleteNames: twirlers.map(t => t.firstName).join(", "),
+                        athleteNames: twirlers.map(twName).join(", "),
                         inviteUrl,
                       });
                       alert(`Invite resent to ${g.email}`);
@@ -8604,7 +8612,7 @@ function ProfilePage({ activeTwirler, twirlers, updateTwirler, deleteTwirler, fa
         <div className="alert alert-info mb-4">
           <Icon name="info" size={16} color="var(--blue)" />
           <div>
-            <strong>Contact visibility:</strong> Coaches linked to {activeTwirler?.firstName + "'s"} profile can see your guardian contact information. You can see their contact info on the <strong>Coaches</strong> page.
+            <strong>Contact visibility:</strong> Coaches linked to {(twName(activeTwirler) || "your twirler") + "'s"} profile can see your guardian contact information. You can see their contact info on the <strong>Coaches</strong> page.
           </div>
         </div>
       )}
@@ -8727,7 +8735,7 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
               <button key={t.id}
                 className={`btn btn-sm ${selectedTwirler === t.id ? "btn-primary" : "btn-secondary"}`}
                 onClick={() => setSelectedTwirler(t.id)}>
-                {t.firstName}
+                {twName(t)}
               </button>
             ))}
           </div>
@@ -8737,7 +8745,7 @@ function ClassificationTimelinePage({ activeTwirler, twirlers, progress, results
       {/* Current classification snapshot */}
       <div className="card mb-4">
         <div className="section-header">
-          <span className="section-title">Current Classifications — {twirler.firstName}</span>
+          <span className="section-title">Current Classifications — {twName(twirler)}</span>
         </div>
         {orgs.length === 0 ? (
           <p style={{ fontSize: 13, color: "var(--muted)" }}>No organizations on profile yet.</p>
@@ -10189,7 +10197,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, familyAccount, coachLin
     await sendEmail('coach_link_request', coach.email, {
       coachName: coach.name,
       familyName: familyAccount?.parentName,
-      athleteName: (activeTwirler ? [activeTwirler] : twirlers).map(t => t.firstName).join(', '),
+      athleteName: (activeTwirler ? [activeTwirler] : twirlers).map(twName).join(', '),
     });
     setRequestSent(p => ({ ...p, [coach.id]: true }));
     setRequesting(p => ({ ...p, [coach.id]: false }));
@@ -10201,7 +10209,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, familyAccount, coachLin
     await sendEmail('coach_invite_new_family', inviteForm.email, {
       coachName: inviteForm.name || 'there',
       familyName: familyAccount?.parentName,
-      athleteName: (activeTwirler ? [activeTwirler] : twirlers).map(t => t.firstName).join(', '),
+      athleteName: (activeTwirler ? [activeTwirler] : twirlers).map(twName).join(', '),
     });
     setInviteSent(true);
     setSendingInvite(false);
@@ -10290,7 +10298,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, familyAccount, coachLin
                         )}
                         {twirler && (
                           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
-                            Linked to: <strong>{twirler.firstName}</strong>
+                            Linked to: <strong>{twName(twirler)}</strong>
                           </div>
                         )}
                       </div>
@@ -10446,7 +10454,7 @@ function CoachesPage({ coaches, twirlers, activeTwirler, familyAccount, coachLin
               <div className="alert alert-info mb-4">
                 <Icon name="info" size={14} color="var(--brand)" />
                 <span style={{ fontSize: 12 }}>
-                  The email will mention {familyAccount?.parentName || 'your family'} and {(activeTwirler ? [activeTwirler] : twirlers).map(t => t.firstName).join(', ')} so the coach knows who's reaching out.
+                  The email will mention {familyAccount?.parentName || 'your family'} and {(activeTwirler ? [activeTwirler] : twirlers).map(twName).join(', ')} so the coach knows who's reaching out.
                 </span>
               </div>
               <button className="btn btn-primary" disabled={!inviteForm.email || sendingInvite} onClick={sendInvite}>
@@ -10572,9 +10580,9 @@ function CoachCreateCompModal({ open, onClose, coach, twirlers, onSave }) {
                   display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   {invited && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
                 </div>
-                <div className="avatar" style={{ width: 28, height: 28, fontSize: 11, background: "#dbeafe", color: "#1d4ed8" }}>{initials(t.firstName)}</div>
+                <div className="avatar" style={{ width: 28, height: 28, fontSize: 11, background: "#dbeafe", color: "#1d4ed8" }}>{initials(twName(t))}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500, fontSize: 14 }}>{t.firstName}</div>
+                  <div style={{ fontWeight: 500, fontSize: 14 }}>{twName(t)}</div>
                   <div style={{ fontSize: 12, color: "var(--slate)" }}>{t.organizations?.join(", ")}</div>
                 </div>
                 <span style={{ fontSize: 12, color: invited ? "var(--blue)" : "var(--muted)", fontWeight: invited ? 600 : 400 }}>
@@ -11437,7 +11445,7 @@ function CompetitionDetailPage({ activeCompetitionId, publicCompetitions, compet
                   const t = twirlers.find(tw => tw.id === a.twirlerId);
                   return t ? (
                     <span key={i} style={{ fontSize: 12, padding: "4px 10px", background: "#f0fdf4", borderRadius: 20, fontWeight: 500 }}>
-                      {t.firstName}
+                      {twName(t)}
                     </span>
                   ) : null;
                 })}
@@ -12736,9 +12744,9 @@ function HostManageView({ host, publicCompetitions, attendees, twirlers, onCreat
                                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
                                   background: "#f0fdf4", borderRadius: 20, fontSize: 12 }}>
                                   <div className="avatar" style={{ width: 20, height: 20, fontSize: 9, background: "#bbf7d0", color: "#166534" }}>
-                                    {initials(t?.firstName || "?")}
+                                    {initials(twName(t) || "?")}
                                   </div>
-                                  <span style={{ fontWeight: 500 }}>{t?.firstName || "Unknown"}</span>
+                                  <span style={{ fontWeight: 500 }}>{twName(t) || "Unknown"}</span>
                                   <span style={{ color: "var(--muted)", fontSize: 11 }}>Added {fmtDate(a.addedAt)}</span>
                                 </div>
                               );
@@ -13696,7 +13704,7 @@ function AddCompetitionModal({ open, onClose, onSave, activeTwirler, competition
           </div>
           <div className="alert alert-info mb-3" style={{ fontSize: 13 }}>
             <Icon name="info" size={14} color="var(--blue)" />
-            <span>Events pre-filled from {activeTwirler.firstName + "'s"} regular events. Add, edit, or remove as needed. Events are grouped by type.</span>
+            <span>Events pre-filled from {twName(activeTwirler) + "'s"} regular events. Add, edit, or remove as needed. Events are grouped by type.</span>
           </div>
           <EventResultRows
             eventRows={eventRows}
@@ -13862,7 +13870,7 @@ function HistoricalDataModal({ open, onClose, activeTwirler, onSave }) {
       <div className="alert alert-info mb-4">
         <Icon name="info" size={15} color="var(--blue)" />
         <div>
-          Use this to set {activeTwirler.firstName}'s classification history before starting to track competitions in the app. Prior wins will be counted toward advancement alongside any new wins entered.
+          Use this to set {twName(activeTwirler)}'s classification history before starting to track competitions in the app. Prior wins will be counted toward advancement alongside any new wins entered.
         </div>
       </div>
 
