@@ -1,5 +1,5 @@
 # TwirlPower — Competition Directory & Director Roadmap
-Updated: April 29, 2026 (results + scoring MVP)
+Updated: April 29, 2026 (score locking + judge view)
 
 ---
 
@@ -302,6 +302,21 @@ on `public_competitions`). No app logic uses these yet.
 - ✅ Family-app Results tab now reads released `competition_results` (Official Results section)
 - ✅ Competition settings: `results_release_mode` and `tie_handling`
 
+### Score Locking + Judge View (April 29, 2026) — ✅ Shipped
+- ✅ Score lock-after-sign — once a score is signed (status = `final`/`revised`), the entry card flips to a read-only summary with a 🔒 indicator and a ghost "Edit" button
+- ✅ Modify-submitted-score warning modal requires a typed reason; on save the score moves to `status = 'revised'` and the change is logged in `competition_score_audit` with old/new value + reason
+- ✅ Edit-mode card shows an amber border + "Edit Mode" pill, with explicit Save Changes / Cancel buttons (no on-blur autosave during edit)
+- ✅ Judge View page (new `activePage = "judge-view"`) — full-screen tablet/phone-friendly scoring interface
+- ✅ Lane sidebar: navy theme with category dividers, current set highlighted in teal, completed sets ✅, future sets dimmed, scratches strikethrough, breaks deferred
+- ✅ Sequential set numbers across all twirlers in the lane, regardless of category
+- ✅ "Return to Current Set" button pinned in sidebar footer
+- ✅ Future-set warning when a judge clicks ahead of the current set
+- ✅ Submit Score button (judge mode) replaces director Sign — opens a confirmation modal showing the score + twirler, then commits + signs + locks in one action and auto-advances
+- ✅ Scratch sets show "SCRATCH — no performance to score" with a Skip to Next Set button
+- ✅ Pass/Fail events: large Pass / Fail buttons replace the score input
+- ✅ Mobile/tablet: sidebar collapses behind a ☰ Schedule button → fixed drawer + backdrop
+- ✅ Preview Judge View buttons: per-judge on the Judges tab (when assigned to a lane); Open Judge View on the Overview tab with a lane picker modal
+
 ### Phase 3B — Still Open
 - ⬜ Multi-judge averaging (standard + olympic option) — MVP is one-judge-per-event
 - ⬜ Director review queue before finalizing
@@ -311,6 +326,7 @@ on `public_competitions`). No app logic uses these yet.
 - ⬜ Printable scorecard output per twirler
 - ⬜ Data export: CSV/JSON
 - ⬜ Voice note recording on judge feedback (UI stub in place)
+- ⬜ Judge accounts (separate auth, scoped to their assigned lane) — Judge View is the UI, the auth is the missing piece
 
 ### Scoring Templates
 - ⬜ Standard Solo (score, placement, no_drop, notes) — generic Scored type covers MVP
@@ -346,9 +362,9 @@ on `public_competitions`). No app logic uses these yet.
 
 ### Judge Accounts
 - ⬜ Judge signup and verification
-- ⬜ Direct login to score entry interface
-- ⬜ Real-time score aggregation
-- ⬜ Score display for families as posted
+- ⬜ Direct login to score entry interface — UI shipped (Judge View page); needs unique-link auth flow
+- ⬜ Real-time score aggregation — needs multi-judge averaging
+- ⬜ Score display for families as posted — `competition_results` family-read RLS already in place
 
 ---
 
