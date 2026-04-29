@@ -1,5 +1,5 @@
 # TwirlPower — Competition Directory & Director Roadmap
-Updated: April 29, 2026 (score locking + judge view)
+Updated: April 29, 2026 (judge top bar + skip set)
 
 ---
 
@@ -301,6 +301,19 @@ on `public_competitions`). No app logic uses these yet.
 - ✅ `competition_scores`, `competition_results`, `competition_score_audit` tables shipped with host/admin RLS
 - ✅ Family-app Results tab now reads released `competition_results` (Official Results section)
 - ✅ Competition settings: `results_release_mode` and `tie_handling`
+
+### Judge View Polish + Skip Set (April 29, 2026) — ✅ Shipped
+- ✅ Per-event Release Scores / Release Placements buttons on every Results event header (already added in MVP, now flanked by green "Scores Released" / "Placements Released" badges once fully released)
+- ✅ Confirmation modals on every release path (per-event + global Release All), copy matches the spec exactly
+- ✅ Judge sidebar removed; replaced with a horizontally-scrolling top bar of set chips
+- ✅ Auto-center: current chip uses a ref + smooth `scrollIntoView` whenever the lane, selected set, scores, or twirlers change
+- ✅ Chip styles: current (teal, larger, raised), completed (dark green ✅), future (dimmed navy), scratch (italic strikethrough), skipped (orange-brown ⤼ "SKIPPED"), break (amber pill), category (small teal divider chip between sections)
+- ✅ "↩ Current Set" button pinned in the topbar — disabled when already on the current set
+- ✅ Future-set warning preserved (now triggered from chip click)
+- ✅ Skip Set ghost button (amber outline) below the score card; reason-required modal; writes a `competition_scores` row with `status='skipped'`, `comments=reason`, judge name auto-stamped, and a `competition_score_audit` entry with `action='set_skipped'` + reason
+- ✅ Status vocabulary: `'draft' | 'final' | 'revised' | 'skipped'` (no migration needed — existing column has no CHECK constraint)
+- ✅ Director Results tab also shows skipped scores in their locked summary with a "SKIPPED" badge and the reason inline
+- ✅ Locked summary surfaces an "Unskip / Modify" path through the existing unlock-with-reason flow (same audit trail)
 
 ### Score Locking + Judge View (April 29, 2026) — ✅ Shipped
 - ✅ Score lock-after-sign — once a score is signed (status = `final`/`revised`), the entry card flips to a read-only summary with a 🔒 indicator and a ghost "Edit" button
